@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -18,6 +18,12 @@ interface Project {
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [activeTier, setActiveTier] = useState<string>('Hobbyist');
+
+  useEffect(() => {
+    const savedTier = localStorage.getItem('stitchwise_tier') || 'Hobbyist';
+    setActiveTier(savedTier);
+  }, []);
 
   const myProjects: Project[] = [
     {
@@ -250,6 +256,91 @@ export const Dashboard: React.FC = () => {
           {/* Sidebar - Right 4 columns */}
           <div className="lg:col-span-4 space-y-6">
             
+            {/* Active Subscription Tier Card */}
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 h-24 w-24 bg-gradient-to-bl from-brand-500/10 to-transparent rounded-bl-full pointer-events-none" />
+              
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 mb-4">
+                <CreditCard className="h-4 w-4 text-brand-500" />
+                Subscription Plan
+              </h3>
+
+              {activeTier === 'Hobbyist' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Current Tier</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-extrabold text-slate-700 ring-1 ring-inset ring-slate-600/10">
+                      Hobbyist (Free)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    You are currently using our basic free tools, limited to a 16x16 grid canvas, standard DMC color palettes, and PDF hand embroidery exports.
+                  </p>
+                  <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100/50">
+                    <h4 className="text-xs font-bold text-amber-800 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-600 animate-pulse" />
+                      Unlock AI Pattern Digitizer
+                    </h4>
+                    <p className="text-[10px] text-amber-700 leading-relaxed mt-1">
+                      Upgrade to **Pro Crafter** to access unlimited AI generations, thread usage estimation, and machine files (.DST, .PES, .EXP) export!
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 shadow-sm hover:scale-[1.02] active:scale-95 transition-all"
+                  >
+                    View Plans & Upgrade
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : activeTier === 'Pro Crafter' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Current Tier</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-extrabold text-amber-700 ring-1 ring-inset ring-amber-600/10 animate-pulse">
+                      <Crown className="h-3 w-3 text-amber-500" />
+                      Pro Crafter
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and live collaborative workshops!
+                  </p>
+                  <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100/50 flex items-center gap-3">
+                    <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-800">100% Active</h4>
+                      <p className="text-[10px] text-emerald-700">Billing active at $19/mo (or $15/mo annually)</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95"
+                  >
+                    Manage Subscription
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Current Tier</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-extrabold text-indigo-700 ring-1 ring-inset ring-indigo-600/10">
+                      <Crown className="h-3 w-3 text-indigo-500" />
+                      Design Studio
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    ✓ **Commercial Studio active**: Full commercial use licenses, high priority AI queue, bulk image-to-stitch processing, up to 5 team seats, and developer API access are unlocked.
+                  </p>
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95"
+                  >
+                    Manage Subscription
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Quick Stats / Info Widget */}
             <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-sm relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.15),transparent)] pointer-events-none" />
