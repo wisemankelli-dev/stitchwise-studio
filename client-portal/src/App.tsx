@@ -2,7 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { SubmitProject } from './pages/SubmitProject';
 import { Designer } from './pages/Designer';
-import { Scissors, Heart, Sparkles, ShieldCheck } from 'lucide-react';
+import { Dashboard } from './pages/Dashboard';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard } from 'lucide-react';
 
 /**
  * Main application component setting up routing, layout, and global styling.
@@ -28,6 +29,10 @@ function App() {
                 <Link to="/" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
                   Home
                 </Link>
+                <Link to="/dashboard" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
+                  <LayoutDashboard className="h-4 w-4 text-brand-500" />
+                  Dashboard
+                </Link>
                 <Link to="/designer" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4 text-brand-500" />
                   Pattern Designer
@@ -48,6 +53,7 @@ function App() {
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/submit-project" element={<SubmitProject />} />
             <Route path="/designer" element={<Designer />} />
           </Routes>
@@ -70,6 +76,7 @@ function App() {
 
               <div className="flex gap-x-6 justify-start md:justify-center text-sm">
                 <Link to="/" className="hover:text-white transition-colors">Home</Link>
+                <Link to="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
                 <Link to="/designer" className="hover:text-white transition-colors">Pattern Designer</Link>
                 <Link to="/submit-project" className="hover:text-white transition-colors">Custom Request</Link>
               </div>
