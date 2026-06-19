@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * Represents a project inquiry submitted by a prospective client.
+ *
+ * Tracks the client's contact details, project description, and the
+ * current review status.
+ */
+model ProjectInquiry {
+  id          String   @id @default(uuid())
+  name        String
+  email       String
+  description String
+  status      InquiryStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum InquiryStatus {
+  PENDING
+  REVIEWING
+  APPROVED
+  REJECTED
+}
