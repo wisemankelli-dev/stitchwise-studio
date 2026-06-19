@@ -1,58 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown } from 'lucide-react';
-
-interface Project {
-  id: string;
-  name: string;
-  owner: string;
-  avatar: string;
-  role: 'owner' | 'collaborator';
-  lastUpdated: string;
-  gridSize: string;
-  collaboratorsCount: number;
-  activeSessionId: string;
-  complexity: 'Hobbyist' | 'Pro' | 'Masterpiece';
-  previewColor: string;
-}
+import { Project, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTier, setActiveTier] = useState<string>('Hobbyist');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const savedTier = localStorage.getItem('stitchwise_tier') || 'Hobbyist';
-    setActiveTier(savedTier);
-  }, []);
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const profile = await api.getUserProfile();
+        setActiveTier(profile.subscriptionTier);
 
-  const myProjects: Project[] = [
-    {
-      id: 'rose-heart',
-      name: 'Rose Heart Patch',
-      owner: 'You',
-      avatar: '👑',
-      role: 'owner',
-      lastUpdated: '5 minutes ago',
-      gridSize: '16x16 Grid',
-      collaboratorsCount: 3,
-      activeSessionId: 'rose-heart-collab',
-      complexity: 'Hobbyist',
-      previewColor: 'from-rose-500 to-amber-500',
-    },
-    {
-      id: 'spring-tulip',
-      name: 'Spring Tulip Border',
-      owner: 'You',
-      avatar: '👑',
-      role: 'owner',
-      lastUpdated: '2 days ago',
-      gridSize: '24x24 Grid',
-      collaboratorsCount: 1,
-      activeSessionId: 'tulip-collab',
-      complexity: 'Pro',
-      previewColor: 'from-emerald-500 to-teal-400',
-    }
-  ];
+        const projList = await api.getProjects();
+        setProjects(projList);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const sharedWithMe: Project[] = [
     {
@@ -99,6 +72,17 @@ export const Dashboard: React.FC = () => {
   const joinSession = (sessionId: string) => {
     navigate(`/designer?session=${sessionId}`);
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-slate-50 min-h-screen py-12 px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="h-12 w-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-slate-500">Loading your crafting canvas...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen py-12 px-6 lg:px-8">
@@ -200,12 +184,12 @@ export const Dashboard: React.FC = () => {
                   My Patterns
                 </h3>
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
-                  {myProjects.length} created
+                  {projects.length} created
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {myProjects.map((project) => (
+                {projects.map((project) => (
                   <div 
                     key={project.id} 
                     className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 flex flex-col h-full"

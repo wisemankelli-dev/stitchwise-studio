@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, Sparkles, Scissors, HelpCircle, ShieldCheck, ArrowRight } from 'lucide-react';
+import { api } from '../services/api';
 
 interface PricingPlan {
   id: string;
@@ -23,8 +24,9 @@ export const Pricing: React.FC = () => {
   const [selectedPlanName, setSelectedPlanName] = useState<string>('');
 
   useEffect(() => {
-    const savedTier = localStorage.getItem('stitchwise_tier') || 'Hobbyist';
-    setCurrentTier(savedTier);
+    api.getUserProfile().then((user) => {
+      setCurrentTier(user.subscriptionTier);
+    });
   }, []);
 
   const plans: PricingPlan[] = [
@@ -84,21 +86,21 @@ export const Pricing: React.FC = () => {
     }
   ];
 
-  const handleUpgrade = (planId: string, planName: string) => {
+  const handleUpgrade = async (planId: string, planName: string) => {
     if (planId === 'Hobbyist') {
-      setUploadedFileAndTier('Hobbyist');
+      await setUploadedFileAndTier('Hobbyist');
       return;
     }
     
-    // Simulate upgrading
-    localStorage.setItem('stitchwise_tier', planName);
+    // Upgrade via api client layer
+    await api.updateSubscriptionTier(planName as any);
     setCurrentTier(planName);
     setSelectedPlanName(planName);
     setShowUpgradeModal(true);
   };
 
-  const setUploadedFileAndTier = (tier: string) => {
-    localStorage.setItem('stitchwise_tier', tier);
+  const setUploadedFileAndTier = async (tier: string) => {
+    await api.updateSubscriptionTier(tier as any);
     setCurrentTier(tier);
   };
 
