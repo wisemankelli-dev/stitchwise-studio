@@ -1,0 +1,15 @@
+{
+  "name": "stitchwise",
+  "version": "1.0.0",
+  "description": "StitchWise Studio Portal - Client-facing application",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:e2e": "npx playwright test",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
