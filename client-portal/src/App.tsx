@@ -4,6 +4,7 @@ import { SubmitProject } from './pages/SubmitProject';
 import { Designer } from './pages/Designer';
 import { Dashboard } from './pages/Dashboard';
 import { Pricing } from './pages/Pricing';
+import { ProjectDetail } from './pages/ProjectDetail';
 import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard } from 'lucide-react';
 
 /**
@@ -62,6 +63,7 @@ function App() {
             <Route path="/submit-project" element={<SubmitProject />} />
             <Route path="/designer" element={<Designer />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
           </Routes>
         </main>
 

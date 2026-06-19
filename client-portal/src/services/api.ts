@@ -79,6 +79,48 @@ const INITIAL_PROJECTS: Project[] = [
     complexity: 'Pro',
     previewColor: 'from-emerald-500 to-teal-400',
     description: 'Elegant border with tulip motifs, optimized for domestic machine loop sizes.'
+  },
+  {
+    id: 'vintage-floral',
+    name: 'Vintage Floral Border',
+    owner: 'Elena Crafter',
+    avatar: '🌸',
+    role: 'collaborator',
+    lastUpdated: '2 hours ago',
+    gridSize: '32x32 Grid',
+    collaboratorsCount: 4,
+    activeSessionId: 'floral-workshop',
+    complexity: 'Masterpiece',
+    previewColor: 'from-violet-500 to-fuchsia-400',
+    description: 'Intricate vintage floral compilation shared for joint editing and thread density calibration.'
+  },
+  {
+    id: 'golden-retriever',
+    name: 'Golden Retriever Portrait',
+    owner: 'Dave Digitizer',
+    avatar: '🐕',
+    role: 'collaborator',
+    lastUpdated: 'Yesterday',
+    gridSize: '16x16 Grid',
+    collaboratorsCount: 2,
+    activeSessionId: 'retriever-workshop',
+    complexity: 'Masterpiece',
+    previewColor: 'from-amber-600 to-yellow-400',
+    description: 'Photorealistic pet portrait utilizing advanced satin-stitch shading and blending palettes.'
+  },
+  {
+    id: 'cyberpunk-dragon',
+    name: 'Cyberpunk Dragon Patch',
+    owner: 'StitchMaster Pro',
+    avatar: '🐉',
+    role: 'collaborator',
+    lastUpdated: '3 days ago',
+    gridSize: '48x48 Grid',
+    collaboratorsCount: 5,
+    activeSessionId: 'dragon-workshop',
+    complexity: 'Pro',
+    previewColor: 'from-pink-600 to-rose-400',
+    description: 'High-density futuristic dragon emblem suitable for jacket back embroidery.'
   }
 ];
 
@@ -190,6 +232,25 @@ class ApiClient {
   }
 
   /**
+   * Retrieves a single project by ID.
+   */
+  async getProject(id: string): Promise<Project | null> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/projects/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch project');
+        return await response.json();
+      } catch (err) {
+        console.error(`Failed to fetch project ${id} from backend, using fallback`, err);
+      }
+    }
+
+    await delay(400);
+    const projects = await this.getProjects();
+    return projects.find((p) => p.id === id) || null;
+  }
+
+  /**
    * Registers a new project in the system.
    */
   async createProject(data: Partial<Project>): Promise<Project> {
@@ -229,6 +290,91 @@ class ApiClient {
     projects.unshift(newProject);
     localStorage.setItem('stitchwise_projects', JSON.stringify(projects));
     return newProject;
+  }
+
+  /**
+   * Updates an existing project's metadata by ID.
+   */
+  async updateProject(id: string, data: Partial<Project>): Promise<Project | null> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error('Failed to update project');
+        return await response.json();
+      } catch (err) {
+        console.error(`Failed to update project ${id} on backend, using fallback`, err);
+      }
+    }
+
+    await delay(600);
+    const projects = await this.getProjects();
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx === -1) return null;
+
+    const updatedProject = {
+      ...projects[idx],
+      ...data,
+      lastUpdated: 'Just now'
+    };
+
+    projects[idx] = updatedProject;
+    localStorage.setItem('stitchwise_projects', JSON.stringify(projects));
+    return updatedProject;
+  }
+
+  /**
+   * Generates a unique, shareable collaboration session link.
+   */
+  async createShareLink(projectId: string): Promise<string> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/share`, {
+          method: 'POST'
+        });
+        if (!response.ok) throw new Error('Failed to create share link');
+        const result = await response.json();
+        return result.shareLink;
+      } catch (err) {
+        console.error(`Failed to create share link for ${projectId} on backend, using fallback`, err);
+      }
+    }
+
+    await delay(500);
+    const project = await this.getProject(projectId);
+    const sessionId = project?.activeSessionId || `session-${Math.floor(Math.random() * 900000 + 100000)}`;
+    return `${window.location.origin}/designer?session=${sessionId}`;
+  }
+
+  /**
+   * Invites a collaborator via email to join the embroidery project workshop.
+   */
+  async inviteCollaborator(projectId: string, email: string): Promise<boolean> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/invite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        return response.ok;
+      } catch (err) {
+        console.error(`Failed to invite collaborator on backend for project ${projectId}`, err);
+      }
+    }
+
+    await delay(600);
+    const project = await this.getProject(projectId);
+    if (!project) return false;
+
+    // Simulate collaborator addition by incrementing count
+    await this.updateProject(projectId, {
+      collaboratorsCount: (project.collaboratorsCount || 0) + 1
+    });
+    return true;
   }
 
   /**

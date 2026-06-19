@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown } from 'lucide-react';
 import { Project, api } from '../services/api';
 
@@ -149,7 +149,9 @@ export const Dashboard: React.FC = () => {
                           </span>
                         </div>
 
-                        <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
+                        <Link to={`/projects/${project.id}`} className="hover:text-brand-600 transition-colors">
+                          <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
+                        </Link>
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
                           <span className="text-base" title="Designer Avatar">{project.avatar}</span>
                           <span>Shared by <strong className="text-slate-700 font-semibold">{project.owner}</strong></span>
@@ -208,7 +210,9 @@ export const Dashboard: React.FC = () => {
                           </span>
                         </div>
 
-                        <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
+                        <Link to={`/projects/${project.id}`} className="hover:text-brand-600 transition-colors">
+                          <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
+                        </Link>
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
                           <span className="text-base">👑</span>
                           <span>Owner: <strong className="text-slate-700 font-semibold">{project.owner}</strong></span>
