@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import { api } from '../services/api';
 import { 
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw, 
   Share2, Users, Clipboard, Check, Send, Activity, X, Flame, ArrowLeft,
@@ -161,29 +162,36 @@ export const Designer: React.FC = () => {
     setShowDemoPattern(false);
     addCollabLog('You (César)', '👑', `Started AI digitizer for prompt: "${promptInput}"`);
 
+    // Trigger API call
+    const apiPromise = api.generateStitches(promptInput, 'DST');
+
     // Simulate stepping through progress
     const interval = setInterval(() => {
       setGeneratorProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          setIsGenerating(false);
-          setShowDemoPattern(true);
           
-          // Seed grid with a beautiful rose heart
-          const mockPatternGrid: Record<string, string> = {};
-          for (let r = 0; r < gridSize; r++) {
-            for (let c = 0; c < gridSize; c++) {
-              if (r >= 3 && r <= 11 && c >= 3 && c <= 12) {
-                const distFromCenterOfLeftLobe = Math.hypot(r - 5, c - 5);
-                const distFromCenterOfRightLobe = Math.hypot(r - 5, c - 10);
-                if (distFromCenterOfLeftLobe < 2.5 || distFromCenterOfRightLobe < 2.5 || (r >= 6 && r - c <= 5 && r + c <= 17)) {
-                  mockPatternGrid[`${r},${c}`] = (r === 6 && c === 7) || (r === 7 && c === 8) ? '#d97706' : '#e11d48'; 
+          apiPromise.then((res) => {
+            setIsGenerating(false);
+            setShowDemoPattern(true);
+            
+            // Seed grid with a beautiful rose heart
+            const mockPatternGrid: Record<string, string> = {};
+            for (let r = 0; r < gridSize; r++) {
+              for (let c = 0; c < gridSize; c++) {
+                if (r >= 3 && r <= 11 && c >= 3 && c <= 12) {
+                  const distFromCenterOfLeftLobe = Math.hypot(r - 5, c - 5);
+                  const distFromCenterOfRightLobe = Math.hypot(r - 5, c - 10);
+                  if (distFromCenterOfLeftLobe < 2.5 || distFromCenterOfRightLobe < 2.5 || (r >= 6 && r - c <= 5 && r + c <= 17)) {
+                    mockPatternGrid[`${r},${c}`] = (r === 6 && c === 7) || (r === 7 && c === 8) ? '#d97706' : '#e11d48'; 
+                  }
                 }
               }
             }
-          }
-          setGrid(mockPatternGrid);
-          addCollabLog('AI Digitizer', '🤖', `Successfully compiled AI stitch-pattern from prompt`);
+            setGrid(mockPatternGrid);
+            addCollabLog('AI Digitizer', '🤖', `Successfully compiled AI stitch-pattern from prompt! (Count: ${res.stitchCount} stitches, Thread: ${res.estimatedThreadSkeins} skeins)`);
+          });
+          
           return 100;
         }
         return prev + 15;
@@ -255,6 +263,9 @@ export const Designer: React.FC = () => {
     setShowDemoPattern(false);
     addCollabLog('You (César)', '👑', `Started AI digitizer for image: "${uploadedFile.name}" (${digitizeStitchCount} stitches, ${digitizeColorsCount} colors)`);
 
+    // Trigger API conversion
+    const apiPromise = api.convertStitches(new File([], uploadedFile.name), 'DST');
+
     const steps = [
       { threshold: 25, text: 'Mapping colors to DMC standard threads...' },
       { threshold: 50, text: 'Tracing stitch outline coordinates...' },
@@ -267,12 +278,15 @@ export const Designer: React.FC = () => {
         const next = prev + 12;
         if (next >= 100) {
           clearInterval(interval);
-          setIsGenerating(false);
-          setShowDemoPattern(true);
-          setPreviewMode('pattern');
           
-          setGrid(mockSunflowerGrid);
-          addCollabLog('AI Digitizer', '🤖', `Successfully digitized image "${uploadedFile.name}" into embroidery pattern`);
+          apiPromise.then((res) => {
+            setIsGenerating(false);
+            setShowDemoPattern(true);
+            setPreviewMode('pattern');
+            setGrid(mockSunflowerGrid);
+            addCollabLog('AI Digitizer', '🤖', `Successfully digitized image "${uploadedFile.name}" into embroidery pattern! (Count: ${res.stitchCount} stitches, DMC thread usage: ${res.estimatedThreadSkeins} skeins)`);
+          });
+          
           return 100;
         }
         
