@@ -2,8 +2,8 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter } from "./infrastructure/routes";
-import { PrismaProjectInquiryRepo } from "./infrastructure/db";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter } from "./infrastructure/routes";
+import { PrismaProjectInquiryRepo, PrismaWorkshopRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
 function log(event: string, meta?: Record<string, unknown>): void {
@@ -42,10 +42,13 @@ export async function createApp(): Promise<express.Application> {
 
   // Repositories
   const inquiryRepo = new PrismaProjectInquiryRepo(prisma);
+  const workshopRepo = new PrismaWorkshopRepo(prisma);
 
   // Routes
   app.use("/api", healthRouter);
   app.use("/api", createInquiryRouter(inquiryRepo));
+  app.use("/api", createWorkshopRouter(workshopRepo));
+  app.use("/api", createStitchRouter());
 
   // Global error handler
   app.use(
