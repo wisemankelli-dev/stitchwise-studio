@@ -3,7 +3,8 @@ import { Home } from './pages/Home';
 import { SubmitProject } from './pages/SubmitProject';
 import { Designer } from './pages/Designer';
 import { Dashboard } from './pages/Dashboard';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard } from 'lucide-react';
+import { Pricing } from './pages/Pricing';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard } from 'lucide-react';
 
 /**
  * Main application component setting up routing, layout, and global styling.
@@ -37,6 +38,10 @@ function App() {
                   <Sparkles className="h-4 w-4 text-brand-500" />
                   Pattern Designer
                 </Link>
+                <Link to="/pricing" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-brand-500" />
+                  Plans & Pricing
+                </Link>
                 <Link
                   to="/submit-project"
                   className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-all focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -56,6 +61,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/submit-project" element={<SubmitProject />} />
             <Route path="/designer" element={<Designer />} />
+            <Route path="/pricing" element={<Pricing />} />
           </Routes>
         </main>
 
@@ -78,6 +84,7 @@ function App() {
                 <Link to="/" className="hover:text-white transition-colors">Home</Link>
                 <Link to="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
                 <Link to="/designer" className="hover:text-white transition-colors">Pattern Designer</Link>
+                <Link to="/pricing" className="hover:text-white transition-colors">Plans & Pricing</Link>
                 <Link to="/submit-project" className="hover:text-white transition-colors">Custom Request</Link>
               </div>
 
