@@ -660,6 +660,87 @@ class ApiClient {
     
     return await this.getUserProfile();
   }
+
+  /**
+   * Fetches the user's active subscription tier from the backend or local fallback.
+   */
+  async getSubscriptionTier(): Promise<{ tier: 'Hobbyist' | 'Pro Crafter' | 'Design Studio' }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/me/tier`, {
+          headers: this.getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to fetch active tier');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to fetch tier from backend, using local fallback', err);
+      }
+    }
+    
+    const tier = (localStorage.getItem('stitchwise_tier') as any) || 'Hobbyist';
+    return { tier };
+  }
+
+  /**
+   * Generates a Stripe Checkout session link for the given tier and billing period.
+   */
+  async createCheckoutSession(tier: string, billingPeriod: 'monthly' | 'annually'): Promise<{ success: boolean; url?: string; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/payments/create-checkout-session`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ tier, billingPeriod })
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.message || errData.error || 'Failed to create checkout session');
+        }
+        return await response.json();
+      } catch (err: any) {
+        console.error('Checkout session creation error:', err);
+        return { success: false, error: err.message || 'Failed to connect to payment server' };
+      }
+    }
+
+    // Mock/localStorage Implementation: Simulate redirect back to /pricing with parameters
+    await delay(1200);
+    const redirectUrl = `${window.location.origin}/pricing?checkout-success=true&tier=${encodeURIComponent(tier)}`;
+    return {
+      success: true,
+      url: redirectUrl
+    };
+  }
+
+  /**
+   * Generates a Stripe Customer Portal link or fallback status.
+   */
+  async createPortalSession(): Promise<{ success: boolean; url?: string; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/payments/create-portal-session`, {
+          method: 'POST',
+          headers: this.getHeaders()
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.message || errData.error || 'Failed to create portal session');
+        }
+        return await response.json();
+      } catch (err: any) {
+        console.error('Portal session creation error:', err);
+        return { success: false, error: err.message || 'Failed to connect to billing server' };
+      }
+    }
+
+    // Mock/localStorage Implementation: Simulate customer portal by returning a mock URL
+    await delay(1000);
+    const redirectUrl = `${window.location.origin}/pricing?portal-success=true`;
+    return {
+      success: true,
+      url: redirectUrl
+    };
+  }
 }
 
 export const api = new ApiClient();

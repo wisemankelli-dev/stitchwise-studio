@@ -22,11 +22,38 @@ export const Pricing: React.FC = () => {
   const [currentTier, setCurrentTier] = useState<string>('Hobbyist');
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [selectedPlanName, setSelectedPlanName] = useState<string>('');
+  const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [portalMessage, setPortalMessage] = useState<string>('');
 
   useEffect(() => {
-    api.getUserProfile().then((user) => {
-      setCurrentTier(user.subscriptionTier);
+    // 1. Fetch user's active tier using api
+    api.getSubscriptionTier().then((res) => {
+      setCurrentTier(res.tier);
     });
+
+    // 2. Parse query parameters (handles Stripe redirect fallback/mock redirect)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const checkoutSuccess = params.get('checkout-success') === 'true';
+      const portalSuccess = params.get('portal-success') === 'true';
+      const urlTier = params.get('tier');
+
+      if (checkoutSuccess && urlTier) {
+        const decodedTier = decodeURIComponent(urlTier);
+        api.updateSubscriptionTier(decodedTier as any).then(() => {
+          setCurrentTier(decodedTier);
+          setSelectedPlanName(decodedTier);
+          setShowUpgradeModal(true);
+          // Clean up URL query parameters so success modal doesn't re-trigger on reload
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+      } else if (portalSuccess) {
+        setPortalMessage('Welcome back from the billing portal! Your subscription details are fully updated.');
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => setPortalMessage(''), 5000);
+      }
+    }
   }, []);
 
   const plans: PricingPlan[] = [
@@ -88,20 +115,50 @@ export const Pricing: React.FC = () => {
 
   const handleUpgrade = async (planId: string, planName: string) => {
     if (planId === 'Hobbyist') {
-      await setUploadedFileAndTier('Hobbyist');
+      setIsRedirecting(true);
+      setErrorMsg('');
+      try {
+        await api.updateSubscriptionTier('Hobbyist');
+        setCurrentTier('Hobbyist');
+      } catch (err: any) {
+        setErrorMsg('Failed to downgrade to Hobbyist.');
+      } finally {
+        setIsRedirecting(false);
+      }
       return;
     }
     
-    // Upgrade via api client layer
-    await api.updateSubscriptionTier(planName as any);
-    setCurrentTier(planName);
-    setSelectedPlanName(planName);
-    setShowUpgradeModal(true);
+    setIsRedirecting(true);
+    setErrorMsg('');
+    try {
+      const res = await api.createCheckoutSession(planName, billingPeriod);
+      if (res.success && res.url) {
+        window.location.href = res.url;
+      } else {
+        setErrorMsg(res.error || 'Failed to start checkout session.');
+      }
+    } catch (err: any) {
+      setErrorMsg('Failed to initiate checkout session.');
+    } finally {
+      setIsRedirecting(false);
+    }
   };
 
-  const setUploadedFileAndTier = async (tier: string) => {
-    await api.updateSubscriptionTier(tier as any);
-    setCurrentTier(tier);
+  const handleManageSubscription = async () => {
+    setIsRedirecting(true);
+    setErrorMsg('');
+    try {
+      const res = await api.createPortalSession();
+      if (res.success && res.url) {
+        window.location.href = res.url;
+      } else {
+        setErrorMsg(res.error || 'Failed to open billing portal.');
+      }
+    } catch (err: any) {
+      setErrorMsg('Failed to open customer billing portal.');
+    } finally {
+      setIsRedirecting(false);
+    }
   };
 
   return (
@@ -141,6 +198,43 @@ export const Pricing: React.FC = () => {
               </span>
             </span>
           </div>
+
+          {/* Manage Subscription / Customer Portal Link */}
+          {currentTier !== 'Hobbyist' && (
+            <div className="mt-8 inline-flex items-center gap-3 bg-brand-50/60 border border-brand-100 rounded-2xl px-5 py-3 max-w-md mx-auto text-left shadow-sm">
+              <ShieldCheck className="h-5 w-5 text-brand-600 shrink-0" />
+              <div className="flex-grow">
+                <p className="text-xs text-brand-900 font-semibold">Active Plan: <span className="font-extrabold">{currentTier}</span></p>
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={isRedirecting}
+                  className="text-xs text-brand-700 font-bold underline hover:text-brand-600 transition-colors mt-0.5 inline-flex items-center gap-1"
+                >
+                  Manage Subscription in Stripe Customer Portal &rarr;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Loading, Success, and Error States */}
+          {isRedirecting && (
+            <div className="mt-6 text-xs font-semibold text-brand-600 flex items-center justify-center gap-2 animate-pulse">
+              <div className="h-4 w-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              Redirecting to Stripe Payment Gateway...
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="mt-6 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2 max-w-md mx-auto">
+              ✕ {errorMsg}
+            </div>
+          )}
+
+          {portalMessage && (
+            <div className="mt-4 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2 max-w-md mx-auto">
+              ✓ {portalMessage}
+            </div>
+          )}
         </div>
 
         {/* Pricing Cards Grid */}
@@ -187,8 +281,8 @@ export const Pricing: React.FC = () => {
                 <div className="mt-8 pt-6 border-t border-slate-50">
                   <button
                     onClick={() => handleUpgrade(plan.id, plan.name)}
-                    disabled={isCurrentPlan && plan.priceMonthly === 0}
-                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 ${isCurrentPlan ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-default' : plan.highlighted ? 'bg-brand-600 hover:bg-brand-500 text-white hover:scale-[1.02]' : 'bg-slate-900 hover:bg-slate-800 text-white'}`}
+                    disabled={isRedirecting || (isCurrentPlan && plan.priceMonthly === 0)}
+                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 ${isRedirecting ? 'opacity-50 cursor-not-allowed' : ''} ${isCurrentPlan ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-default' : plan.highlighted ? 'bg-brand-600 hover:bg-brand-500 text-white hover:scale-[1.02]' : 'bg-slate-900 hover:bg-slate-800 text-white'}`}
                   >
                     {isCurrentPlan ? 'Active Plan' : plan.ctaText}
                     {!isCurrentPlan && <ArrowRight className="h-3.5 w-3.5" />}
