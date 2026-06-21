@@ -43,7 +43,7 @@ model ProjectInquiry {
 model Project {
   id        String   @id @default(uuid())
   name      String
-  data      String   @default("{}")
+  data      String   @default("{}") // JSON: SVG paths, grid state, stitch params
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -37,6 +37,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       data: {
         email: input.email,
         name: input.name,
+        passwordHash: "MOCK_PASSWORD_FOR_LEGACY_CREATE", // Default for legacy callers
         tier: "HOBBYIST",
       },
     });
@@ -87,7 +88,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
   // ── Sharing ─────────────────────────────────────────────────────────────
 
   async createShareLink(input: CreateShareLinkInput, token: string): Promise<ProjectShare> {
-    const data: Record<string, unknown> = {
+    const data: any = {
       projectId: input.projectId,
       token,
       permission: input.permission ?? SharePermission.VIEWER,
@@ -164,7 +165,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       email: r.email,
       name: r.name,
-      tier: UserTier[r.tier as keyof typeof UserTier],
+      tier: UserTier[r.tier as keyof typeof UserTier] ?? UserTier.HOBBYIST,
       createdAt: r.createdAt,
     };
   }
@@ -201,7 +202,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       token: r.token,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
+      permission: SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.VIEWER,
       isActive: r.isActive,
       expiresAt: r.expiresAt,
       createdAt: r.createdAt,
@@ -221,7 +222,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       email: r.email,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
+      permission: SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.EDITOR,
       acceptedAt: r.acceptedAt,
       invitedAt: r.invitedAt,
     };
