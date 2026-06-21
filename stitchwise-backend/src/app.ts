@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter } from "./infrastructure/routes";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter } from "./infrastructure/routes";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -46,6 +46,7 @@ export async function createApp(): Promise<express.Application> {
 
   // Routes
   app.use("/api", healthRouter);
+  app.use("/api", createAuthRouter(prisma));
   app.use("/api", createInquiryRouter(inquiryRepo));
   app.use("/api", createWorkshopRouter(workshopRepo));
   app.use("/api", createStitchRouter());

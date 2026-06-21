@@ -37,6 +37,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       data: {
         email: input.email,
         name: input.name,
+        passwordHash: "MOCK_PASSWORD_FOR_LEGACY_CREATE", // Default for legacy callers
         tier: "HOBBYIST",
       },
     });
@@ -66,7 +67,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { userId },
       orderBy: { updatedAt: "desc" },
     });
-    return records.map((r) => this.toProject(r));
+    return records.map((r: { id: string; name: string; data: string; userId: string; createdAt: Date; updatedAt: Date }) => this.toProject(r));
   }
 
   async updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
@@ -87,7 +88,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
   // ── Sharing ─────────────────────────────────────────────────────────────
 
   async createShareLink(input: CreateShareLinkInput, token: string): Promise<ProjectShare> {
-    const data: Record<string, unknown> = {
+    const data: any = {
       projectId: input.projectId,
       token,
       permission: input.permission ?? SharePermission.VIEWER,
@@ -109,7 +110,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { projectId },
       orderBy: { createdAt: "desc" },
     });
-    return records.map((r) => this.toShare(r));
+    return records.map((r: { id: string; projectId: string; token: string; permission: string; isActive: boolean; expiresAt: Date | null; createdAt: Date; updatedAt: Date }) => this.toShare(r));
   }
 
   async deactivateShare(shareId: string): Promise<void> {
@@ -137,7 +138,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { projectId },
       orderBy: { invitedAt: "desc" },
     });
-    return records.map((r) => this.toCollaborator(r));
+    return records.map((r: { id: string; projectId: string; email: string; permission: string; acceptedAt: Date | null; invitedAt: Date }) => this.toCollaborator(r));
   }
 
   async acceptInvitation(id: string): Promise<void> {
@@ -164,7 +165,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       email: r.email,
       name: r.name,
-      tier: UserTier[r.tier as keyof typeof UserTier],
+      tier: UserTier[r.tier as keyof typeof UserTier] ?? UserTier.HOBBYIST,
       createdAt: r.createdAt,
     };
   }
@@ -201,7 +202,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       token: r.token,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
+      permission: SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.VIEWER,
       isActive: r.isActive,
       expiresAt: r.expiresAt,
       createdAt: r.createdAt,
@@ -221,7 +222,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       email: r.email,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
+      permission: SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.EDITOR,
       acceptedAt: r.acceptedAt,
       invitedAt: r.invitedAt,
     };
