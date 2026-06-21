@@ -8,7 +8,7 @@
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
-  apiVersion: "2025-02-24.acacia",
+  apiVersion: "2025-02-24.acacia" as any,
 });
 
 // Tier configuration mapped to Stripe price IDs (set via env or created dynamically)
