@@ -79,13 +79,13 @@ class StitchPattern:
         # Add all stitches sequentially
         for x, y, cmd in self.stitches:
             if cmd == 0:  # normal stitch
-                pattern.add_stitch_abs(pyembroidery.STITCH, x, y)
+                pattern.add_stitch_absolute(pyembroidery.STITCH, x, y)
             elif cmd == 1:  # jump
-                pattern.add_stitch_abs(pyembroidery.JUMP, x, y)
+                pattern.add_stitch_absolute(pyembroidery.JUMP, x, y)
             elif cmd == 2:  # trim
-                pattern.add_stitch_abs(pyembroidery.TRIM, x, y)
+                pattern.add_stitch_absolute(pyembroidery.TRIM, x, y)
             elif cmd == 3:  # color change
-                pattern.add_stitch_abs(pyembroidery.COLOR_CHANGE, x, y)
+                pattern.add_stitch_absolute(pyembroidery.COLOR_CHANGE, x, y)
 
         return pattern
 

@@ -67,7 +67,7 @@ export async function generateStitchFile(
 
   const payload = {
     paths: input.paths.map((p) => ({
-      segments: p.segments,
+      segments: p.segments.map(([x, y, cmd]) => ({ x, y, cmd })),
       color: p.color,
       stitch_type: p.stitchType,
     })),
