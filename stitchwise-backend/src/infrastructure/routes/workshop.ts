@@ -99,6 +99,7 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
 
   /**
    * GET /api/projects/:id - Get a single project by ID.
+   * Supports ?since=ISO_TIMESTAMP for polling — returns 304 if not modified.
    */
   router.get("/projects/:id", authenticate, async (req: Request, res: Response) => {
     try {
@@ -107,6 +108,17 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
         res.status(404).json({ error: "Project not found" });
         return;
       }
+
+      // Polling support: if `since` param is provided and project hasn't changed, return 304
+      const since = req.query.since as string | undefined;
+      if (since) {
+        const sinceDate = new Date(since);
+        if (!isNaN(sinceDate.getTime()) && project.updatedAt <= sinceDate) {
+          res.status(304).send();
+          return;
+        }
+      }
+
       // TODO: Check if user has access to this project
       res.json(project);
     } catch (err) {
