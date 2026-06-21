@@ -1,0 +1,9 @@
+nohup: ignoring input
+INFO:     Started server process [157434]
+INFO:     Waiting for application startup.
+{"timestamp":"2026-06-21T12:48:39","level":"INFO","name":"src.app","message":"StitchWise Stitch Service starting..."}
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8000): address already in use
+INFO:     Waiting for application shutdown.
+{"timestamp":"2026-06-21T12:48:39","level":"INFO","name":"src.app","message":"StitchWise Stitch Service shutting down."}
+INFO:     Application shutdown complete.
