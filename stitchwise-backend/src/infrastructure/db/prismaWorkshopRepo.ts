@@ -66,7 +66,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { userId },
       orderBy: { updatedAt: "desc" },
     });
-    return records.map((r) => this.toProject(r));
+    return records.map((r: { id: string; name: string; data: string; userId: string; createdAt: Date; updatedAt: Date }) => this.toProject(r));
   }
 
   async updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
@@ -109,7 +109,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { projectId },
       orderBy: { createdAt: "desc" },
     });
-    return records.map((r) => this.toShare(r));
+    return records.map((r: { id: string; projectId: string; token: string; permission: string; isActive: boolean; expiresAt: Date | null; createdAt: Date; updatedAt: Date }) => this.toShare(r));
   }
 
   async deactivateShare(shareId: string): Promise<void> {
@@ -137,7 +137,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { projectId },
       orderBy: { invitedAt: "desc" },
     });
-    return records.map((r) => this.toCollaborator(r));
+    return records.map((r: { id: string; projectId: string; email: string; permission: string; acceptedAt: Date | null; invitedAt: Date }) => this.toCollaborator(r));
   }
 
   async acceptInvitation(id: string): Promise<void> {

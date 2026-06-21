@@ -9,97 +9,76 @@ datasource db {
 
 // ─── Core User Model ───────────────────────────────────────────────────────
 
-/**
- * Represents a StitchWise user with tier-based access controls.
- */
+// Represents a StitchWise user with tier-based access controls.
+// tier values: "HOBBYIST", "PRO", "STUDIO"
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  tier      UserTier @default(HOBBYIST)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  tier         String   @default("HOBBYIST")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   projects Project[]
 }
 
-enum UserTier {
-  HOBBYIST
-  PRO
-  STUDIO
-}
-
 // ─── Project Inquiry ───────────────────────────────────────────────────────
 
+// status values: "PENDING", "REVIEWING", "APPROVED", "REJECTED"
 model ProjectInquiry {
   id          String   @id @default(uuid())
   name        String
   email       String
   description String
-  status      InquiryStatus @default(PENDING)
+  status      String   @default("PENDING")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-enum InquiryStatus {
-  PENDING
-  REVIEWING
-  APPROVED
-  REJECTED
-}
-
 // ─── Collaborative Workshop Models ─────────────────────────────────────────
 
-/**
- * Represents a design project within the Collaborative Workshop.
- * The `data` field stores SVG paths and pattern state as JSON.
- */
+// Represents a design project within the Collaborative Workshop.
+// The `data` field stores SVG paths and pattern state as JSON.
 model Project {
   id        String   @id @default(uuid())
   name      String
-  data      String   @default("{}") // JSON: SVG paths, grid state, stitch params
+  data      String   @default("{}")
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shares       ProjectShare[]
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares        ProjectShare[]
   collaborators ProjectCollaborator[]
 }
 
-/**
- * Tracks sharing links for read-only or read-write access to a project.
- */
+// Tracks sharing links for read-only or read-write access to a project.
+// permission values: "VIEWER", "EDITOR"
 model ProjectShare {
-  id            String         @id @default(uuid())
+  id            String   @id @default(uuid())
   projectId     String
-  token         String         @unique
-  permission    SharePermission @default(VIEWER)
-  isActive      Boolean        @default(true)
+  token         String   @unique
+  permission    String   @default("VIEWER")
+  isActive      Boolean  @default(true)
   expiresAt     DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
-enum SharePermission {
-  VIEWER
-  EDITOR
-}
-
-/**
- * Tracks collaborators explicitly invited via email to a project.
- */
+// Tracks collaborators explicitly invited via email to a project.
+// permission values: "VIEWER", "EDITOR"
 model ProjectCollaborator {
-  id            String        @id @default(uuid())
+  id            String   @id @default(uuid())
   projectId     String
   email         String
-  permission    SharePermission @default(EDITOR)
+  permission    String   @default("EDITOR")
   acceptedAt    DateTime?
-  invitedAt     DateTime      @default(now())
+  invitedAt     DateTime @default(now())
 
-  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, email])
 }

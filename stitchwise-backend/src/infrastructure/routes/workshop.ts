@@ -7,6 +7,7 @@ import {
   InviteCollaboratorSchema,
 } from "../../domain/workshop";
 import type { WorkshopRepo } from "../db/workshopRepo";
+import { authenticate, optionalAuth } from "../middleware/auth";
 
 /**
  * Creates a router for Collaborative Workshop and User endpoints.
@@ -68,9 +69,10 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
   /**
    * GET /api/projects - List projects for the current user.
    */
-  router.get("/projects", async (req: Request, res: Response) => {
+  router.get("/projects", authenticate, async (req: Request, res: Response) => {
     try {
-      const userId = (req.query.userId as string) || "demo";
+      const user = (req as any).user;
+      const userId = user?.userId || "demo";
       const projects = await repo.listProjectsByUser(userId);
       res.json(projects);
     } catch (err) {
@@ -82,7 +84,7 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
   /**
    * POST /api/projects - Create a new project.
    */
-  router.post("/projects", async (req: Request, res: Response) => {
+  router.post("/projects", authenticate, async (req: Request, res: Response) => {
     try {
       const parsed = CreateProjectSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -90,19 +92,11 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
         return;
       }
 
-      // Get or create user
-      let user = await repo.getUserByEmail("demo@stitchwise.dev");
-      if (!user) {
-        user = await repo.createUser({
-          email: "demo@stitchwise.dev",
-          name: "Demo User",
-        });
-      }
-
+      const user = (req as any).user;
       const project = await repo.createProject({
         name: parsed.data.name,
         data: parsed.data.data ?? "{}",
-        userId: user.id,
+        userId: user.userId,
       });
       res.status(201).json(project);
     } catch (err) {
