@@ -12,13 +12,15 @@ datasource db {
 // Represents a StitchWise user with tier-based access controls.
 // tier values: "HOBBYIST", "PRO", "STUDIO"
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  tier         String   @default("HOBBYIST")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  email                String   @unique
+  name                 String
+  passwordHash         String
+  tier                 String   @default("HOBBYIST")
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   projects Project[]
 }

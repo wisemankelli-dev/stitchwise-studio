@@ -7,7 +7,7 @@ import {
   InviteCollaboratorSchema,
 } from "../../domain/workshop";
 import type { WorkshopRepo } from "../db/workshopRepo";
-import { authenticate, optionalAuth } from "../middleware/auth";
+import { authenticate } from "../middleware/auth";
 
 /**
  * Creates a router for Collaborative Workshop and User endpoints.
