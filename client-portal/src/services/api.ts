@@ -139,6 +139,199 @@ class ApiClient {
   }
 
   /**
+   * Builds active Authorization and Content-Type headers dynamically.
+   */
+  private getHeaders(additionalHeaders: Record<string, string> = {}, skipContentType: boolean = false): Record<string, string> {
+    const headers: Record<string, string> = {
+      ...additionalHeaders
+    };
+    if (!skipContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const token = localStorage.getItem('stitchwise_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
+  /**
+   * Authenticates user using email and password.
+   */
+  async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: User; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/auth/login`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ email, password })
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.message || 'Login failed');
+        }
+        const result = await response.json();
+        if (result.token) {
+          localStorage.setItem('stitchwise_token', result.token);
+          if (result.user) {
+            localStorage.setItem('stitchwise_active_user_id', result.user.id);
+            localStorage.setItem('stitchwise_tier', result.user.subscriptionTier);
+          }
+        }
+        return { success: true, ...result };
+      } catch (err: any) {
+        console.error('Login error:', err);
+        return { success: false, error: err.message || 'Login failed' };
+      }
+    }
+
+    // Mock/localStorage Implementation
+    await delay(800);
+    const usersStr = localStorage.getItem('stitchwise_users');
+    let users: any[] = usersStr ? JSON.parse(usersStr) : [];
+    
+    // Seed default user if database empty
+    if (users.length === 0) {
+      const defaultUser = {
+        id: 'usr-928174',
+        name: 'Elena Crafter',
+        email: 'elena@stitchwise.studio',
+        password: 'password123',
+        role: 'hobbyist',
+        subscriptionTier: 'Hobbyist',
+        avatarUrl: '🌸'
+      };
+      users.push(defaultUser);
+      localStorage.setItem('stitchwise_users', JSON.stringify(users));
+    }
+
+    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!foundUser || foundUser.password !== password) {
+      return { success: false, error: 'Invalid email or password' };
+    }
+
+    const token = `mock-jwt-header.${btoa(JSON.stringify({ userId: foundUser.id, email: foundUser.email }))}.mock-signature`;
+    localStorage.setItem('stitchwise_token', token);
+    localStorage.setItem('stitchwise_active_user_id', foundUser.id);
+    localStorage.setItem('stitchwise_tier', foundUser.subscriptionTier);
+
+    return {
+      success: true,
+      token,
+      user: {
+        id: foundUser.id,
+        name: foundUser.name,
+        email: foundUser.email,
+        role: foundUser.role as any,
+        subscriptionTier: foundUser.subscriptionTier as any,
+        avatarUrl: foundUser.avatarUrl
+      }
+    };
+  }
+
+  /**
+   * Registers a new user.
+   */
+  async signup(name: string, email: string, password: string): Promise<{ success: boolean; token?: string; user?: User; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/auth/signup`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, email, password })
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.message || 'Signup failed');
+        }
+        const result = await response.json();
+        if (result.token) {
+          localStorage.setItem('stitchwise_token', result.token);
+          if (result.user) {
+            localStorage.setItem('stitchwise_active_user_id', result.user.id);
+            localStorage.setItem('stitchwise_tier', result.user.subscriptionTier);
+          }
+        }
+        return { success: true, ...result };
+      } catch (err: any) {
+        console.error('Signup error:', err);
+        return { success: false, error: err.message || 'Signup failed' };
+      }
+    }
+
+    // Mock/localStorage Implementation
+    await delay(1000);
+    const usersStr = localStorage.getItem('stitchwise_users');
+    let users: any[] = usersStr ? JSON.parse(usersStr) : [];
+
+    // Seed default user if database empty
+    if (users.length === 0) {
+      const defaultUser = {
+        id: 'usr-928174',
+        name: 'Elena Crafter',
+        email: 'elena@stitchwise.studio',
+        password: 'password123',
+        role: 'hobbyist',
+        subscriptionTier: 'Hobbyist',
+        avatarUrl: '🌸'
+      };
+      users.push(defaultUser);
+    }
+
+    const emailExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
+    if (emailExists) {
+      return { success: false, error: 'Email already registered' };
+    }
+
+    const newUser = {
+      id: `usr-${Math.floor(Math.random() * 900000 + 100000)}`,
+      name,
+      email,
+      password,
+      role: 'hobbyist',
+      subscriptionTier: 'Hobbyist',
+      avatarUrl: '🧵'
+    };
+
+    users.push(newUser);
+    localStorage.setItem('stitchwise_users', JSON.stringify(users));
+
+    const token = `mock-jwt-header.${btoa(JSON.stringify({ userId: newUser.id, email: newUser.email }))}.mock-signature`;
+    localStorage.setItem('stitchwise_token', token);
+    localStorage.setItem('stitchwise_active_user_id', newUser.id);
+    localStorage.setItem('stitchwise_tier', 'Hobbyist');
+
+    return {
+      success: true,
+      token,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: 'hobbyist',
+        subscriptionTier: 'Hobbyist',
+        avatarUrl: newUser.avatarUrl
+      }
+    };
+  }
+
+  /**
+   * Logs out the user and clears dynamic tokens.
+   */
+  logout(): void {
+    localStorage.removeItem('stitchwise_token');
+    localStorage.removeItem('stitchwise_active_user_id');
+    localStorage.setItem('stitchwise_tier', 'Hobbyist');
+  }
+
+  /**
+   * Returns whether a valid session token exists in local storage.
+   */
+  isAuthenticated(): boolean {
+    return !!localStorage.getItem('stitchwise_token');
+  }
+
+  /**
    * Generates stitch instructions and coordinates from vector or raster path data.
    */
   async generateStitches(paths: string, format: 'DST' | 'PES' | 'EXP'): Promise<StitchResponse> {
@@ -146,7 +339,7 @@ class ApiClient {
       try {
         const response = await fetch(`${this.apiBaseUrl}/stitch/generate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify({ paths, format })
         });
         if (!response.ok) throw new Error('Stitch generation API error');
@@ -183,6 +376,7 @@ class ApiClient {
 
         const response = await fetch(`${this.apiBaseUrl}/stitch/convert`, {
           method: 'POST',
+          headers: this.getHeaders({}, true),
           body: formData
         });
         if (!response.ok) throw new Error('File conversion API error');
@@ -213,7 +407,9 @@ class ApiClient {
   async getProjects(): Promise<Project[]> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/projects`);
+        const response = await fetch(`${this.apiBaseUrl}/projects`, {
+          headers: this.getHeaders()
+        });
         if (!response.ok) throw new Error('Failed to fetch projects');
         return await response.json();
       } catch (err) {
@@ -237,7 +433,9 @@ class ApiClient {
   async getProject(id: string): Promise<Project | null> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/projects/${id}`);
+        const response = await fetch(`${this.apiBaseUrl}/projects/${id}`, {
+          headers: this.getHeaders()
+        });
         if (!response.ok) throw new Error('Failed to fetch project');
         return await response.json();
       } catch (err) {
@@ -258,7 +456,7 @@ class ApiClient {
       try {
         const response = await fetch(`${this.apiBaseUrl}/projects`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify(data)
         });
         if (!response.ok) throw new Error('Failed to register project');
@@ -300,7 +498,7 @@ class ApiClient {
       try {
         const response = await fetch(`${this.apiBaseUrl}/projects/${id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify(data)
         });
         if (!response.ok) throw new Error('Failed to update project');
@@ -333,7 +531,8 @@ class ApiClient {
     if (this.isLiveBackend) {
       try {
         const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/share`, {
-          method: 'POST'
+          method: 'POST',
+          headers: this.getHeaders()
         });
         if (!response.ok) throw new Error('Failed to create share link');
         const result = await response.json();
@@ -357,7 +556,7 @@ class ApiClient {
       try {
         const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/invite`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify({ email })
         });
         return response.ok;
@@ -383,7 +582,9 @@ class ApiClient {
   async getUserProfile(): Promise<User> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/user/profile`);
+        const response = await fetch(`${this.apiBaseUrl}/user/profile`, {
+          headers: this.getHeaders()
+        });
         if (!response.ok) throw new Error('Failed to fetch user profile');
         return await response.json();
       } catch (err) {
@@ -393,14 +594,32 @@ class ApiClient {
 
     // Mock/localStorage Implementation
     await delay(400);
-    const activeTier = (localStorage.getItem('stitchwise_tier') as any) || 'Hobbyist';
+    const activeUserId = localStorage.getItem('stitchwise_active_user_id');
+    const usersStr = localStorage.getItem('stitchwise_users');
+    const users = usersStr ? JSON.parse(usersStr) : [];
+    
+    let activeUser = users.find((u: any) => u.id === activeUserId);
+    
+    if (!activeUser) {
+      const activeTier = (localStorage.getItem('stitchwise_tier') as any) || 'Hobbyist';
+      return {
+        id: 'usr-928174',
+        name: 'Elena Crafter',
+        email: 'elena@stitchwise.studio',
+        role: activeTier === 'Design Studio' ? 'studio_admin' : 'hobbyist',
+        subscriptionTier: activeTier,
+        avatarUrl: '🌸'
+      };
+    }
+
+    const currentTier = (localStorage.getItem('stitchwise_tier') as any) || activeUser.subscriptionTier;
     return {
-      id: 'usr-928174',
-      name: 'Elena Crafter',
-      email: 'elena@stitchwise.studio',
-      role: activeTier === 'Design Studio' ? 'studio_admin' : 'hobbyist',
-      subscriptionTier: activeTier,
-      avatarUrl: '🌸'
+      id: activeUser.id,
+      name: activeUser.name,
+      email: activeUser.email,
+      role: currentTier === 'Design Studio' ? 'studio_admin' : 'hobbyist',
+      subscriptionTier: currentTier,
+      avatarUrl: activeUser.avatarUrl || '🧵'
     };
   }
 
@@ -412,7 +631,7 @@ class ApiClient {
       try {
         const response = await fetch(`${this.apiBaseUrl}/user/subscription`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeaders(),
           body: JSON.stringify({ tier })
         });
         if (!response.ok) throw new Error('Failed to update subscription');
@@ -424,6 +643,21 @@ class ApiClient {
 
     await delay(800);
     localStorage.setItem('stitchwise_tier', tier);
+    
+    // Persist subscription tier in our user list for completeness
+    const activeUserId = localStorage.getItem('stitchwise_active_user_id');
+    if (activeUserId) {
+      const usersStr = localStorage.getItem('stitchwise_users');
+      if (usersStr) {
+        const users = JSON.parse(usersStr);
+        const idx = users.findIndex((u: any) => u.id === activeUserId);
+        if (idx !== -1) {
+          users[idx].subscriptionTier = tier;
+          localStorage.setItem('stitchwise_users', JSON.stringify(users));
+        }
+      }
+    }
+    
     return await this.getUserProfile();
   }
 }
