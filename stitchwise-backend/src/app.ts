@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter } from "./infrastructure/routes";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter } from "./infrastructure/routes";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -21,8 +21,18 @@ function log(event: string, meta?: Record<string, unknown>): void {
 export async function createApp(): Promise<express.Application> {
   const app = express();
 
-  // Middleware
+  // Database setup
+  const prisma = new PrismaClient();
+  await prisma.$connect();
+  log("db_connected");
+
+  // CORS
   app.use(cors());
+
+  // Stripe webhook needs raw body — register before JSON parser
+  app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
+
+  // JSON body parser for all other routes
   app.use(express.json({ limit: "1mb" }));
 
   // Rate limiting
@@ -35,11 +45,6 @@ export async function createApp(): Promise<express.Application> {
     }),
   );
 
-  // Database setup
-  const prisma = new PrismaClient();
-  await prisma.$connect();
-  log("db_connected");
-
   // Repositories
   const inquiryRepo = new PrismaProjectInquiryRepo(prisma);
   const workshopRepo = new PrismaWorkshopRepo(prisma);
@@ -50,6 +55,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createInquiryRouter(inquiryRepo));
   app.use("/api", createWorkshopRouter(workshopRepo));
   app.use("/api", createStitchRouter());
+  app.use("/api", createPaymentRouter(prisma));
 
   // Global error handler
   app.use(
