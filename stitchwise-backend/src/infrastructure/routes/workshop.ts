@@ -120,6 +120,19 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
       }
 
       // TODO: Check if user has access to this project
+
+      const { since } = req.query as { since?: string };
+      if (since) {
+        const sinceDate = new Date(since);
+        if (!isNaN(sinceDate.getTime())) {
+          // If the project was not updated after the 'since' timestamp, return 304 Not Modified
+          if (project.updatedAt.getTime() <= sinceDate.getTime()) {
+            res.status(304).send();
+            return;
+          }
+        }
+      }
+
       res.json(project);
     } catch (err) {
       console.error({ event: "get_project_error", error: String(err) });
