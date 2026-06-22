@@ -10,7 +10,8 @@ import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { api, User } from './services/api';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, LogIn, UserPlus } from 'lucide-react';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, LogIn, UserPlus, Store } from 'lucide-react';
+import { MarketplaceDashboard } from './pages/MarketplaceDashboard';
 
 /**
  * Main application component setting up routing, layout, and global styling.
@@ -75,6 +76,10 @@ function App() {
                 <Link to="/designer" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4 text-brand-500" />
                   Pattern Designer
+                </Link>
+                <Link to="/designer/marketplace" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
+                  <Store className="h-4 w-4 text-brand-500" />
+                  Marketplace
                 </Link>
                 <Link to="/pricing" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
                   <CreditCard className="h-4 w-4 text-brand-500" />
@@ -147,6 +152,11 @@ function App() {
             <Route path="/designer" element={
               <ProtectedRoute>
                 <Designer />
+              </ProtectedRoute>
+            } />
+            <Route path="/designer/marketplace" element={
+              <ProtectedRoute>
+                <MarketplaceDashboard />
               </ProtectedRoute>
             } />
             <Route path="/projects/:id" element={
