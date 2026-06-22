@@ -336,13 +336,17 @@ class ApiClient {
   /**
    * Generates stitch instructions and coordinates from vector or raster path data.
    */
-  async generateStitches(paths: string, format: 'DST' | 'PES' | 'EXP'): Promise<StitchResponse> {
+  async generateStitches(
+    paths: string, 
+    format: 'DST' | 'PES' | 'EXP', 
+    options?: { fillType?: string; [key: string]: any }
+  ): Promise<StitchResponse> {
     if (this.isLiveBackend) {
       try {
         const response = await fetch(`${this.apiBaseUrl}/stitch/generate`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ paths, format })
+          body: JSON.stringify({ paths, format, fillType: options?.fillType, ...options })
         });
         if (!response.ok) throw new Error('Stitch generation API error');
         return await response.json();
@@ -369,12 +373,19 @@ class ApiClient {
   /**
    * Converts user-uploaded image/pattern files into stitch formats (.DST, .PES, .EXP).
    */
-  async convertStitches(file: File, format: 'DST' | 'PES' | 'EXP'): Promise<StitchResponse> {
+  async convertStitches(
+    file: File, 
+    format: 'DST' | 'PES' | 'EXP', 
+    options?: { fillType?: string; [key: string]: any }
+  ): Promise<StitchResponse> {
     if (this.isLiveBackend) {
       try {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('format', format);
+        if (options?.fillType) {
+          formData.append('fillType', options.fillType);
+        }
 
         const response = await fetch(`${this.apiBaseUrl}/stitch/convert`, {
           method: 'POST',
