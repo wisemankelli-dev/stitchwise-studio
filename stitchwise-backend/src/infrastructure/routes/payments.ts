@@ -42,7 +42,7 @@ export function createPaymentRouter(prisma: PrismaClient): Router {
           return;
         }
 
-        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
         const successUrl = `${baseUrl}/payments/success?session_id={CHECKOUT_SESSION_ID}`;
         const cancelUrl = `${baseUrl}/payments/cancel`;
 
