@@ -79,13 +79,13 @@ class StitchPattern:
         # Add all stitches sequentially
         for x, y, cmd in self.stitches:
             if cmd == 0:  # normal stitch
-                pattern.add_stitch_absolute(pyembroidery.STITCH, x, y)
+                pattern.stitch_abs(pyembroidery.STITCH, x, y)
             elif cmd == 1:  # jump
-                pattern.add_stitch_absolute(pyembroidery.JUMP, x, y)
+                pattern.stitch_abs(pyembroidery.JUMP, x, y)
             elif cmd == 2:  # trim
-                pattern.add_stitch_absolute(pyembroidery.TRIM, x, y)
+                pattern.stitch_abs(pyembroidery.TRIM, x, y)
             elif cmd == 3:  # color change
-                pattern.add_stitch_absolute(pyembroidery.COLOR_CHANGE, x, y)
+                pattern.stitch_abs(pyembroidery.COLOR_CHANGE, x, y)
 
         return pattern
 
@@ -99,7 +99,10 @@ def generate_stitches_from_svg_paths(
     Each path dict should have:
     - 'segments': list of (x, y, cmd) where cmd is 'M' (move), 'L' (line), 'C' (curve)
     - 'color': RGB tuple
-    - 'type': 'running' | 'fill'
+    - 'type': 'running' | 'fill' | 'satin'
+
+    For satin stitches, the path must include two sub-paths (rails):
+    - 'rails': [left_rail_segments, right_rail_segments]  (two sets of segments)
 
     Args:
         paths: List of parsed SVG path data.
@@ -122,6 +125,14 @@ def generate_stitches_from_svg_paths(
             _generate_running_stitches(pattern, segments, scale, stitch_density)
         elif stitch_type == "fill":
             _generate_fill_stitches(pattern, segments, scale, stitch_density)
+        elif stitch_type == "satin":
+            rails = path.get("rails", [])
+            underlay = path.get("underlay", False)
+            if len(rails) == 2:
+                _generate_satin_stitches(pattern, rails[0], rails[1], scale, stitch_density, underlay)
+            else:
+                # Fallback: treat single path as running stitch
+                _generate_running_stitches(pattern, segments, scale, stitch_density)
 
     return pattern
 
@@ -206,6 +217,131 @@ def _generate_fill_stitches(
             x2 = intersections[i + 1]
             for x in range(x1, x2, step):
                 pattern.add_stitch(x, y)
+
+
+def _sample_rail(segments: list, num_points: int, scale: float) -> list[tuple[int, int]]:
+    """Sample a fixed number of evenly-spaced points along a rail path.
+
+    Args:
+        segments: List of (x, y, cmd) segments.
+        num_points: Number of sample points.
+        scale: Scaling factor.
+
+    Returns:
+        List of (x, y) sample points.
+    """
+    # Extract polyline points from segments
+    points: list[tuple[int, int]] = []
+    for seg in segments:
+        x, y, cmd = seg
+        if cmd in ("M", "L"):
+            points.append((int(x * scale), int(y * scale)))
+
+    if len(points) < 2:
+        return points
+
+    # Calculate cumulative distances
+    distances = [0.0]
+    for i in range(1, len(points)):
+        dx = points[i][0] - points[i - 1][0]
+        dy = points[i][1] - points[i - 1][1]
+        distances.append(distances[-1] + (dx * dx + dy * dy) ** 0.5)
+
+    total_length = distances[-1]
+    if total_length == 0:
+        return [points[0]] * num_points
+
+    # Sample evenly-spaced points
+    samples: list[tuple[int, int]] = []
+    for i in range(num_points):
+        target_dist = (i / max(num_points - 1, 1)) * total_length
+        # Find the segment containing this distance
+        for j in range(1, len(distances)):
+            if distances[j] >= target_dist:
+                t = (target_dist - distances[j - 1]) / (distances[j] - distances[j - 1] + 0.001)
+                x = int(points[j - 1][0] + t * (points[j][0] - points[j - 1][0]))
+                y = int(points[j - 1][1] + t * (points[j][1] - points[j - 1][1]))
+                samples.append((x, y))
+                break
+        else:
+            samples.append(points[-1])
+
+    return samples
+
+
+def _generate_satin_stitches(
+    pattern: StitchPattern,
+    left_rail: list,
+    right_rail: list,
+    scale: float,
+    stitch_density: float,
+    underlay: bool = False,
+) -> None:
+    """Generate satin stitches between two opposing rails.
+
+    Satin stitches alternate between corresponding points on the left and
+    right rails, creating a smooth column-like fill. This is ideal for
+    borders, lettering, and narrow shapes.
+
+    Args:
+        pattern: The StitchPattern to add stitches to.
+        left_rail: Segments for the left edge of the satin column.
+        right_rail: Segments for the right edge of the satin column.
+        scale: Scaling factor.
+        stitch_density: Stitches per mm (controls spacing along the rail).
+        underlay: If True, add edge run stitches for stability.
+    """
+    # Determine number of stitch rows based on rail length and density
+    rail_length = 0
+    combined = left_rail + right_rail
+    for seg in combined:
+        x, y, cmd = seg
+        if cmd in ("M", "L"):
+            pass  # We just need the segment count
+    left_samples = _sample_rail(left_rail, 100, scale)
+    right_samples = _sample_rail(right_rail, 100, scale)
+
+    if not left_samples or not right_samples:
+        return
+
+    # Ensure both rails have the same number of samples
+    num_points = min(len(left_samples), len(right_samples))
+
+    # Step size along the rail based on stitch density
+    step = max(1, int(10.0 / stitch_density))
+
+    # Generate underlay stitches (edge runs) for stability
+    if underlay:
+        # Left edge underlay
+        for i in range(0, num_points, step * 2):
+            if i < len(left_samples):
+                pattern.add_stitch(left_samples[i][0], left_samples[i][1])
+        # Right edge underlay
+        for i in range(0, num_points, step * 2):
+            if i < len(right_samples):
+                pattern.add_stitch(right_samples[i][0], right_samples[i][1])
+
+    # Generate satin stitches alternating between rails
+    prev_left: tuple[int, int] | None = None
+    for i in range(0, num_points, step):
+        left = left_samples[i]
+        right = right_samples[min(i, len(right_samples) - 1)]
+
+        if i == 0:
+            # First stitch: start at left rail
+            pattern.add_stitch(left[0], left[1])
+            prev_left = left
+        elif i % (step * 2) < step:
+            # Stitch from left to right
+            pattern.add_stitch(right[0], right[1])
+        else:
+            # Stitch from right to left
+            pattern.add_stitch(left[0], left[1])
+            prev_left = left
+
+    # Ensure we end on the opposite rail for a clean edge
+    if num_points > 1 and (num_points // step) % 2 == 1:
+        pattern.add_stitch(right_samples[-1][0], right_samples[-1][1])
 
 
 def export_pattern(

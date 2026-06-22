@@ -35,13 +35,22 @@ class PathSegment(BaseModel):
                      description="SVG path command: M (move), L (line), C (curve), Z (close)")
 
 
+class RailSegments(BaseModel):
+    """A set of segments defining one rail of a satin stitch column."""
+    segments: list[PathSegment]
+
+
 class DesignPath(BaseModel):
     """A single design path with segments, color, and stitch type."""
-    segments: list[PathSegment]
+    segments: list[PathSegment] = Field(default_factory=list)
     color: list[int] = Field(default=[0, 0, 0], min_length=3, max_length=3,
                              description="RGB color as [r, g, b]")
-    stitch_type: str = Field(default="running", pattern="^(running|fill)$",
-                             description="Type of stitch: 'running' or 'fill'")
+    stitch_type: str = Field(default="running", pattern="^(running|fill|satin)$",
+                             description="Type of stitch: 'running', 'fill', or 'satin'")
+    rails: list[RailSegments] = Field(default_factory=list,
+                                      description="For satin: [left_rail, right_rail]")
+    underlay: bool = Field(default=False,
+                           description="Add edge run underlay stitches for stability")
 
 
 class GenerateRequest(BaseModel):
@@ -110,11 +119,18 @@ async def generate(req: GenerateRequest):
         # Convert Pydantic models to the internal dict format
         paths_data = []
         for p in req.paths:
-            paths_data.append({
+            path_dict = {
                 "segments": [(seg.x, seg.y, seg.cmd) for seg in p.segments],
                 "color": tuple(p.color),
                 "type": p.stitch_type,
-            })
+            }
+            if p.stitch_type == "satin" and p.rails:
+                path_dict["rails"] = [
+                    [(seg.x, seg.y, seg.cmd) for seg in rail.segments]
+                    for rail in p.rails
+                ]
+                path_dict["underlay"] = p.underlay
+            paths_data.append(path_dict)
 
         pattern = generate_stitches_from_svg_paths(paths_data, req.stitch_density)
 
