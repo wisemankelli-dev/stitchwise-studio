@@ -8,14 +8,16 @@
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
-  apiVersion: "2025-02-24.acacia" as any,
+  apiVersion: "2025-02-24.acacia",
 });
 
-// Tier configuration mapped to Stripe price IDs (set via env or created dynamically)
+// Tier configuration mapped to Stripe price IDs (pre-created by the owner)
+// PRO: https://dashboard.stripe.com/test/products/prod_xxx
+// STUDIO: https://dashboard.stripe.com/test/products/prod_xxx
 const PRICE_IDS: Record<string, string | undefined> = {
-  HOBBYIST: process.env.STRIPE_PRICE_HOBBYIST,     // Free tier — no checkout needed
-  PRO: process.env.STRIPE_PRICE_PRO,
-  STUDIO: process.env.STRIPE_PRICE_STUDIO,
+  HOBBYIST: undefined,  // Free tier — no checkout needed
+  PRO: "price_1Tl8m5ReYrEZNTjj8LRkjXva",
+  STUDIO: "price_1Tl8mXReYrEZNTjj0m7TzPgD",
 };
 
 /** Amounts in cents for each tier (used if creating prices dynamically). */
