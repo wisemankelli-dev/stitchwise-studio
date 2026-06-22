@@ -19,6 +19,8 @@ export interface Project {
   previewColor: string;
   description?: string;
   createdAt?: string;
+  updatedAt?: string;
+  data?: string;
 }
 
 export interface User {
@@ -125,7 +127,7 @@ const INITIAL_PROJECTS: Project[] = [
 ];
 
 class ApiClient {
-  private isLiveBackend: boolean = false; // Toggle to true when backend is ready
+  public isLiveBackend: boolean = false; // Toggle to true when backend is ready
   private apiBaseUrl: string = '/api';
 
   constructor() {
@@ -428,14 +430,23 @@ class ApiClient {
   }
 
   /**
-   * Retrieves a single project by ID.
+   * Retrieves a single project by ID, optionally since a given timestamp (for polling).
    */
-  async getProject(id: string): Promise<Project | null> {
+  async getProject(id: string, since?: string): Promise<Project | null> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/projects/${id}`, {
+        const url = since
+          ? `${this.apiBaseUrl}/projects/${id}?since=${encodeURIComponent(since)}`
+          : `${this.apiBaseUrl}/projects/${id}`;
+
+        const response = await fetch(url, {
           headers: this.getHeaders()
         });
+
+        if (response.status === 304) {
+          return null; // No changes
+        }
+
         if (!response.ok) throw new Error('Failed to fetch project');
         return await response.json();
       } catch (err) {

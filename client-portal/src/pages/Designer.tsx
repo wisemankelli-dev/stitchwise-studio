@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { 
@@ -348,9 +348,59 @@ export const Designer: React.FC = () => {
     }
   }, [sessionParam]);
 
+  // lastUpdated ref for polling
+  const lastUpdated = useRef<string>();
+  
+  // Real project polling using `getProject(id, since)`
+  useEffect(() => {
+    if (!isCollabMode || !sessionId || !api.isLiveBackend) return;
+    
+    const poll = async () => {
+      try {
+        const project = await api.getProject(sessionId, lastUpdated.current);
+        if (project) {
+          lastUpdated.current = project.updatedAt;
+          
+          if (project.data) {
+            try {
+              const parsedGrid = JSON.parse(project.data);
+              if (parsedGrid && typeof parsedGrid === 'object') {
+                setGrid(parsedGrid);
+              }
+            } catch (e) {
+              console.error('Failed to parse grid data from polled project', e);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error during project polling:', err);
+      }
+    };
+
+    poll(); // Immediate first fetch
+    
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [isCollabMode, sessionId]);
+
+  // Autosave grid state to backend in live mode
+  useEffect(() => {
+    if (!isCollabMode || !sessionId || !api.isLiveBackend) return;
+    
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        await api.updateProject(sessionId, { data: JSON.stringify(grid) });
+      } catch (err) {
+        console.error('Failed to autosave grid state:', err);
+      }
+    }, 800); // 800ms debounce
+    
+    return () => clearTimeout(delayDebounceFn);
+  }, [grid, isCollabMode, sessionId]);
+
   // --- REAL-TIME COLLABORATIVE SYNC SIMULATOR ---
   useEffect(() => {
-    if (!isCollabMode || !collabSyncActive) return;
+    if (!isCollabMode || !collabSyncActive || api.isLiveBackend) return;
 
     const interval = setInterval(() => {
       // Choose randomly between Elena (2) and Dave (3)
