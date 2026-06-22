@@ -26,8 +26,11 @@ export async function createApp(): Promise<express.Application> {
   await prisma.$connect();
   log("db_connected");
 
-  // CORS
-  app.use(cors());
+  // CORS — allow configured origins (default: all in dev)
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((s) => s.trim())
+    : "*";
+  app.use(cors({ origin: corsOrigins }));
 
   // Stripe webhook needs raw body — register before JSON parser
   app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
