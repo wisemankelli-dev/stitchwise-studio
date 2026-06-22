@@ -113,21 +113,26 @@ export const Designer: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState(colors[0].hex);
   const [selectedStitch, setSelectedStitch] = useState('cross');
   const [grid, setGrid] = useState<Record<string, string>>({}); 
+  const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
 
   // Handle cell click on the manual paint grid
   const handleCellClick = (x: number, y: number) => {
     const key = `${x},${y}`;
     const newGrid = { ...grid };
+    const newStitchTypes = { ...gridStitchTypes };
     if (newGrid[key] === selectedColor) {
       delete newGrid[key]; // Toggle off if clicked with same color
+      delete newStitchTypes[key];
       addCollabLog('You (César)', '👑', `Cleared stitch at (${x}, ${y})`);
     } else {
       newGrid[key] = selectedColor;
+      newStitchTypes[key] = selectedStitch;
       const colorName = colors.find(c => c.hex === selectedColor)?.name || selectedColor;
       const stitchName = stitchStyles.find(s => s.id === selectedStitch)?.name || selectedStitch;
       addCollabLog('You (César)', '👑', `Painted ${colorName} (${stitchName}) at (${x}, ${y})`);
     }
     setGrid(newGrid);
+    setGridStitchTypes(newStitchTypes);
   };
 
   // Helper to add collab logs
@@ -146,6 +151,7 @@ export const Designer: React.FC = () => {
   // Clear manual painting
   const handleClearGrid = () => {
     setGrid({});
+    setGridStitchTypes({});
     setShowDemoPattern(false);
     addCollabLog('You (César)', '👑', 'Cleared the entire fabric canvas');
   };
@@ -163,7 +169,7 @@ export const Designer: React.FC = () => {
     addCollabLog('You (César)', '👑', `Started AI digitizer for prompt: "${promptInput}"`);
 
     // Trigger API call
-    const apiPromise = api.generateStitches(promptInput, 'DST');
+    const apiPromise = api.generateStitches(promptInput, 'DST', { fillType: digitizeStitchType });
 
     // Simulate stepping through progress
     const interval = setInterval(() => {
@@ -177,18 +183,22 @@ export const Designer: React.FC = () => {
             
             // Seed grid with a beautiful rose heart
             const mockPatternGrid: Record<string, string> = {};
+            const mockStitchTypes: Record<string, string> = {};
             for (let r = 0; r < gridSize; r++) {
               for (let c = 0; c < gridSize; c++) {
                 if (r >= 3 && r <= 11 && c >= 3 && c <= 12) {
                   const distFromCenterOfLeftLobe = Math.hypot(r - 5, c - 5);
                   const distFromCenterOfRightLobe = Math.hypot(r - 5, c - 10);
                   if (distFromCenterOfLeftLobe < 2.5 || distFromCenterOfRightLobe < 2.5 || (r >= 6 && r - c <= 5 && r + c <= 17)) {
-                    mockPatternGrid[`${r},${c}`] = (r === 6 && c === 7) || (r === 7 && c === 8) ? '#d97706' : '#e11d48'; 
+                    const key = `${r},${c}`;
+                    mockPatternGrid[key] = (r === 6 && c === 7) || (r === 7 && c === 8) ? '#d97706' : '#e11d48'; 
+                    mockStitchTypes[key] = digitizeStitchType;
                   }
                 }
               }
             }
             setGrid(mockPatternGrid);
+            setGridStitchTypes(mockStitchTypes);
             addCollabLog('AI Digitizer', '🤖', `Successfully compiled AI stitch-pattern from prompt! (Count: ${res.stitchCount} stitches, Thread: ${res.estimatedThreadSkeins} skeins)`);
           });
           
@@ -264,7 +274,7 @@ export const Designer: React.FC = () => {
     addCollabLog('You (César)', '👑', `Started AI digitizer for image: "${uploadedFile.name}" (${digitizeStitchCount} stitches, ${digitizeColorsCount} colors)`);
 
     // Trigger API conversion
-    const apiPromise = api.convertStitches(new File([], uploadedFile.name), 'DST');
+    const apiPromise = api.convertStitches(new File([], uploadedFile.name), 'DST', { fillType: digitizeStitchType });
 
     const steps = [
       { threshold: 25, text: 'Mapping colors to DMC standard threads...' },
@@ -283,7 +293,13 @@ export const Designer: React.FC = () => {
             setIsGenerating(false);
             setShowDemoPattern(true);
             setPreviewMode('pattern');
+            
+            const mockStitchTypes: Record<string, string> = {};
+            Object.keys(mockSunflowerGrid).forEach((key) => {
+              mockStitchTypes[key] = digitizeStitchType;
+            });
             setGrid(mockSunflowerGrid);
+            setGridStitchTypes(mockStitchTypes);
             addCollabLog('AI Digitizer', '🤖', `Successfully digitized image "${uploadedFile.name}" into embroidery pattern! (Count: ${res.stitchCount} stitches, DMC thread usage: ${res.estimatedThreadSkeins} skeins)`);
           });
           
@@ -363,9 +379,16 @@ export const Designer: React.FC = () => {
           
           if (project.data) {
             try {
-              const parsedGrid = JSON.parse(project.data);
-              if (parsedGrid && typeof parsedGrid === 'object') {
-                setGrid(parsedGrid);
+              const parsedData = JSON.parse(project.data);
+              if (parsedData && typeof parsedData === 'object') {
+                if (parsedData.grid) {
+                  setGrid(parsedData.grid);
+                  setGridStitchTypes(parsedData.stitchTypes || {});
+                } else {
+                  // Fallback for older projects
+                  setGrid(parsedData);
+                  setGridStitchTypes({});
+                }
               }
             } catch (e) {
               console.error('Failed to parse grid data from polled project', e);
@@ -389,14 +412,15 @@ export const Designer: React.FC = () => {
     
     const delayDebounceFn = setTimeout(async () => {
       try {
-        await api.updateProject(sessionId, { data: JSON.stringify(grid) });
+        const dataToSave = { grid, stitchTypes: gridStitchTypes };
+        await api.updateProject(sessionId, { data: JSON.stringify(dataToSave) });
       } catch (err) {
         console.error('Failed to autosave grid state:', err);
       }
     }, 800); // 800ms debounce
     
     return () => clearTimeout(delayDebounceFn);
-  }, [grid, isCollabMode, sessionId]);
+  }, [grid, gridStitchTypes, isCollabMode, sessionId]);
 
   // --- REAL-TIME COLLABORATIVE SYNC SIMULATOR ---
   useEffect(() => {
@@ -415,6 +439,22 @@ export const Designer: React.FC = () => {
       // Randomly decide to add or clear a stitch
       const willAddStitch = Math.random() > 0.3;
       
+      let randomStitchStyle = 'cross';
+      if (willAddStitch) {
+        const rStyle = Math.random();
+        randomStitchStyle = rStyle < 0.6 ? 'cross' : rStyle < 0.85 ? 'satin' : 'back';
+      }
+
+      setGridStitchTypes(prevTypes => {
+        const updatedTypes = { ...prevTypes };
+        if (willAddStitch) {
+          updatedTypes[coordKey] = randomStitchStyle;
+        } else {
+          delete updatedTypes[coordKey];
+        }
+        return updatedTypes;
+      });
+
       setGrid(prev => {
         const updated = { ...prev };
         if (willAddStitch) {
@@ -423,7 +463,7 @@ export const Designer: React.FC = () => {
           updated[coordKey] = randomColorObj.hex;
           
           // Trigger notification & logging
-          const actionMsg = `Painted ${randomColorObj.name} stitch at (${r}, ${c})`;
+          const actionMsg = `Painted ${randomColorObj.name} (${randomStitchStyle === 'cross' ? 'Cross' : randomStitchStyle === 'back' ? 'Back' : 'Satin'} Stitch) at (${r}, ${c})`;
           setRecentNotification(`${teammate.avatar} ${teammate.name}: ${actionMsg}`);
           addCollabLog(teammate.name, teammate.avatar, actionMsg, teammate.color);
         } else {
@@ -1002,6 +1042,9 @@ export const Designer: React.FC = () => {
                         {Array.from({ length: gridSize }).map((_, c) => {
                           const key = `${r},${c}`;
                           const color = grid[key];
+                          const stitchType = gridStitchTypes[key];
+                          const isSatin = stitchType === 'satin';
+                          const isBack = stitchType === 'back';
                           return (
                             <button
                               key={c}
@@ -1009,12 +1052,20 @@ export const Designer: React.FC = () => {
                               className="h-5 w-5 sm:h-7 sm:w-7 rounded-md border flex items-center justify-center transition-all duration-100 hover:scale-105 active:scale-95 focus:outline-none"
                               style={{ 
                                 backgroundColor: color || '#fafaf9', 
-                                borderColor: color ? 'rgba(0,0,0,0.1)' : '#f3f4f6' 
+                                borderColor: color ? 'rgba(0,0,0,0.1)' : '#f3f4f6',
+                                background: isSatin && color ? `linear-gradient(45deg, ${color} 25%, rgba(255,255,255,0.2) 50%, ${color} 75%)` : color || '#fafaf9',
+                                boxShadow: isSatin && color ? '0 0 4px rgba(255,255,255,0.4) inset' : undefined
                               }}
                             >
                               {/* Draw thread cross marks */}
                               {color ? (
-                                <span className="text-[10px] font-bold text-white opacity-60">X</span>
+                                isSatin ? (
+                                  <span className="text-[12px] font-extrabold text-white opacity-90 tracking-tighter select-none animate-pulse">|||</span>
+                                ) : isBack ? (
+                                  <span className="text-[10px] font-extrabold text-white opacity-80 select-none">─</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-white opacity-60 select-none">X</span>
+                                )
                               ) : (
                                 <span className="block h-1 w-1 rounded-full bg-slate-300/40" />
                               )}
