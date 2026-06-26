@@ -66,11 +66,19 @@ export async function generateStitchFile(
   const url = `${STITCH_SERVICE_URL}/api/generate`;
 
   const payload = {
-    paths: input.paths.map((p) => ({
-      segments: p.segments.map(([x, y, cmd]) => ({ x, y, cmd })),
-      color: p.color,
-      stitch_type: p.stitchType,
-    })),
+    paths: input.paths.map((p) => {
+      const pathPayload: Record<string, unknown> = {
+        segments: p.segments,
+        color: p.color,
+        stitch_type: p.stitchType,
+      };
+      // Satin stitch fields
+      if (p.stitchType === "satin") {
+        if (p.rails) pathPayload.rails = p.rails;
+        if (p.underlay !== undefined) pathPayload.underlay = p.underlay;
+      }
+      return pathPayload;
+    }),
     format: input.format,
     stitch_density: input.stitchDensity,
   };

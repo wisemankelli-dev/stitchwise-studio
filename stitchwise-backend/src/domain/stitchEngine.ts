@@ -20,7 +20,11 @@ export interface GenerateStitchInput {
 export interface DesignPathInput {
   segments: Array<[number, number, string]>;
   color: [number, number, number];
-  stitchType: "running" | "fill";
+  stitchType: "running" | "fill" | "satin";
+  /** For satin stitches: array of two rail segment arrays [[left_rail], [right_rail]] */
+  rails?: Array<Array<[number, number, string]>>;
+  /** Whether to add edge run underlay stitches for satin */
+  underlay?: boolean;
 }
 
 export interface ConvertFileInput {
@@ -68,7 +72,11 @@ export const GenerateStitchSchema = z.object({
         z.tuple([z.number(), z.number(), z.string()])
       ).min(1, "At least one segment is required"),
       color: z.tuple([z.number(), z.number(), z.number()]),
-      stitchType: z.enum(["running", "fill"]),
+      stitchType: z.enum(["running", "fill", "satin"]),
+      rails: z.array(
+        z.array(z.tuple([z.number(), z.number(), z.string()]))
+      ).optional(),
+      underlay: z.boolean().optional(),
     })
   ).min(1, "At least one path is required"),
   format: z.enum(["dst", "pes", "exp", "jef", "vp3"]).default("dst"),
