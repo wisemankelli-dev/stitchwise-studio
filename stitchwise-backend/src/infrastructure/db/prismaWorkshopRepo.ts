@@ -37,7 +37,6 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       data: {
         email: input.email,
         name: input.name,
-        passwordHash: "MOCK_PASSWORD_FOR_LEGACY_CREATE", // Default for legacy callers
         tier: "HOBBYIST",
       },
     });
@@ -96,7 +95,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
     if (input.expiresInHours) {
       data.expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000);
     }
-    const record = await this.prisma.projectShare.create({ data } as any);
+    const record = await this.prisma.projectShare.create({ data });
     return this.toShare(record);
   }
 
@@ -165,7 +164,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       email: r.email,
       name: r.name,
-      tier: (UserTier[r.tier as keyof typeof UserTier] ?? UserTier.HOBBYIST) as UserTier,
+      tier: UserTier[r.tier as keyof typeof UserTier],
       createdAt: r.createdAt,
     };
   }
@@ -202,7 +201,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       token: r.token,
-      permission: (SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.VIEWER) as SharePermission,
+      permission: SharePermission[r.permission as keyof typeof SharePermission],
       isActive: r.isActive,
       expiresAt: r.expiresAt,
       createdAt: r.createdAt,
@@ -222,7 +221,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       id: r.id,
       projectId: r.projectId,
       email: r.email,
-      permission: (SharePermission[r.permission as keyof typeof SharePermission] ?? SharePermission.EDITOR) as SharePermission,
+      permission: SharePermission[r.permission as keyof typeof SharePermission],
       acceptedAt: r.acceptedAt,
       invitedAt: r.invitedAt,
     };
