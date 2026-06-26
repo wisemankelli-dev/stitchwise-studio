@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply selection:bg-blush-400 selection:text-white;
+  }
+
+  /* Floral theme scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-garden-cream;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-blush-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-blush-400;
+  }
+}
+
+@layer components {
+  /* Floral card component */
+  .floral-card {
+    @apply bg-white rounded-floral border border-blush-100 shadow-petal
+           hover:shadow-blush transition-all duration-300;
+  }
+
+  .floral-card-elevated {
+    @apply bg-white rounded-floral border border-blush-200 shadow-blush
+           hover:shadow-floral transition-all duration-300;
+  }
+
+  /* Floral button variants */
+  .btn-floral-primary {
+    @apply rounded-xl bg-blush-500 px-5 py-3 text-sm font-semibold text-white 
+           shadow-sm hover:bg-blush-600 hover:shadow-blush
+           transition-all duration-200 active:scale-95;
+  }
+
+  .btn-floral-secondary {
+    @apply rounded-xl border border-blush-200 bg-white px-5 py-3 text-sm font-semibold 
+           text-blush-700 hover:bg-blush-50 hover:border-blush-300
+           transition-all duration-200;
+  }
+
+  .btn-floral-ghost {
+    @apply rounded-xl px-4 py-2 text-sm font-semibold text-blush-600
+           hover:bg-blush-50 transition-all duration-200;
+  }
+
+  /* Floral badge */
+  .floral-badge {
+    @apply inline-flex items-center gap-1 rounded-full bg-blush-50 px-3 py-1 
+           text-xs font-bold text-blush-700 ring-1 ring-inset ring-blush-200;
+  }
+
+  /* Floral input */
+  .floral-input {
+    @apply block w-full rounded-xl border-blush-200 text-sm text-slate-800 
+           shadow-sm placeholder:text-blush-300
+           focus:border-blush-400 focus:ring-blush-400;
+  }
+
+  /* Floral tag / pill */
+  .floral-tag {
+    @apply inline-flex items-center rounded-full bg-blush-100 px-2.5 py-0.5 
+           text-xs font-medium text-blush-800;
+  }
+
+  /* Section title */
+  .floral-section-title {
+    @apply text-3xl font-extrabold tracking-tight text-slate-800 sm:text-4xl;
+  }
+
+  .floral-section-subtitle {
+    @apply mt-4 text-lg leading-8 text-blush-600/80;
+  }
+}
+
+@layer utilities {
+  .text-gradient-floral {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-blush-600 via-blush-400 to-blush-500;
+  }
+
+  .bg-floral-soft {
+    @apply bg-gradient-to-br from-garden-rose via-garden-petal to-garden-cream;
+  }
+
+  .border-floral {
+    @apply border border-blush-200;
+  }
+}
