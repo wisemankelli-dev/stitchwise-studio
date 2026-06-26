@@ -45,7 +45,7 @@ model ProjectInquiry {
 model Project {
   id        String   @id @default(uuid())
   name      String
-  data      String   @default("{}") // JSON: SVG paths, grid state, stitch params
+  data      String   @default("{}")
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,4 +83,24 @@ model ProjectCollaborator {
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, email])
+}
+
+// ─── Marketplace Models ────────────────────────────────────────────────────
+
+// Represents a pattern listing in the Designer Marketplace.
+// visibility values: "PUBLIC", "PRIVATE", "UNLISTED"
+model MarketplaceListing {
+  id          String   @id @default(uuid())
+  designerId  String
+  name        String
+  description String   @default("")
+  price       Int      @default(0) // Price in cents ($0 = free)
+  visibility  String   @default("PUBLIC")
+  tags        String   @default("[]") // JSON array of tag strings
+  stitchFile  String?  // URL/path to the .dst/.pes file
+  thumbnail   String?  // URL/path to preview image
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  designer User @relation(fields: [designerId], references: [id], onDelete: Cascade)
 }

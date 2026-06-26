@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { SignupSchema, LoginSchema } from "../../domain/auth";
-import { authenticate, JWT_SECRET } from "../middleware/auth";
+import { JWT_SECRET } from "../middleware/auth";
 
 const SALT_ROUNDS = 10;
 const TOKEN_EXPIRY = "7d";
@@ -92,50 +92,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
     } catch (err) {
       console.error({ event: "login_error", error: String(err) });
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  /**
-   * GET /api/me/tier - Get active user tier.
-   */
-  router.get("/me/tier", authenticate, async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
-      if (!dbUser) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      // Normalize values to UI expectations
-      const mappedTier = dbUser.tier === "PRO" ? "Pro Crafter" : dbUser.tier === "STUDIO" ? "Design Studio" : "Hobbyist";
-      res.json({ tier: mappedTier });
-    } catch (err) {
-      console.error({ event: "get_tier_error", error: String(err) });
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  /**
-   * GET /api/user/profile - Get user profile details.
-   */
-  router.get("/user/profile", authenticate, async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
-      if (!dbUser) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      res.json({
-        id: dbUser.id,
-        name: dbUser.name,
-        email: dbUser.email,
-        role: dbUser.tier === "STUDIO" ? "studio_admin" : "hobbyist",
-        subscriptionTier: dbUser.tier === "PRO" ? "Pro Crafter" : dbUser.tier === "STUDIO" ? "Design Studio" : "Hobbyist",
-      });
-    } catch (err) {
-      console.error({ event: "get_profile_error", error: String(err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
