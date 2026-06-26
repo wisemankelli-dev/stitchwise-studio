@@ -16,6 +16,7 @@ from src.services.stitch_generator import (
     generate_stitches_from_svg_paths,
     get_format_info,
 )
+from src.services.thread_estimator import estimate_thread, run_validation
 
 logger = logging.getLogger(__name__)
 stitch_bp = Blueprint("stitch", __name__)
@@ -162,3 +163,90 @@ def _normalize_paths(raw_paths: list) -> list:
             "type": raw.get("type", "running"),
         })
     return normalized
+
+
+# ─── Thread Usage Estimation ─────────────────────────────────────────────
+
+
+@stitch_bp.route("/estimate-thread", methods=["POST"])
+def estimate_thread_route():
+    """Estimate thread usage for a stitch pattern.
+
+    Accepts the same path data as /generate, plus optional estimation params.
+    Does NOT generate a file — only calculates thread consumption.
+
+    Expects JSON body:
+    ```json
+    {
+        "paths": [{"segments": [...], "color": [R,G,B], "type": "running"}],
+        "format": "dst",
+        "stitch_density": 4.0,
+        "fabric_thickness_mm": 0.5,
+        "satin_column_width": 0.0,
+        "underlay_type": "none"
+    }
+    ```
+
+    Returns JSON with thread estimates per color and totals.
+    """
+    data = request.get_json(silent=True)
+    if not data or "paths" not in data:
+        return jsonify({"error": "Request body must contain 'paths' array"}), 400
+
+    try:
+        paths = _normalize_paths(data["paths"])
+        stitch_density = data.get("stitch_density", 4.0)
+
+        # Generate the stitch pattern using the existing generator
+        pattern = generate_stitches_from_svg_paths(paths, stitch_density)
+
+        # Determine stitch type (default to running if not specified)
+        stitch_type = data.get("stitch_type", "running")
+        if stitch_type not in ("running", "fill", "satin"):
+            return jsonify({
+                "error": f"Unsupported stitch type '{stitch_type}'. Must be 'running', 'fill', or 'satin'"
+            }), 400
+
+        # Optional parameters
+        fabric_thickness = data.get("fabric_thickness_mm", 0.5)
+        satin_width = data.get("satin_column_width", 0.0)
+        underlay = data.get("underlay_type", "none")
+
+        if underlay not in ("none", "edge_run", "zigzag", "center_run"):
+            return jsonify({
+                "error": f"Unsupported underlay type '{underlay}'"
+            }), 400
+
+        # Calculate estimate
+        result = estimate_thread(
+            stitches=pattern.stitches,
+            thread_colors=pattern.thread_colors,
+            stitch_type=stitch_type,
+            stitch_density=stitch_density,
+            fabric_thickness_mm=fabric_thickness,
+            satin_column_width=satin_width,
+            underlay_type=underlay,
+        )
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Thread estimation failed: {e}")
+        return jsonify({"error": f"Thread estimation failed: {str(e)}"}), 500
+
+
+@stitch_bp.route("/estimate-thread/validate", methods=["GET"])
+def estimate_thread_validate():
+    """Run built-in validation test cases for the thread estimator.
+
+    Returns JSON array of test results. Useful for CI and manual verification.
+    """
+    try:
+        results = run_validation()
+        return jsonify({
+            "test_count": len(results),
+            "results": results,
+        })
+    except Exception as e:
+        logger.error(f"Validation failed: {e}")
+        return jsonify({"error": f"Validation failed: {str(e)}"}), 500
