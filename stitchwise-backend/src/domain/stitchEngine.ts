@@ -63,6 +63,44 @@ export interface FormatInfo {
   description: string;
 }
 
+// ─── Thread Estimation Types ───────────────────────────────────────────────
+
+export interface EstimateThreadInput {
+  /** Design paths to estimate */
+  paths: DesignPathInput[];
+  /** Stitches per mm (1-20) */
+  stitchDensity?: number;
+  /** Stitch type for overhead calculation */
+  stitchType?: "running" | "fill" | "satin";
+  /** Fabric thickness in mm */
+  fabricThicknessMm?: number;
+  /** Satin column width in mm (0 for non-satin) */
+  satinColumnWidth?: number;
+  /** Underlay type */
+  underlayType?: "none" | "edge_run" | "zigzag" | "center_run";
+}
+
+export interface ColorThreadEstimate {
+  color: [number, number, number];
+  meters: number;
+  yards: number;
+  skeins: number;
+  stitches: number;
+  dmc: { sku: string; name: string; rgb: [number, number, number] };
+}
+
+export interface ThreadEstimateResult {
+  top_thread_m: number;
+  bobbin_thread_m: number;
+  total_thread_m: number;
+  total_thread_yd: number;
+  stitch_count: number;
+  color_change_count: number;
+  fabric_thickness_mm: number;
+  parameters: Record<string, unknown>;
+  per_color: ColorThreadEstimate[];
+}
+
 // ─── Zod Schemas ───────────────────────────────────────────────────────────
 
 export const GenerateStitchSchema = z.object({
