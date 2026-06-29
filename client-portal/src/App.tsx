@@ -7,6 +7,7 @@ import { Pricing } from './pages/Pricing';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { FloralThemeShowcase } from './pages/FloralThemeShowcase';
 import { FeaturedGallery } from './pages/FeaturedGallery';
+import { CollageStudio } from './pages/CollageStudio';
 import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image } from 'lucide-react';
 
 /**
@@ -76,6 +77,7 @@ function App() {
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/floral-theme" element={<FloralThemeShowcase />} />
             <Route path="/gallery" element={<FeaturedGallery />} />
+            <Route path="/collage" element={<CollageStudio />} />
           </Routes>
         </main>
 
