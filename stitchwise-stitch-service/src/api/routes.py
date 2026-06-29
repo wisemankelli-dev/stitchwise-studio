@@ -172,11 +172,10 @@ async def estimate_thread_endpoint(req: EstimateThreadRequest):
             underlay_type=req.underlay_type,
         )
 
-        # Convert per_color to the Pydantic model
         per_color_estimates = []
         for entry in result["per_color"]:
             per_color_estimates.append(ColorThreadEstimate(
-                color=entry["color"],
+                color=list(entry["color"]),
                 meters=entry.get("meters", 0),
                 yards=entry.get("yards", 0),
                 skeins=entry.get("skeins", 0),
