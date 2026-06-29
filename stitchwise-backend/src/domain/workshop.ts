@@ -13,6 +13,12 @@ export enum SharePermission {
   EDITOR = "EDITOR",
 }
 
+export enum ProjectVisibility {
+  PRIVATE = "PRIVATE",
+  PUBLIC = "PUBLIC",
+  SAMPLE = "SAMPLE",
+}
+
 // ─── User ──────────────────────────────────────────────────────────────────
 
 export interface User {
@@ -31,6 +37,18 @@ export interface Project {
   name: string;
   data: string; // JSON: SVG paths, grid state, stitch params
   userId: string;
+  visibility: ProjectVisibility;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Represents a sample design visible in the Featured Gallery. */
+export interface SampleProject {
+  id: string;
+  name: string;
+  data: string;
+  userId: string;
+  visibility: ProjectVisibility.SAMPLE;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +79,7 @@ export interface CreateProjectInput {
   name: string;
   data?: string;
   userId: string;
+  visibility?: ProjectVisibility;
 }
 
 export interface UpdateProjectInput {

@@ -8,8 +8,9 @@ import type {
   UpdateProjectInput,
   CreateShareLinkInput,
   InviteCollaboratorInput,
+  SampleProject,
 } from "../../domain/workshop";
-import { SharePermission } from "../../domain/workshop";
+import { SharePermission, ProjectVisibility } from "../../domain/workshop";
 import type { UserProfile } from "../../domain/user";
 import { UserTier } from "../../domain/workshop";
 import type { WorkshopRepo } from "./workshopRepo";
@@ -51,6 +52,34 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
         name: input.name,
         data: input.data ?? "{}",
         userId: input.userId,
+        visibility: input.visibility ?? ProjectVisibility.PRIVATE,
+      },
+    });
+    return this.toProject(record);
+  }
+
+  async listSampleProjects(): Promise<SampleProject[]> {
+    const records = await this.prisma.project.findMany({
+      where: { visibility: "SAMPLE" },
+      orderBy: { createdAt: "desc" },
+    });
+    return records.map((r: { id: string; name: string; data: string; userId: string; visibility: string; createdAt: Date; updatedAt: Date }) => this.toSampleProject(r));
+  }
+
+  async cloneProject(projectId: string, newOwnerId: string, newName?: string): Promise<Project> {
+    const original = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!original) {
+      throw new Error("Project not found");
+    }
+    if (original.visibility !== "SAMPLE") {
+      throw new Error("Only sample designs can be cloned");
+    }
+    const record = await this.prisma.project.create({
+      data: {
+        name: newName ?? `${original.name} (Copy)`,
+        data: original.data,
+        userId: newOwnerId,
+        visibility: "PRIVATE",
       },
     });
     return this.toProject(record);
@@ -174,6 +203,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
     name: string;
     data: string;
     userId: string;
+    visibility: string;
     createdAt: Date;
     updatedAt: Date;
   }): Project {
@@ -182,6 +212,27 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       name: r.name,
       data: r.data,
       userId: r.userId,
+      visibility: ProjectVisibility[r.visibility as keyof typeof ProjectVisibility],
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  }
+
+  private toSampleProject(r: {
+    id: string;
+    name: string;
+    data: string;
+    userId: string;
+    visibility: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): SampleProject {
+    return {
+      id: r.id,
+      name: r.name,
+      data: r.data,
+      userId: r.userId,
+      visibility: ProjectVisibility.SAMPLE,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

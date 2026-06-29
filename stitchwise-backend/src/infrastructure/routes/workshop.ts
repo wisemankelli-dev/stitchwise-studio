@@ -314,5 +314,52 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
     }
   });
 
+  // ─── Sample Designs & Cloning ─────────────────────────────────────────────
+
+  /**
+   * GET /api/designs/samples - Fetch curated sample designs for the Featured Gallery.
+   * No authentication required — anyone can browse sample designs.
+   */
+  router.get("/designs/samples", async (_req: Request, res: Response) => {
+    try {
+      const samples = await repo.listSampleProjects();
+      res.json(samples);
+    } catch (err) {
+      console.error({ event: "list_samples_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * POST /api/designs/:id/clone - Clone a sample design into the user's own projects.
+   * Only Pro/Studio users can clone. Hobbyists receive a 403 suggesting an upgrade.
+   */
+  router.post("/designs/:id/clone", authenticate, async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const tier = user?.tier;
+
+      // Enforce tier check: only PRO and STUDIO can clone
+      if (tier !== "PRO" && tier !== "STUDIO") {
+        res.status(403).json({
+          error: "Upgrade required",
+          message: "Cloning sample designs is available for Pro and Studio plans. Please upgrade to clone this design.",
+        });
+        return;
+      }
+
+      const newName = req.body?.name;
+      const project = await repo.cloneProject(req.params.id, user.userId, newName);
+      res.status(201).json(project);
+    } catch (err: any) {
+      if (err.message === "Project not found" || err.message === "Only sample designs can be cloned") {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      console.error({ event: "clone_project_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   return router;
 }

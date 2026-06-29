@@ -6,6 +6,7 @@ import type {
   UpdateProjectInput,
   CreateShareLinkInput,
   InviteCollaboratorInput,
+  SampleProject,
 } from "../../domain/workshop";
 import type { UserProfile } from "../../domain/user";
 
@@ -22,6 +23,10 @@ export interface WorkshopRepo {
   listProjectsByUser(userId: string): Promise<Project[]>;
   updateProject(id: string, input: UpdateProjectInput): Promise<Project>;
   deleteProject(id: string): Promise<void>;
+
+  // ── Sample Designs & Cloning ──────────────────────────────────────────
+  listSampleProjects(): Promise<SampleProject[]>;
+  cloneProject(projectId: string, newOwnerId: string, newName?: string): Promise<Project>;
 
   // ── Sharing ─────────────────────────────────────────────────────────────
   createShareLink(input: CreateShareLinkInput, token: string): Promise<ProjectShare>;
