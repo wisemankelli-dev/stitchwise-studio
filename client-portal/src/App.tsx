@@ -6,7 +6,8 @@ import { Dashboard } from './pages/Dashboard';
 import { Pricing } from './pages/Pricing';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { FloralThemeShowcase } from './pages/FloralThemeShowcase';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2 } from 'lucide-react';
+import { FeaturedGallery } from './pages/FeaturedGallery';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image } from 'lucide-react';
 
 /**
  * Main application component setting up routing, layout, and global styling.
@@ -48,6 +49,10 @@ function App() {
                   <Flower2 className="h-4 w-4 text-blush-400" />
                   Floral Theme
                 </Link>
+                <Link to="/gallery" className="text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5">
+                  <Image className="h-4 w-4 text-brand-500" />
+                  Gallery
+                </Link>
                 <Link
                   to="/submit-project"
                   className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-all focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -70,6 +75,7 @@ function App() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/floral-theme" element={<FloralThemeShowcase />} />
+            <Route path="/gallery" element={<FeaturedGallery />} />
           </Routes>
         </main>
 
