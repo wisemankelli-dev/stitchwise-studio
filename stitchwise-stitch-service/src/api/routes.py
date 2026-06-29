@@ -18,7 +18,7 @@ from src.services.stitch_generator import (
     generate_stitches_from_svg_paths,
     get_format_info,
 )
-from src.services.thread_estimator import estimate_thread
+from src.services.thread_estimator import estimate_thread, run_validation
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
