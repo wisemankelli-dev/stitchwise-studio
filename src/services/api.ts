@@ -39,16 +39,6 @@ export interface StitchRequest {
   stitchCount?: number;
 }
 
-export interface StitchResponse {
-  success: boolean;
-  stitchFileUrl: string;
-  format: 'DST' | 'PES' | 'EXP';
-  stitchCount: number;
-  estimatedThreadSkeins: number;
-  checksum: string;
-  processingTimeMs: number;
-}
-
 /** Marketplace listing data model */
 export interface MarketplaceListing {
   id: string;
@@ -65,6 +55,16 @@ export interface MarketplaceListing {
   createdAt: string;
   updatedAt: string;
   isPublished: boolean;
+}
+
+export interface StitchResponse {
+  success: boolean;
+  stitchFileUrl: string;
+  format: 'DST' | 'PES' | 'EXP';
+  stitchCount: number;
+  estimatedThreadSkeins: number;
+  checksum: string;
+  processingTimeMs: number;
 }
 
 // Utility function to simulate network delay
@@ -785,7 +785,8 @@ class ApiClient {
   // ==================== MARKETPLACE API ====================
 
   /**
-   * Fetches all published marketplace listings (GET /api/marketplace).
+   * Fetches all published marketplace listings.
+   * GET /api/marketplace
    */
   async getMarketplaceListings(): Promise<MarketplaceListing[]> {
     if (this.isLiveBackend) {
@@ -799,20 +800,25 @@ class ApiClient {
         console.error('Failed to contact backend, falling back to mock marketplace data', err);
       }
     }
+
+    // Mock implementation
     await delay(500);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (stored) return JSON.parse(stored);
+
     const mockListings: MarketplaceListing[] = [
-      { id: 'mkt-1', title: 'Spring Floral Wreath', description: 'Beautiful spring floral wreath pattern perfect for beginners.', price: 8.99, category: 'Floral', tags: ['Floral', 'Wreath', 'Beginner'], designerName: 'Elena Crafter', designerId: 'des-1', rating: 4.9, salesCount: 342, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-20T00:00:00Z', isPublished: true },
-      { id: 'mkt-2', title: 'Vintage Rose Border', description: 'Elegant vintage rose border design for intermediate crafters.', price: 12.50, category: 'Vintage', tags: ['Vintage', 'Border', 'Intermediate'], designerName: 'StitchMaster Pro', designerId: 'des-2', rating: 4.8, salesCount: 187, createdAt: '2026-05-10T00:00:00Z', updatedAt: '2026-06-22T00:00:00Z', isPublished: true },
-      { id: 'mkt-3', title: 'Botanical Sampler', description: 'Detailed botanical garden sampler with multiple stitch types.', price: 14.99, category: 'Botanical', tags: ['Botanical', 'Sampler', 'Advanced'], designerName: 'Dave Digitizer', designerId: 'des-3', rating: 4.7, salesCount: 93, createdAt: '2026-05-15T00:00:00Z', updatedAt: '2026-06-18T00:00:00Z', isPublished: true },
+      { id: 'mkt-1', title: 'Spring Floral Wreath', description: 'Beautiful spring wreath pattern', price: 8.99, category: 'Floral', tags: ['Floral', 'Wreath', 'Beginner'], designerName: 'Elena Crafter', designerId: 'des-1', rating: 4.9, salesCount: 342, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-20T00:00:00Z', isPublished: true },
+      { id: 'mkt-2', title: 'Vintage Rose Border', description: 'Elegant vintage rose border', price: 12.50, category: 'Vintage', tags: ['Vintage', 'Border', 'Intermediate'], designerName: 'StitchMaster Pro', designerId: 'des-2', rating: 4.8, salesCount: 187, createdAt: '2026-05-10T00:00:00Z', updatedAt: '2026-06-22T00:00:00Z', isPublished: true },
+      { id: 'mkt-3', title: 'Botanical Garden Sampler', description: 'Detailed botanical sampler', price: 14.99, category: 'Botanical', tags: ['Botanical', 'Sampler', 'Advanced'], designerName: 'Dave Digitizer', designerId: 'des-3', rating: 4.7, salesCount: 93, createdAt: '2026-05-15T00:00:00Z', updatedAt: '2026-06-18T00:00:00Z', isPublished: true },
+      { id: 'mkt-4', title: 'Peony Love Heart', description: 'Romantic peony heart design', price: 6.99, category: 'Romantic', tags: ['Heart', 'Romantic', 'Quick'], designerName: 'Sofia R.', designerId: 'des-4', rating: 4.9, salesCount: 521, createdAt: '2026-04-20T00:00:00Z', updatedAt: '2026-06-25T00:00:00Z', isPublished: true },
     ];
     localStorage.setItem('stitchwise_marketplace', JSON.stringify(mockListings));
     return mockListings;
   }
 
   /**
-   * Fetches the current designer's own listings (GET /api/designer/listings).
+   * Fetches the current user's own designer listings.
+   * GET /api/designer/listings
    */
   async getMyListings(): Promise<MarketplaceListing[]> {
     if (this.isLiveBackend) {
@@ -826,13 +832,15 @@ class ApiClient {
         console.error('Failed to contact backend, falling back to mock listings', err);
       }
     }
+
     await delay(400);
     const allListings = await this.getMarketplaceListings();
     return allListings.filter(l => l.designerId === 'des-1');
   }
 
   /**
-   * Creates a new marketplace listing (POST /api/designer/listings).
+   * Creates a new marketplace listing.
+   * POST /api/designer/listings
    */
   async createListing(data: Partial<MarketplaceListing>): Promise<MarketplaceListing> {
     if (this.isLiveBackend) {
@@ -848,6 +856,7 @@ class ApiClient {
         console.error('Failed to create listing on backend', err);
       }
     }
+
     await delay(600);
     const stored = localStorage.getItem('stitchwise_marketplace');
     const listings: MarketplaceListing[] = stored ? JSON.parse(stored) : [];
@@ -872,7 +881,8 @@ class ApiClient {
   }
 
   /**
-   * Updates an existing marketplace listing (PUT /api/designer/listings/:id).
+   * Updates an existing marketplace listing.
+   * PUT /api/designer/listings/:id
    */
   async updateListing(id: string, data: Partial<MarketplaceListing>): Promise<MarketplaceListing | null> {
     if (this.isLiveBackend) {
@@ -888,6 +898,7 @@ class ApiClient {
         console.error(`Failed to update listing ${id} on backend`, err);
       }
     }
+
     await delay(500);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (!stored) return null;
@@ -900,7 +911,8 @@ class ApiClient {
   }
 
   /**
-   * Deletes a marketplace listing (DELETE /api/designer/listings/:id).
+   * Deletes a marketplace listing.
+   * DELETE /api/designer/listings/:id
    */
   async deleteListing(id: string): Promise<boolean> {
     if (this.isLiveBackend) {
@@ -914,6 +926,7 @@ class ApiClient {
         console.error(`Failed to delete listing ${id} on backend`, err);
       }
     }
+
     await delay(400);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (!stored) return false;
