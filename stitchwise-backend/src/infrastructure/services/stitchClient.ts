@@ -11,6 +11,8 @@ import type {
   GenerateStitchInput,
   StitchServiceHealth,
   FormatInfo,
+  EstimateThreadInput,
+  ThreadEstimateResult,
 } from "../../domain/stitchEngine";
 
 /** Base URL of the Python stitch microservice. */
@@ -172,4 +174,51 @@ export async function convertStitchFile(
       format: targetFormat,
     },
   };
+}
+
+/**
+ * Estimates thread usage for a stitch pattern by calling the Python stitch service.
+ *
+ * @param input - The design paths and estimation parameters.
+ * @returns Thread usage estimates in meters/yards with per-color DMC breakdown.
+ */
+export async function estimateThreadUsage(
+  input: EstimateThreadInput,
+): Promise<ThreadEstimateResult> {
+  const url = `${STITCH_SERVICE_URL}/api/estimate-thread`;
+
+  const payload = {
+    paths: input.paths.map((p) => ({
+      segments: p.segments,
+      color: p.color,
+      stitch_type: p.stitchType,
+    })),
+    stitch_density: input.stitchDensity ?? 4.0,
+    stitch_type: input.stitchType ?? "running",
+    fabric_thickness_mm: input.fabricThicknessMm ?? 0.5,
+    satin_column_width: input.satinColumnWidth ?? 0.0,
+    underlay_type: input.underlayType ?? "none",
+  };
+
+  console.error({
+    event: "thread_estimation_request",
+    pathCount: input.paths.length,
+    stitchType: input.stitchType,
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `Thread estimation failed (${response.status}): ${errorBody}`,
+    );
+  }
+
+  return response.json() as Promise<ThreadEstimateResult>;
 }
