@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown } from 'lucide-react';
-import { Project, api } from '../services/api';
+import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
+import { Project, MarketplaceListing, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTier, setActiveTier] = useState<string>('Hobbyist');
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListing[]>([]);
+  const [marketplaceLoading, setMarketplaceLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -24,7 +26,21 @@ export const Dashboard: React.FC = () => {
         setIsLoading(false);
       }
     };
+
+    const fetchMarketplace = async () => {
+      try {
+        setMarketplaceLoading(true);
+        const listings = await api.getMarketplaceListings();
+        setMarketplaceListings(listings.slice(0, 4));
+      } catch (err) {
+        console.error('Error fetching marketplace listings:', err);
+      } finally {
+        setMarketplaceLoading(false);
+      }
+    };
+
     fetchData();
+    fetchMarketplace();
   }, []);
 
   const sharedWithMe: Project[] = [
@@ -237,6 +253,69 @@ export const Dashboard: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Marketplace Section */}
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingBag className="h-5 w-5 text-brand-500" />
+                  Marketplace
+                </h3>
+                <Link to="/pricing" className="text-xs font-semibold text-brand-600 hover:text-brand-500 transition-colors flex items-center gap-1">
+                  View All <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+
+              {marketplaceLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-6 w-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : marketplaceListings.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+                  <ShoppingBag className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No marketplace listings available yet.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {marketplaceListings.map((listing) => (
+                    <div 
+                      key={listing.id} 
+                      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 flex flex-col h-full"
+                    >
+                      <div className="h-2.5 bg-gradient-to-r from-brand-400 to-rose-300" />
+                      <div className="p-5 flex-grow flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
+                              <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                              {listing.rating}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {listing.salesCount} sold
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-900 line-clamp-1 mb-1">{listing.title}</h4>
+                          <p className="text-xs text-slate-500 line-clamp-2 mb-2">{listing.description}</p>
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {listing.tags.slice(0, 2).map((tag) => (
+                              <span key={tag} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-base font-extrabold text-brand-700">${listing.price.toFixed(2)}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400">by {listing.designerName}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>

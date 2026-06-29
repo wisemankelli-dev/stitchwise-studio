@@ -49,6 +49,24 @@ export interface StitchResponse {
   processingTimeMs: number;
 }
 
+/** Marketplace listing data model */
+export interface MarketplaceListing {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  tags: string[];
+  previewUrl?: string;
+  designerName: string;
+  designerId: string;
+  rating: number;
+  salesCount: number;
+  createdAt: string;
+  updatedAt: string;
+  isPublished: boolean;
+}
+
 // Utility function to simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -762,6 +780,147 @@ class ApiClient {
       success: true,
       url: redirectUrl
     };
+  }
+
+  // ==================== MARKETPLACE API ====================
+
+  /**
+   * Fetches all published marketplace listings (GET /api/marketplace).
+   */
+  async getMarketplaceListings(): Promise<MarketplaceListing[]> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/marketplace`, {
+          headers: this.getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to fetch marketplace listings');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to contact backend, falling back to mock marketplace data', err);
+      }
+    }
+    await delay(500);
+    const stored = localStorage.getItem('stitchwise_marketplace');
+    if (stored) return JSON.parse(stored);
+    const mockListings: MarketplaceListing[] = [
+      { id: 'mkt-1', title: 'Spring Floral Wreath', description: 'Beautiful spring floral wreath pattern perfect for beginners.', price: 8.99, category: 'Floral', tags: ['Floral', 'Wreath', 'Beginner'], designerName: 'Elena Crafter', designerId: 'des-1', rating: 4.9, salesCount: 342, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-20T00:00:00Z', isPublished: true },
+      { id: 'mkt-2', title: 'Vintage Rose Border', description: 'Elegant vintage rose border design for intermediate crafters.', price: 12.50, category: 'Vintage', tags: ['Vintage', 'Border', 'Intermediate'], designerName: 'StitchMaster Pro', designerId: 'des-2', rating: 4.8, salesCount: 187, createdAt: '2026-05-10T00:00:00Z', updatedAt: '2026-06-22T00:00:00Z', isPublished: true },
+      { id: 'mkt-3', title: 'Botanical Sampler', description: 'Detailed botanical garden sampler with multiple stitch types.', price: 14.99, category: 'Botanical', tags: ['Botanical', 'Sampler', 'Advanced'], designerName: 'Dave Digitizer', designerId: 'des-3', rating: 4.7, salesCount: 93, createdAt: '2026-05-15T00:00:00Z', updatedAt: '2026-06-18T00:00:00Z', isPublished: true },
+    ];
+    localStorage.setItem('stitchwise_marketplace', JSON.stringify(mockListings));
+    return mockListings;
+  }
+
+  /**
+   * Fetches the current designer's own listings (GET /api/designer/listings).
+   */
+  async getMyListings(): Promise<MarketplaceListing[]> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/designer/listings`, {
+          headers: this.getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to fetch designer listings');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to contact backend, falling back to mock listings', err);
+      }
+    }
+    await delay(400);
+    const allListings = await this.getMarketplaceListings();
+    return allListings.filter(l => l.designerId === 'des-1');
+  }
+
+  /**
+   * Creates a new marketplace listing (POST /api/designer/listings).
+   */
+  async createListing(data: Partial<MarketplaceListing>): Promise<MarketplaceListing> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/designer/listings`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error('Failed to create listing');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to create listing on backend', err);
+      }
+    }
+    await delay(600);
+    const stored = localStorage.getItem('stitchwise_marketplace');
+    const listings: MarketplaceListing[] = stored ? JSON.parse(stored) : [];
+    const newListing: MarketplaceListing = {
+      id: `mkt-${Date.now()}`,
+      title: data.title || 'Untitled Pattern',
+      description: data.description || '',
+      price: data.price || 0,
+      category: data.category || 'Other',
+      tags: data.tags || [],
+      designerName: 'You',
+      designerId: 'des-1',
+      rating: 0,
+      salesCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isPublished: data.isPublished ?? false,
+    };
+    listings.unshift(newListing);
+    localStorage.setItem('stitchwise_marketplace', JSON.stringify(listings));
+    return newListing;
+  }
+
+  /**
+   * Updates an existing marketplace listing (PUT /api/designer/listings/:id).
+   */
+  async updateListing(id: string, data: Partial<MarketplaceListing>): Promise<MarketplaceListing | null> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/designer/listings/${id}`, {
+          method: 'PUT',
+          headers: this.getHeaders(),
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error('Failed to update listing');
+        return await response.json();
+      } catch (err) {
+        console.error(`Failed to update listing ${id} on backend`, err);
+      }
+    }
+    await delay(500);
+    const stored = localStorage.getItem('stitchwise_marketplace');
+    if (!stored) return null;
+    const listings: MarketplaceListing[] = JSON.parse(stored);
+    const idx = listings.findIndex(l => l.id === id);
+    if (idx === -1) return null;
+    listings[idx] = { ...listings[idx], ...data, updatedAt: new Date().toISOString() };
+    localStorage.setItem('stitchwise_marketplace', JSON.stringify(listings));
+    return listings[idx];
+  }
+
+  /**
+   * Deletes a marketplace listing (DELETE /api/designer/listings/:id).
+   */
+  async deleteListing(id: string): Promise<boolean> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/designer/listings/${id}`, {
+          method: 'DELETE',
+          headers: this.getHeaders()
+        });
+        return response.ok;
+      } catch (err) {
+        console.error(`Failed to delete listing ${id} on backend`, err);
+      }
+    }
+    await delay(400);
+    const stored = localStorage.getItem('stitchwise_marketplace');
+    if (!stored) return false;
+    const listings: MarketplaceListing[] = JSON.parse(stored);
+    const filtered = listings.filter(l => l.id !== id);
+    localStorage.setItem('stitchwise_marketplace', JSON.stringify(filtered));
+    return true;
   }
 }
 
