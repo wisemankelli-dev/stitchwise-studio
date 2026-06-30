@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star, Flower2 } from 'lucide-react';
+import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
 import { Project, MarketplaceListing, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
@@ -289,7 +289,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Commercial Studio active**: Full commercial use licenses, high priority AI queue, bulk image-to-stitch processing, up to 5 team seats, and developer API access are unlocked.
+                    ✓ **Design Studio active**: Full commercial use licenses, high priority AI queue, bulk image-to-stitch processing, unlimited personal workspace, and developer API access are unlocked.
                   </p>
                   <button
                     onClick={() => navigate('/pricing')}
