@@ -7,3 +7,4 @@ export { createAuthRouter } from "./auth";
 export { createPaymentRouter } from "./payments";
 export { createMarketplaceRouter } from "./marketplace";
 export { createCollageRouter } from "./collage";
+export { createShowcaseRouter } from "./showcase";
