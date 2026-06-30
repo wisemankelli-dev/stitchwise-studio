@@ -24,6 +24,7 @@ model User {
 
   projects              Project[]
   marketplaceListings   MarketplaceListing[] @relation("MarketplaceDesigner")
+  collageProjects       CollageProject[]
 }
 
 // ─── Project Inquiry ───────────────────────────────────────────────────────
@@ -107,4 +108,23 @@ model MarketplaceListing {
   updatedAt   DateTime @updatedAt
 
   designer User @relation("MarketplaceDesigner", fields: [designerId], references: [id], onDelete: Cascade)
+}
+
+// ─── Collage Studio Models ─────────────────────────────────────────────────
+
+// Stores collage quilting projects with a JSON data column (Option A from research).
+// The `data` field holds the full canvas state: layers, fabrics, shapes, stitches.
+// This keeps the schema simple for MVP while allowing future migration to normalized tables.
+model CollageProject {
+  id        String   @id @default(uuid())
+  name      String
+  userId    String
+  data      String   @default("{}") // JSON: full canvas state (layers, fabrics, shapes, stitches)
+  width     Float    @default(300)   // canvas width in mm
+  height    Float    @default(300)   // canvas height in mm
+  thumbnail String?                  // URL to preview image
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
