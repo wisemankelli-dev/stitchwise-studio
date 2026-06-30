@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
+import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star, Flower2 } from 'lucide-react';
 import { Project, MarketplaceListing, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
@@ -180,7 +180,7 @@ export const Dashboard: React.FC = () => {
                       <div className="p-5 flex-grow flex flex-col justify-between">
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blush-50 text-blush-700">
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blush-50 text-blush-700">
                               <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
                               {listing.rating}
                             </span>
@@ -263,7 +263,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and live collaborative workshops!
+                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and solo designer workspaces!
                   </p>
                   <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100/50 flex items-center gap-3">
                     <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -321,7 +321,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-slate-700">Create New Pattern</h4>
-                    <p className="text-[10px] text-slate-500">Click share inside the pattern designer tool</p>
+                    <p className="text-[10px] text-slate-500">Design custom motifs from images or scratch</p>
                   </div>
                 </div>
 
@@ -330,7 +330,7 @@ export const Dashboard: React.FC = () => {
                     2
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-700">Drag Invite Collaborators Drop Layers</h4>
+                    <h4 className="text-xs font-bold text-slate-700">Drag & Drop Layers</h4>
                     <p className="text-[10px] text-slate-500">Organize fabric pieces on your digital canvas</p>
                   </div>
                 </div>
@@ -340,7 +340,7 @@ export const Dashboard: React.FC = () => {
                     3
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-700">Export Co-Create Live Share</h4>
+                    <h4 className="text-xs font-bold text-slate-700">Export & Share</h4>
                     <p className="text-[10px] text-slate-500">Download your finished design as a pattern file</p>
                   </div>
                 </div>

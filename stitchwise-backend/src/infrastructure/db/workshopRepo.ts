@@ -1,15 +1,12 @@
 import type {
   Project,
-  ProjectShare,
-  ProjectCollaborator,
   CreateProjectInput,
   UpdateProjectInput,
-  CreateShareLinkInput,
-  InviteCollaboratorInput,
+  SampleProject,
 } from "../../domain/workshop";
 import type { UserProfile } from "../../domain/user";
 
-/** Repository interface for Workshop and User operations. */
+/** Repository interface for user and project operations (solo designer focus). */
 export interface WorkshopRepo {
   // ── Users ──────────────────────────────────────────────────────────────
   getUser(id: string): Promise<UserProfile | null>;
@@ -23,15 +20,7 @@ export interface WorkshopRepo {
   updateProject(id: string, input: UpdateProjectInput): Promise<Project>;
   deleteProject(id: string): Promise<void>;
 
-  // ── Sharing ─────────────────────────────────────────────────────────────
-  createShareLink(input: CreateShareLinkInput, token: string): Promise<ProjectShare>;
-  getShareByToken(token: string): Promise<ProjectShare | null>;
-  getSharesForProject(projectId: string): Promise<ProjectShare[]>;
-  deactivateShare(shareId: string): Promise<void>;
-
-  // ── Collaborators ───────────────────────────────────────────────────────
-  inviteCollaborator(input: InviteCollaboratorInput): Promise<ProjectCollaborator>;
-  getCollaboratorsForProject(projectId: string): Promise<ProjectCollaborator[]>;
-  acceptInvitation(id: string): Promise<void>;
-  getCollaboratorByEmail(projectId: string, email: string): Promise<ProjectCollaborator | null>;
+  // ── Sample Designs & Cloning ──────────────────────────────────────────
+  listSampleProjects(): Promise<SampleProject[]>;
+  cloneProject(projectId: string, newOwnerId: string, newName?: string): Promise<Project>;
 }

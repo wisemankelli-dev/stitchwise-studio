@@ -1,5 +1,15 @@
 import request from "supertest";
+import jwt from "jsonwebtoken";
+import { PrismaClient } from "@prisma/client";
 import { createApp } from "../app";
+import { JWT_SECRET } from "../infrastructure/middleware/auth";
+
+const prisma = new PrismaClient();
+
+/** Create a test JWT for a given user ID and tier. */
+function testAuthToken(userId: string, tier = "HOBBYIST"): string {
+  return jwt.sign({ userId, tier }, JWT_SECRET, { expiresIn: "1h" });
+}
 
 describe("User Profile API", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
@@ -28,20 +38,42 @@ describe("User Profile API", () => {
   });
 });
 
-describe("Collaborative Workshop API", () => {
+describe("Solo Project API", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
   let projectId: string;
+  let authHeader: string;
+  let testUserId: string;
 
   beforeAll(async () => {
     app = await createApp();
+
+    // Create a test user in the database for project CRUD tests
+    const user = await prisma.user.upsert({
+      where: { email: "test-project-user@stitchwise.dev" },
+      update: {},
+      create: {
+        email: "test-project-user@stitchwise.dev",
+        name: "Test Project User",
+        passwordHash: "test-hash",
+        tier: "PRO",
+      },
+    });
+    testUserId = user.id;
+    authHeader = `Bearer ${testAuthToken(testUserId, "PRO")}`;
   });
 
-  // ─── Projects ──────────────────────────────────────────────────────────
+  afterAll(async () => {
+    // Clean up test data
+    await prisma.project.deleteMany({ where: { userId: testUserId } });
+    await prisma.user.delete({ where: { id: testUserId } });
+    await prisma.$disconnect();
+  });
 
   describe("POST /api/projects", () => {
     it("creates a new project", async () => {
       const res = await request(app)
         .post("/api/projects")
+        .set("Authorization", authHeader)
         .send({ name: "Test Project", data: JSON.stringify({ grid: [] }) })
         .expect(201);
 
@@ -54,16 +86,27 @@ describe("Collaborative Workshop API", () => {
     it("rejects invalid project data", async () => {
       const res = await request(app)
         .post("/api/projects")
+        .set("Authorization", authHeader)
         .send({ name: "" })
         .expect(400);
 
       expect(res.body).toHaveProperty("error", "Validation failed");
     });
+
+    it("rejects unauthenticated requests", async () => {
+      await request(app)
+        .post("/api/projects")
+        .send({ name: "Test" })
+        .expect(401);
+    });
   });
 
   describe("GET /api/projects", () => {
     it("lists projects for the current user", async () => {
-      const res = await request(app).get("/api/projects").expect(200);
+      const res = await request(app)
+        .get("/api/projects")
+        .set("Authorization", authHeader)
+        .expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThanOrEqual(1);
@@ -74,6 +117,7 @@ describe("Collaborative Workshop API", () => {
     it("returns a project by ID", async () => {
       const res = await request(app)
         .get(`/api/projects/${projectId}`)
+        .set("Authorization", authHeader)
         .expect(200);
 
       expect(res.body.id).toBe(projectId);
@@ -82,6 +126,7 @@ describe("Collaborative Workshop API", () => {
     it("returns 404 for non-existent project", async () => {
       await request(app)
         .get("/api/projects/non-existent-id")
+        .set("Authorization", authHeader)
         .expect(404);
     });
   });
@@ -95,86 +140,6 @@ describe("Collaborative Workshop API", () => {
 
       expect(res.body.name).toBe("Updated Name");
       expect(JSON.parse(res.body.data).grid).toEqual([1, 2]);
-    });
-  });
-
-  // ─── Sharing ──────────────────────────────────────────────────────────
-
-  describe("POST /api/shares", () => {
-    it("creates a share link for a project", async () => {
-      const res = await request(app)
-        .post("/api/shares")
-        .send({ projectId, permission: "VIEWER" })
-        .expect(201);
-
-      expect(res.body).toHaveProperty("token");
-      expect(res.body).toHaveProperty("shareUrl");
-      expect(res.body.permission).toBe("VIEWER");
-    });
-
-    it("rejects share for non-existent project", async () => {
-      const res = await request(app)
-        .post("/api/shares")
-        .send({ projectId: "00000000-0000-0000-0000-000000000000" })
-        .expect(404);
-    });
-  });
-
-  describe("GET /api/shared/:token", () => {
-    it("accesses a project via valid share token", async () => {
-      const shareRes = await request(app)
-        .post("/api/shares")
-        .send({ projectId, permission: "EDITOR" });
-
-      const token = shareRes.body.token;
-
-      const res = await request(app)
-        .get(`/api/shared/${token}`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty("project");
-      expect(res.body).toHaveProperty("permission", "EDITOR");
-      expect(res.body.project.id).toBe(projectId);
-    });
-  });
-
-  // ─── Collaborators ────────────────────────────────────────────────────
-
-  describe("POST /api/collaborators", () => {
-    it("invites a collaborator by email", async () => {
-      const res = await request(app)
-        .post("/api/collaborators")
-        .send({ projectId, email: "collab@test.com", permission: "EDITOR" })
-        .expect(201);
-
-      expect(res.body.email).toBe("collab@test.com");
-      expect(res.body.permission).toBe("EDITOR");
-      expect(res.body.acceptedAt).toBeNull();
-    });
-
-    it("rejects duplicate invitations", async () => {
-      const res = await request(app)
-        .post("/api/collaborators")
-        .send({ projectId, email: "collab@test.com" })
-        .expect(409);
-
-      expect(res.body).toHaveProperty("error");
-    });
-  });
-
-  describe("POST /api/collaborators/:id/accept", () => {
-    it("accepts a collaboration invitation", async () => {
-      const inviteRes = await request(app)
-        .post("/api/collaborators")
-        .send({ projectId, email: "another@test.com" });
-
-      const collabId = inviteRes.body.id;
-
-      const res = await request(app)
-        .post(`/api/collaborators/${collabId}/accept`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty("message", "Invitation accepted");
     });
   });
 });

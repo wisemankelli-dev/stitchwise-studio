@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  ArrowLeft
+  Flower2, Sparkles, Heart, ArrowLeft
 } from 'lucide-react';
 
 interface FabricLayer {
@@ -86,7 +86,7 @@ export const CollageStudio: React.FC = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <Link to="/dashboard" className="text-blush-500 hover:text-blush-600 transition-colors">
-                <ArrowLeft className="h-5 w-5" />
+                <Flower2, Sparkles, Heart, ArrowLeft className="h-5 w-5" />
               </Link>
               <div>
                 <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">

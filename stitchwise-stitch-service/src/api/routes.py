@@ -18,6 +18,7 @@ from src.services.stitch_generator import (
     generate_stitches_from_svg_paths,
     get_format_info,
 )
+from src.services.thread_estimator import estimate_thread, run_validation
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -80,6 +81,48 @@ class FormatsResponse(BaseModel):
     default: str
 
 
+# ─── Thread Estimation Models ─────────────────────────────────────────────
+
+
+class EstimateThreadRequest(BaseModel):
+    """Request body for the thread estimation endpoint."""
+    paths: list[DesignPath] = Field(..., description="List of design paths to estimate")
+    stitch_density: float = Field(default=4.0, ge=1.0, le=20.0,
+                                  description="Stitches per mm (1-20)")
+    stitch_type: str = Field(default="running", pattern="^(running|fill|satin)$",
+                             description="Stitch type for overhead calculation")
+    fabric_thickness_mm: float = Field(default=0.5, ge=0.1, le=10.0,
+                                       description="Fabric thickness in mm")
+    satin_column_width: float = Field(default=0.0, ge=0.0, le=100.0,
+                                      description="Satin column width in mm (0 for non-satin)")
+    underlay_type: str = Field(default="none",
+                               pattern="^(none|edge_run|zigzag|center_run)$",
+                               description="Underlay type")
+
+
+class ColorThreadEstimate(BaseModel):
+    """Thread estimate for a single color."""
+    color: list[int]
+    meters: float
+    yards: float
+    skeins: int
+    stitches: int
+    dmc: dict
+
+
+class ThreadEstimateResponse(BaseModel):
+    """Thread estimation response."""
+    top_thread_m: float
+    bobbin_thread_m: float
+    total_thread_m: float
+    total_thread_yd: float
+    stitch_count: int
+    color_change_count: int
+    fabric_thickness_mm: float
+    parameters: dict
+    per_color: list[ColorThreadEstimate]
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -99,6 +142,61 @@ async def formats():
         formats={code: FormatInfo(**details) for code, details in info["formats"].items()},
         default=info["default"],
     )
+
+
+@router.post("/estimate-thread", response_model=ThreadEstimateResponse)
+async def estimate_thread_endpoint(req: EstimateThreadRequest):
+    """Estimate thread usage for a stitch pattern without generating a file.
+
+    Calculates top thread and bobbin thread consumption in meters and yards,
+    provides per-color breakdown with DMC skein recommendations.
+    """
+    try:
+        paths_data = []
+        for p in req.paths:
+            paths_data.append({
+                "segments": [(seg.x, seg.y, seg.cmd) for seg in p.segments],
+                "color": tuple(p.color),
+                "type": p.stitch_type,
+            })
+
+        pattern = generate_stitches_from_svg_paths(paths_data, req.stitch_density)
+
+        result = estimate_thread(
+            stitches=pattern.stitches,
+            thread_colors=pattern.thread_colors,
+            stitch_type=req.stitch_type,
+            stitch_density=req.stitch_density,
+            fabric_thickness_mm=req.fabric_thickness_mm,
+            satin_column_width=req.satin_column_width,
+            underlay_type=req.underlay_type,
+        )
+
+        per_color_estimates = []
+        for entry in result["per_color"]:
+            per_color_estimates.append(ColorThreadEstimate(
+                color=list(entry["color"]),
+                meters=entry.get("meters", 0),
+                yards=entry.get("yards", 0),
+                skeins=entry.get("skeins", 0),
+                stitches=entry.get("stitches", 0),
+                dmc=entry.get("dmc", {"sku": "Unknown", "name": "Unknown", "rgb": [0, 0, 0]}),
+            ))
+
+        return ThreadEstimateResponse(
+            top_thread_m=result["top_thread_m"],
+            bobbin_thread_m=result["bobbin_thread_m"],
+            total_thread_m=result["total_thread_m"],
+            total_thread_yd=result["total_thread_yd"],
+            stitch_count=result["stitch_count"],
+            color_change_count=result["color_change_count"],
+            fabric_thickness_mm=result["fabric_thickness_mm"],
+            parameters=result["parameters"],
+            per_color=per_color_estimates,
+        )
+    except Exception as e:
+        logger.error(f"Thread estimation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Thread estimation failed: {str(e)}")
 
 
 @router.post("/generate")

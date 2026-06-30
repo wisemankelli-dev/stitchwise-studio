@@ -10,6 +10,7 @@ import {
   generateStitchFile,
   convertStitchFile,
   getStitchFormats,
+  estimateThreadUsage,
 } from "../services/stitchClient";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -90,6 +91,29 @@ export function createStitchRouter(): Router {
       res.send(result.fileBuffer);
     } catch (err) {
       console.error({ event: "stitch_generate_error", error: String(err) });
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  /**
+   * POST /api/stitch/estimate-thread - Estimate thread usage for a design.
+   *
+   * Request body: { paths: DesignPath[], stitchDensity, stitchType, ... }
+   * Response: Top/bobbin thread meters, per-color DMC skein breakdown.
+   */
+  router.post("/stitch/estimate-thread", async (req: Request, res: Response) => {
+    try {
+      const result = await estimateThreadUsage({
+        paths: req.body.paths,
+        stitchDensity: req.body.stitchDensity,
+        stitchType: req.body.stitchType,
+        fabricThicknessMm: req.body.fabricThicknessMm,
+        satinColumnWidth: req.body.satinColumnWidth,
+        underlayType: req.body.underlayType,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error({ event: "thread_estimate_error", error: String(err) });
       res.status(500).json({ error: String(err) });
     }
   });

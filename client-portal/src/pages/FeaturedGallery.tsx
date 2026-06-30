@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from  'react-router-dom';
+import { useNavigate } from 'react-router-dom;
 import {
   Sparkles, Star, Flower2, Crown, CheckCircle2,
-  AlertTriangle, Copy, ArrowRight
+  AlertTriangle, Heart, Clock, Users, Download, ShoppingBag, Flower2, Crown, CheckCircle2, X, AlertTriangle, Copy, ArrowRight, Eye
 } from 'lucide-react';
 import { api, User } from '../services/api';
 
