@@ -40,9 +40,9 @@ model ProjectInquiry {
   updatedAt   DateTime @updatedAt
 }
 
-// ─── Collaborative Workshop Models ─────────────────────────────────────────
+// ─── Solo Designer Project Model ───────────────────────────────────────────
 
-// Represents a design project within the Collaborative Workshop.
+// Represents a personal design project owned by a single user.
 // The `data` field stores SVG paths and pattern state as JSON.
 // visibility values: "PRIVATE" (default, user's own project),
 // "PUBLIC" (anyone can view), "SAMPLE" (curated sample design)
@@ -55,39 +55,7 @@ model Project {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shares        ProjectShare[]
-  collaborators ProjectCollaborator[]
-}
-
-// Tracks sharing links for read-only or read-write access to a project.
-// permission values: "VIEWER", "EDITOR"
-model ProjectShare {
-  id            String   @id @default(uuid())
-  projectId     String
-  token         String   @unique
-  permission    String   @default("VIEWER")
-  isActive      Boolean  @default(true)
-  expiresAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
-
-// Tracks collaborators explicitly invited via email to a project.
-// permission values: "VIEWER", "EDITOR"
-model ProjectCollaborator {
-  id            String   @id @default(uuid())
-  projectId     String
-  email         String
-  permission    String   @default("EDITOR")
-  acceptedAt    DateTime?
-  invitedAt     DateTime @default(now())
-
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@unique([projectId, email])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Marketplace Models ────────────────────────────────────────────────────

@@ -1,22 +1,18 @@
 import { PrismaClient } from "@prisma/client";
-import { v4 as uuid } from "uuid";
 import type {
   Project,
-  ProjectShare,
-  ProjectCollaborator,
   CreateProjectInput,
   UpdateProjectInput,
-  CreateShareLinkInput,
-  InviteCollaboratorInput,
   SampleProject,
 } from "../../domain/workshop";
-import { SharePermission, ProjectVisibility } from "../../domain/workshop";
+import { ProjectVisibility } from "../../domain/workshop";
 import type { UserProfile } from "../../domain/user";
 import { UserTier } from "../../domain/workshop";
 import type { WorkshopRepo } from "./workshopRepo";
 
 /**
  * Prisma-backed implementation of WorkshopRepo.
+ * Solo designer focus — no sharing or collaboration methods.
  */
 export class PrismaWorkshopRepo implements WorkshopRepo {
   constructor(private readonly prisma: PrismaClient) {}
@@ -38,6 +34,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       data: {
         email: input.email,
         name: input.name,
+        passwordHash: "placeholder-dev-hash",
         tier: "HOBBYIST",
       },
     });
@@ -63,7 +60,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { visibility: "SAMPLE" },
       orderBy: { createdAt: "desc" },
     });
-    return records.map((r: { id: string; name: string; data: string; userId: string; visibility: string; createdAt: Date; updatedAt: Date }) => this.toSampleProject(r));
+    return records.map((r) => this.toSampleProject(r));
   }
 
   async cloneProject(projectId: string, newOwnerId: string, newName?: string): Promise<Project> {
@@ -95,7 +92,7 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       where: { userId },
       orderBy: { updatedAt: "desc" },
     });
-    return records.map((r: { id: string; name: string; data: string; userId: string; createdAt: Date; updatedAt: Date }) => this.toProject(r));
+    return records.map((r) => this.toProject(r));
   }
 
   async updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
@@ -111,79 +108,6 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
 
   async deleteProject(id: string): Promise<void> {
     await this.prisma.project.delete({ where: { id } });
-  }
-
-  // ── Sharing ─────────────────────────────────────────────────────────────
-
-  async createShareLink(input: CreateShareLinkInput, token: string): Promise<ProjectShare> {
-    const data: Record<string, unknown> = {
-      projectId: input.projectId,
-      token,
-      permission: input.permission ?? SharePermission.VIEWER,
-    };
-    if (input.expiresInHours) {
-      data.expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000);
-    }
-    const record = await this.prisma.projectShare.create({ data });
-    return this.toShare(record);
-  }
-
-  async getShareByToken(token: string): Promise<ProjectShare | null> {
-    const record = await this.prisma.projectShare.findUnique({ where: { token } });
-    return record ? this.toShare(record) : null;
-  }
-
-  async getSharesForProject(projectId: string): Promise<ProjectShare[]> {
-    const records = await this.prisma.projectShare.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-    });
-    return records.map((r: { id: string; projectId: string; token: string; permission: string; isActive: boolean; expiresAt: Date | null; createdAt: Date; updatedAt: Date }) => this.toShare(r));
-  }
-
-  async deactivateShare(shareId: string): Promise<void> {
-    await this.prisma.projectShare.update({
-      where: { id: shareId },
-      data: { isActive: false },
-    });
-  }
-
-  // ── Collaborators ───────────────────────────────────────────────────────
-
-  async inviteCollaborator(input: InviteCollaboratorInput): Promise<ProjectCollaborator> {
-    const record = await this.prisma.projectCollaborator.create({
-      data: {
-        projectId: input.projectId,
-        email: input.email,
-        permission: input.permission ?? SharePermission.EDITOR,
-      },
-    });
-    return this.toCollaborator(record);
-  }
-
-  async getCollaboratorsForProject(projectId: string): Promise<ProjectCollaborator[]> {
-    const records = await this.prisma.projectCollaborator.findMany({
-      where: { projectId },
-      orderBy: { invitedAt: "desc" },
-    });
-    return records.map((r: { id: string; projectId: string; email: string; permission: string; acceptedAt: Date | null; invitedAt: Date }) => this.toCollaborator(r));
-  }
-
-  async acceptInvitation(id: string): Promise<void> {
-    await this.prisma.projectCollaborator.update({
-      where: { id },
-      data: { acceptedAt: new Date() },
-    });
-  }
-
-  async getCollaboratorByEmail(
-    projectId: string,
-    email: string,
-  ): Promise<ProjectCollaborator | null> {
-    const record = await this.prisma.projectCollaborator.findUnique({
-      where: { projectId_email: { projectId, email } },
-    });
-    return record ? this.toCollaborator(record) : null;
   }
 
   // ── Mappers ─────────────────────────────────────────────────────────────
@@ -235,46 +159,6 @@ export class PrismaWorkshopRepo implements WorkshopRepo {
       visibility: ProjectVisibility.SAMPLE,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
-    };
-  }
-
-  private toShare(r: {
-    id: string;
-    projectId: string;
-    token: string;
-    permission: string;
-    isActive: boolean;
-    expiresAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): ProjectShare {
-    return {
-      id: r.id,
-      projectId: r.projectId,
-      token: r.token,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
-      isActive: r.isActive,
-      expiresAt: r.expiresAt,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    };
-  }
-
-  private toCollaborator(r: {
-    id: string;
-    projectId: string;
-    email: string;
-    permission: string;
-    acceptedAt: Date | null;
-    invitedAt: Date;
-  }): ProjectCollaborator {
-    return {
-      id: r.id,
-      projectId: r.projectId,
-      email: r.email,
-      permission: SharePermission[r.permission as keyof typeof SharePermission],
-      acceptedAt: r.acceptedAt,
-      invitedAt: r.invitedAt,
     };
   }
 }
