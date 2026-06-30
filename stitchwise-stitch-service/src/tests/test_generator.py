@@ -68,8 +68,8 @@ class TestExport:
 
         result = export_pattern(pattern, "dst")
         assert len(result) > 0
-        # DST files are binary and non-empty; verify it's a valid embroidery file
-        assert len(result) > 50  # DST files have a minimum size
+        # DST files start with a specific header (# or L depending on pyembroidery version)
+        assert result[:1] in (b"#", b"L"), f"Expected DST header (# or L), got {result[:1]}"
 
     def test_export_unsupported_format(self):
         pattern = StitchPattern()

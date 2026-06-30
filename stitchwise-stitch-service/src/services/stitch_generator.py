@@ -255,20 +255,18 @@ def _sample_rail(segments: list, num_points: int, scale: float) -> list[tuple[in
     samples: list[tuple[int, int]] = []
     for i in range(num_points):
         target_dist = (i / max(num_points - 1, 1)) * total_length
-        # Snap the last point exactly to avoid floating-point off-by-one
-        if i == num_points - 1:
-            samples.append(points[-1])
-            continue
         # Find the segment containing this distance
         for j in range(1, len(distances)):
             if distances[j] >= target_dist:
                 seg_len = distances[j] - distances[j - 1]
-                if seg_len > 0:
-                    t = (target_dist - distances[j - 1]) / seg_len
+                if seg_len <= 0:
+                    # Degenerate segment — use start point
+                    x = points[j - 1][0]
+                    y = points[j - 1][1]
                 else:
-                    t = 0.0
-                x = int(points[j - 1][0] + t * (points[j][0] - points[j - 1][0]))
-                y = int(points[j - 1][1] + t * (points[j][1] - points[j - 1][1]))
+                    t = (target_dist - distances[j - 1]) / seg_len
+                    x = int(round(points[j - 1][0] + t * (points[j][0] - points[j - 1][0])))
+                    y = int(round(points[j - 1][1] + t * (points[j][1] - points[j - 1][1])))
                 samples.append((x, y))
                 break
         else:
@@ -330,7 +328,6 @@ def _generate_satin_stitches(
                 pattern.add_stitch(right_samples[i][0], right_samples[i][1])
 
     # Generate satin stitches alternating between rails
-    prev_left: tuple[int, int] | None = None
     for i in range(0, num_points, step):
         left = left_samples[i]
         right = right_samples[min(i, len(right_samples) - 1)]
@@ -338,17 +335,17 @@ def _generate_satin_stitches(
         if i == 0:
             # First stitch: start at left rail
             pattern.add_stitch(left[0], left[1])
-            prev_left = left
-        elif i % (step * 2) < step:
-            # Stitch from left to right
+        elif (i // step) % 2 == 1:
+            # Odd step index: stitch from left to right
             pattern.add_stitch(right[0], right[1])
         else:
-            # Stitch from right to left
+            # Even step index (but not 0): stitch from right to left
             pattern.add_stitch(left[0], left[1])
-            prev_left = left
 
     # Ensure we end on the opposite rail for a clean edge
-    if num_points > 1 and (num_points // step) % 2 == 1:
+    # If the last non-zero step index was even (finished on left), add a final right stitch
+    last_step_index = (num_points - 1) // step
+    if last_step_index > 0 and last_step_index % 2 == 0:
         pattern.add_stitch(right_samples[-1][0], right_samples[-1][1])
 
 
@@ -379,7 +376,7 @@ def export_pattern(
         )
 
     if output_path:
-        pyembroidery.write(pyemb_pattern, output_path, {})
+        pyembroidery.write(pyemb_pattern, output_path)
         with open(output_path, "rb") as f:
             return f.read()
     else:
@@ -393,7 +390,7 @@ def export_pattern(
             tmp_path = tmp.name
 
         try:
-            pyembroidery.write(pyemb_pattern, tmp_path, {})
+            pyembroidery.write(pyemb_pattern, tmp_path)
             with open(tmp_path, "rb") as f:
                 return f.read()
         finally:
@@ -418,7 +415,7 @@ def convert_file(
     pattern = pyembroidery.read(input_path)
 
     if output_path:
-        pyembroidery.write(pattern, output_path, {})
+        pyembroidery.write(pattern, output_path)
         with open(output_path, "rb") as f:
             return f.read()
     else:
@@ -428,7 +425,7 @@ def convert_file(
             tmp_path = tmp.name
 
         try:
-            pyembroidery.write(pattern, tmp_path, {})
+            pyembroidery.write(pattern, tmp_path)
             with open(tmp_path, "rb") as f:
                 return f.read()
         finally:
