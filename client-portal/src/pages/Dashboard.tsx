@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
+import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
 import { Project, MarketplaceListing, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
@@ -42,52 +42,6 @@ export const Dashboard: React.FC = () => {
     fetchData();
     fetchMarketplace();
   }, []);
-
-  const sharedWithMe: Project[] = [
-    {
-      id: 'vintage-floral',
-      name: 'Vintage Floral Border',
-      owner: 'Elena Crafter',
-      avatar: '🌸',
-      role: 'collaborator',
-      lastUpdated: '2 hours ago',
-      gridSize: '32x32 Grid',
-      collaboratorsCount: 4,
-      activeSessionId: 'floral-workshop',
-      complexity: 'Masterpiece',
-      previewColor: 'from-blush-400 to-blush-300',
-    },
-    {
-      id: 'golden-retriever',
-      name: 'Golden Retriever Portrait',
-      owner: 'Dave Digitizer',
-      avatar: '🐕',
-      role: 'collaborator',
-      lastUpdated: 'Yesterday',
-      gridSize: '16x16 Grid',
-      collaboratorsCount: 2,
-      activeSessionId: 'retriever-workshop',
-      complexity: 'Masterpiece',
-      previewColor: 'from-blush-300 to-amber-200',
-    },
-    {
-      id: 'cyberpunk-dragon',
-      name: 'Cyberpunk Dragon Patch',
-      owner: 'StitchMaster Pro',
-      avatar: '🐉',
-      role: 'collaborator',
-      lastUpdated: '3 days ago',
-      gridSize: '48x48 Grid',
-      collaboratorsCount: 5,
-      activeSessionId: 'dragon-workshop',
-      complexity: 'Pro',
-      previewColor: 'from-blush-500 to-rose-300',
-    }
-  ];
-
-  const joinSession = (sessionId: string) => {
-    navigate(`/designer?session=${sessionId}`);
-  };
 
   if (isLoading) {
     return (
@@ -132,68 +86,6 @@ export const Dashboard: React.FC = () => {
           {/* Main Content Area - Left 8 columns */}
           <div className="lg:col-span-8 space-y-12">
             
-            {/* Shared With Me Section */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Users className="h-5 w-5 text-blush-500" />
-                  Active Designs
-                </h3>
-                <span className="inline-flex items-center rounded-full bg-blush-50 px-2.5 py-0.5 text-xs font-medium text-blush-700">
-                  {sharedWithMe.length} design projects
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {sharedWithMe.map((project) => (
-                  <div 
-                    key={project.id} 
-                    className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
-                  >
-                    <div className={`h-2.5 bg-gradient-to-r ${project.previewColor}`} />
-                    
-                    <div className="p-6 flex-grow flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blush-50 text-blush-700">
-                            <Sparkles className="h-3 w-3" />
-                            {project.complexity}
-                          </span>
-                          <span className="text-xs text-blush-400 font-medium flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {project.lastUpdated}
-                          </span>
-                        </div>
-
-                        <Link to={`/projects/${project.id}`} className="hover:text-blush-600 transition-colors">
-                          <h4 className="text-base font-bold text-slate-800 line-clamp-1 mb-1">{project.name}</h4>
-                        </Link>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
-                          <span className="text-base" title="Designer Avatar">{project.avatar}</span>
-                          <span>Designed by <strong className="text-slate-700 font-semibold">{project.owner}</strong></span>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Users className="h-4 w-4 text-blush-400" />
-                          <span>{project.collaboratorsCount} active</span>
-                        </div>
-                        
-                        <button
-                          onClick={() => joinSession(project.activeSessionId)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blush-500 hover:bg-blush-600 transition-colors shadow-sm hover:shadow-blush"
-                        >
-                          Open Workspace
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* My Personal Projects Section */}
             <div>
               <div className="flex items-center justify-between mb-6">
@@ -237,17 +129,18 @@ export const Dashboard: React.FC = () => {
 
                       <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Users className="h-4 w-4 text-blush-400" />
-                          <span>{project.collaboratorsCount} collaborators</span>
+                          <span className="inline-flex items-center rounded-full bg-blush-50 px-2 py-0.5 text-[10px] font-medium text-blush-700">
+                            {project.gridSize}
+                          </span>
                         </div>
                         
-                        <button
-                          onClick={() => joinSession(project.activeSessionId)}
+                        <Link
+                          to={`/projects/${project.id}`}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-colors"
                         >
                           Open Editor
                           <ArrowRight className="h-3.5 w-3.5 text-blush-500" />
-                        </button>
+                        </Link>
                       </div>
                     </div>
                   </div>
