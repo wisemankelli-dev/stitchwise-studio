@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from  'react-router-dom';
+import { useNavigate } from 'react-router-dom;
 import {
-  Sparkles, Heart, Star, Clock, Users, Download,
-  ShoppingBag, Flower2, Crown, CheckCircle2, X,
-  AlertTriangle, Copy, ArrowRight, Eye
+  Sparkles, Star, Flower2, Crown, CheckCircle2,
+  AlertTriangle, Heart, Clock, Users, Download, ShoppingBag, Flower2, Crown, CheckCircle2, X, AlertTriangle, Copy, ArrowRight, Eye
 } from 'lucide-react';
 import { api, User } from '../services/api';
 
@@ -21,7 +21,6 @@ interface GalleryDesign {
 }
 
 export const FeaturedGallery: React.FC = () => {
-  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [cloneStatus, setCloneStatus] = useState<string | null>(null);
 
@@ -81,7 +80,7 @@ export const FeaturedGallery: React.FC = () => {
                   <AlertTriangle className="h-4 w-4 text-amber-500" />
                   <span className="text-blush-600">
                     <strong>Hobbyist</strong> —{' '}
-                    <Link to="/pricing" className="text-brand-600 hover:text-brand-500 underline font-bold">
+                    <Link to="/pricing" className="text-blush-600 hover:text-blush-700 underline font-bold">
                       Upgrade to Pro
                     </Link>{' '}
                     to clone designs

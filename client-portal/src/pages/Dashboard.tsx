@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LayoutDashboard, Users, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
+import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star, Flower2 } from 'lucide-react';
 import { Project, MarketplaceListing, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
@@ -43,82 +43,36 @@ export const Dashboard: React.FC = () => {
     fetchMarketplace();
   }, []);
 
-  const sharedWithMe: Project[] = [
-    {
-      id: 'vintage-floral',
-      name: 'Vintage Floral Border',
-      owner: 'Elena Crafter',
-      avatar: '🌸',
-      role: 'collaborator',
-      lastUpdated: '2 hours ago',
-      gridSize: '32x32 Grid',
-      collaboratorsCount: 4,
-      activeSessionId: 'floral-workshop',
-      complexity: 'Masterpiece',
-      previewColor: 'from-violet-500 to-fuchsia-400',
-    },
-    {
-      id: 'golden-retriever',
-      name: 'Golden Retriever Portrait',
-      owner: 'Dave Digitizer',
-      avatar: '🐕',
-      role: 'collaborator',
-      lastUpdated: 'Yesterday',
-      gridSize: '16x16 Grid',
-      collaboratorsCount: 2,
-      activeSessionId: 'retriever-workshop',
-      complexity: 'Masterpiece',
-      previewColor: 'from-amber-600 to-yellow-400',
-    },
-    {
-      id: 'cyberpunk-dragon',
-      name: 'Cyberpunk Dragon Patch',
-      owner: 'StitchMaster Pro',
-      avatar: '🐉',
-      role: 'collaborator',
-      lastUpdated: '3 days ago',
-      gridSize: '48x48 Grid',
-      collaboratorsCount: 5,
-      activeSessionId: 'dragon-workshop',
-      complexity: 'Pro',
-      previewColor: 'from-pink-600 to-rose-400',
-    }
-  ];
-
-  const joinSession = (sessionId: string) => {
-    navigate(`/designer?session=${sessionId}`);
-  };
-
   if (isLoading) {
     return (
-      <div className="bg-slate-50 min-h-screen py-12 px-6 lg:px-8 flex items-center justify-center">
+      <div className="bg-floral-soft min-h-screen py-12 px-6 lg:px-8 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="h-12 w-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-500">Loading your crafting canvas...</p>
+          <div className="h-12 w-12 border-4 border-blush-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-blush-600">Loading your crafting canvas...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-50 min-h-screen py-12 px-6 lg:px-8">
+    <div className="bg-floral-soft min-h-screen py-12 px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         
         {/* Dashboard Header */}
-        <div className="md:flex md:items-center md:justify-between mb-10 pb-6 border-b border-slate-200">
+        <div className="md:flex md:items-center md:justify-between mb-10 pb-6 border-b border-blush-100">
           <div className="flex-1 min-w-0">
-            <h2 className="text-2xl font-bold leading-7 text-slate-900 sm:text-3xl sm:truncate flex items-center gap-2">
-              <LayoutDashboard className="h-7 w-7 text-brand-500" />
+            <h2 className="text-2xl font-bold leading-7 text-slate-800 sm:text-3xl sm:truncate flex items-center gap-2">
+              <LayoutDashboard className="h-7 w-7 text-blush-500" />
               Crafter Dashboard
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Access your digital patterns, track live collaboration, and view designs shared with you.
+            <p className="mt-1 text-sm text-blush-600/70">
+              Access your digital patterns, track your personal designs.
             </p>
           </div>
           <div className="mt-4 flex md:mt-0 md:ml-4">
             <button
               onClick={() => navigate('/designer')}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-brand-600 hover:bg-brand-500 transition-colors focus:outline-none"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-blush-500 hover:bg-blush-600 transition-colors focus:outline-none hover:shadow-blush"
             >
               <Sparkles className="h-4 w-4 mr-2" />
               New AI Pattern
@@ -132,76 +86,14 @@ export const Dashboard: React.FC = () => {
           {/* Main Content Area - Left 8 columns */}
           <div className="lg:col-span-8 space-y-12">
             
-            {/* Shared With Me Section */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Users className="h-5 w-5 text-brand-500" />
-                  Shared with Me
-                </h3>
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
-                  {sharedWithMe.length} workshop projects
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {sharedWithMe.map((project) => (
-                  <div 
-                    key={project.id} 
-                    className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 flex flex-col h-full"
-                  >
-                    <div className={`h-2.5 bg-gradient-to-r ${project.previewColor}`} />
-                    
-                    <div className="p-6 flex-grow flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-700">
-                            <Sparkles className="h-3 w-3" />
-                            {project.complexity}
-                          </span>
-                          <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {project.lastUpdated}
-                          </span>
-                        </div>
-
-                        <Link to={`/projects/${project.id}`} className="hover:text-brand-600 transition-colors">
-                          <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
-                        </Link>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
-                          <span className="text-base" title="Designer Avatar">{project.avatar}</span>
-                          <span>Shared by <strong className="text-slate-700 font-semibold">{project.owner}</strong></span>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Users className="h-4 w-4 text-slate-400" />
-                          <span>{project.collaboratorsCount} active</span>
-                        </div>
-                        
-                        <button
-                          onClick={() => joinSession(project.activeSessionId)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 transition-colors shadow-sm"
-                        >
-                          Join Workshop
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* My Personal Projects Section */}
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <FolderHeart className="h-5 w-5 text-brand-500" />
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <FolderHeart className="h-5 w-5 text-blush-500" />
                   My Patterns
                 </h3>
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                <span className="inline-flex items-center rounded-full bg-blush-50 px-2.5 py-0.5 text-xs font-medium text-blush-700">
                   {projects.length} created
                 </span>
               </div>
@@ -210,24 +102,24 @@ export const Dashboard: React.FC = () => {
                 {projects.map((project) => (
                   <div 
                     key={project.id} 
-                    className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 flex flex-col h-full"
+                    className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
                   >
                     <div className={`h-2.5 bg-gradient-to-r ${project.previewColor}`} />
                     
                     <div className="p-6 flex-grow flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blush-50 text-blush-700">
                             {project.gridSize}
                           </span>
-                          <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                          <span className="text-xs text-blush-400 font-medium flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             {project.lastUpdated}
                           </span>
                         </div>
 
-                        <Link to={`/projects/${project.id}`} className="hover:text-brand-600 transition-colors">
-                          <h4 className="text-base font-bold text-slate-900 line-clamp-1 mb-1">{project.name}</h4>
+                        <Link to={`/projects/${project.id}`} className="hover:text-blush-600 transition-colors">
+                          <h4 className="text-base font-bold text-slate-800 line-clamp-1 mb-1">{project.name}</h4>
                         </Link>
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
                           <span className="text-base">👑</span>
@@ -235,19 +127,20 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
+                      <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Users className="h-4 w-4 text-slate-400" />
-                          <span>{project.collaboratorsCount} collaborators</span>
+                          <span className="inline-flex items-center rounded-full bg-blush-50 px-2 py-0.5 text-[10px] font-medium text-blush-700">
+                            {project.gridSize}
+                          </span>
                         </div>
                         
-                        <button
-                          onClick={() => joinSession(project.activeSessionId)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors"
+                        <Link
+                          to={`/projects/${project.id}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-colors"
                         >
                           Open Editor
-                          <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
-                        </button>
+                          <ArrowRight className="h-3.5 w-3.5 text-blush-500" />
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -258,58 +151,58 @@ export const Dashboard: React.FC = () => {
             {/* Marketplace Section */}
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="h-5 w-5 text-brand-500" />
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <ShoppingBag className="h-5 w-5 text-blush-500" />
                   Marketplace
                 </h3>
-                <Link to="/pricing" className="text-xs font-semibold text-brand-600 hover:text-brand-500 transition-colors flex items-center gap-1">
+                <Link to="/pricing" className="text-xs font-semibold text-blush-600 hover:text-blush-700 transition-colors flex items-center gap-1">
                   View All <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
 
               {marketplaceLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="h-6 w-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="h-6 w-6 border-2 border-blush-500 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : marketplaceListings.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-                  <ShoppingBag className="h-8 w-8 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No marketplace listings available yet.</p>
+                <div className="bg-white rounded-2xl border border-blush-100 p-8 text-center">
+                  <ShoppingBag className="h-8 w-8 text-blush-300 mx-auto mb-3" />
+                  <p className="text-sm text-blush-600/70">No marketplace listings available yet.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {marketplaceListings.map((listing) => (
                     <div 
                       key={listing.id} 
-                      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 flex flex-col h-full"
+                      className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
                     >
-                      <div className="h-2.5 bg-gradient-to-r from-brand-400 to-rose-300" />
+                      <div className="h-2.5 bg-gradient-to-r from-blush-400 to-blush-300" />
                       <div className="p-5 flex-grow flex flex-col justify-between">
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
-                              <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blush-50 text-blush-700">
+                              <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
                               {listing.rating}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-medium">
+                            <span className="text-[10px] text-blush-400 font-medium">
                               {listing.salesCount} sold
                             </span>
                           </div>
-                          <h4 className="text-sm font-bold text-slate-900 line-clamp-1 mb-1">{listing.title}</h4>
+                          <h4 className="text-sm font-bold text-slate-800 line-clamp-1 mb-1">{listing.title}</h4>
                           <p className="text-xs text-slate-500 line-clamp-2 mb-2">{listing.description}</p>
                           <div className="flex flex-wrap gap-1 mb-2">
                             {listing.tags.slice(0, 2).map((tag) => (
-                              <span key={tag} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                              <span key={tag} className="inline-flex items-center rounded-full bg-blush-50 px-2 py-0.5 text-[10px] font-medium text-blush-700">
                                 {tag}
                               </span>
                             ))}
                           </div>
                         </div>
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                        <div className="flex items-center justify-between pt-3 border-t border-blush-50">
                           <div className="flex items-baseline gap-1">
-                            <span className="text-base font-extrabold text-brand-700">${listing.price.toFixed(2)}</span>
+                            <span className="text-base font-extrabold text-blush-700">${listing.price.toFixed(2)}</span>
                           </div>
-                          <span className="text-[10px] text-slate-400">by {listing.designerName}</span>
+                          <span className="text-[10px] text-blush-400">by {listing.designerName}</span>
                         </div>
                       </div>
                     </div>
@@ -324,11 +217,11 @@ export const Dashboard: React.FC = () => {
           <div className="lg:col-span-4 space-y-6">
             
             {/* Active Subscription Tier Card */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 h-24 w-24 bg-gradient-to-bl from-brand-500/10 to-transparent rounded-bl-full pointer-events-none" />
+            <div className="bg-white rounded-3xl p-6 border border-blush-100 shadow-petal relative overflow-hidden">
+              <div className="absolute top-0 right-0 h-24 w-24 bg-gradient-to-bl from-blush-100 to-transparent rounded-bl-full pointer-events-none" />
               
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 mb-4">
-                <CreditCard className="h-4 w-4 text-brand-500" />
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-4">
+                <CreditCard className="h-4 w-4 text-blush-500" />
                 Subscription Plan
               </h3>
 
@@ -336,25 +229,25 @@ export const Dashboard: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-500">Current Tier</span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-extrabold text-slate-700 ring-1 ring-inset ring-slate-600/10">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blush-50 px-2.5 py-0.5 text-xs font-extrabold text-blush-700 ring-1 ring-inset ring-blush-200">
                       Hobbyist (Free)
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     You are currently using our basic free tools, limited to a 16x16 grid canvas, standard DMC color palettes, and PDF hand embroidery exports.
                   </p>
-                  <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100/50">
-                    <h4 className="text-xs font-bold text-amber-800 flex items-center gap-1">
-                      <Sparkles className="h-3.5 w-3.5 text-amber-600 animate-pulse" />
+                  <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100/50">
+                    <h4 className="text-xs font-bold text-rose-800 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-rose-500 animate-pulse" />
                       Unlock AI Pattern Digitizer
                     </h4>
-                    <p className="text-[10px] text-amber-700 leading-relaxed mt-1">
+                    <p className="text-[10px] text-rose-700 leading-relaxed mt-1">
                       Upgrade to **Pro Crafter** to access unlimited AI generations, thread usage estimation, and machine files (.DST, .PES, .EXP) export!
                     </p>
                   </div>
                   <button
                     onClick={() => navigate('/pricing')}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 shadow-sm hover:scale-[1.02] active:scale-95 transition-all"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-blush-500 hover:bg-blush-600 shadow-sm hover:shadow-blush hover:scale-[1.02] active:scale-95 transition-all"
                   >
                     View Plans & Upgrade
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -370,7 +263,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and live collaborative workshops!
+                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and solo designer workspaces!
                   </p>
                   <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100/50 flex items-center gap-3">
                     <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -381,7 +274,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                   <button
                     onClick={() => navigate('/pricing')}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-all active:scale-95"
                   >
                     Manage Subscription
                   </button>
@@ -400,7 +293,7 @@ export const Dashboard: React.FC = () => {
                   </p>
                   <button
                     onClick={() => navigate('/pricing')}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all active:scale-95"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-all active:scale-95"
                   >
                     Manage Subscription
                   </button>
@@ -408,55 +301,55 @@ export const Dashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Quick Stats / Info Widget */}
-            <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-sm relative overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.15),transparent)] pointer-events-none" />
+            {/* Quick Stats / Info Widget - Light pink version */}
+            <div className="bg-gradient-to-br from-white via-blush-50 to-blush-100 rounded-3xl p-6 shadow-petal border border-blush-100 relative overflow-hidden">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(244,114,182,0.08),transparent)] pointer-events-none" />
               
-              <h3 className="text-lg font-extrabold flex items-center gap-2 mb-4">
-                <Heart className="h-5 w-5 text-brand-500 animate-pulse" />
-                Workshop Hub
+              <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2 mb-4">
+                <Heart className="h-5 w-5 text-blush-500 animate-pulse" />
+                My Studio
               </h3>
               
-              <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                Collaborative workshops enable designers and hobbyists to co-create beautiful embroidery patterns in real-time. Invite others to fine-tune stitch layouts, thread selections, and layout styles together.
+              <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                Design and refine your personal embroidery patterns with precision tools. Fine-tune every stitch layout, thread selection, and style in your private workspace.
               </p>
 
               <div className="space-y-3 mt-6">
-                <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5">
-                  <div className="h-8 w-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-sm">
+                <div className="flex items-center gap-3 p-3 bg-white/70 rounded-xl border border-blush-100">
+                  <div className="h-8 w-8 rounded-lg bg-blush-100 text-blush-500 flex items-center justify-center font-bold text-sm">
                     1
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-white">Generate Share Link</h4>
-                    <p className="text-[10px] text-slate-400">Click share inside the pattern designer tool</p>
+                    <h4 className="text-xs font-bold text-slate-700">Create New Pattern</h4>
+                    <p className="text-[10px] text-slate-500">Design custom motifs from images or scratch</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5">
-                  <div className="h-8 w-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-sm">
+                <div className="flex items-center gap-3 p-3 bg-white/70 rounded-xl border border-blush-100">
+                  <div className="h-8 w-8 rounded-lg bg-blush-100 text-blush-500 flex items-center justify-center font-bold text-sm">
                     2
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-white">Invite Collaborators</h4>
-                    <p className="text-[10px] text-slate-400">Invite hobbyists or other master stitchers</p>
+                    <h4 className="text-xs font-bold text-slate-700">Drag & Drop Layers</h4>
+                    <p className="text-[10px] text-slate-500">Organize fabric pieces on your digital canvas</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5">
-                  <div className="h-8 w-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-sm">
+                <div className="flex items-center gap-3 p-3 bg-white/70 rounded-xl border border-blush-100">
+                  <div className="h-8 w-8 rounded-lg bg-blush-100 text-blush-500 flex items-center justify-center font-bold text-sm">
                     3
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-white">Co-Create Live</h4>
-                    <p className="text-[10px] text-slate-400">Witness grid updates in real-time as they stitch</p>
+                    <h4 className="text-xs font-bold text-slate-700">Export & Share</h4>
+                    <p className="text-[10px] text-slate-500">Download your finished design as a pattern file</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Quality Standard Banner */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 mb-2">
+            <div className="bg-white rounded-3xl p-6 border border-blush-100 shadow-petal">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-2">
                 <ShieldCheck className="h-5 w-5 text-emerald-600" />
                 StitchWise Certified
               </h3>

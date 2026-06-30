@@ -46,9 +46,9 @@ export const Login: React.FC = () => {
     <div className="min-h-[80vh] flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-slate-50">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="flex items-center gap-2 p-3 bg-slate-900 rounded-2xl shadow-lg border border-slate-800">
-            <Scissors className="h-8 w-8 text-brand-500 -rotate-45" />
-            <span className="font-extrabold tracking-tight text-white text-xl">StitchWise <span className="text-brand-500">Studio</span></span>
+          <div className="flex items-center gap-2 p-3 bg-white rounded-2xl shadow-lg border border-blush-100">
+            <Scissors className="h-8 w-8 text-blush-500 -rotate-45" />
+            <span className="font-extrabold tracking-tight text-slate-800 text-xl">StitchWise <span className="text-blush-500">Studio</span></span>
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -56,7 +56,7 @@ export const Login: React.FC = () => {
         </h2>
         <p className="mt-2 text-center text-sm text-slate-500">
           Or{' '}
-          <Link to="/signup" className="font-semibold text-brand-600 hover:text-brand-500 transition-colors">
+          <Link to="/signup" className="font-semibold text-blush-600 hover:text-blush-500 transition-colors">
             create a new crafting workspace
           </Link>
         </p>
@@ -92,7 +92,7 @@ export const Login: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="e.g. elena@stitchwise.studio"
                 />
               </div>
@@ -114,7 +114,7 @@ export const Login: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="Enter your password"
                 />
               </div>
@@ -126,7 +126,7 @@ export const Login: React.FC = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
+                  className="h-4 w-4 text-blush-600 focus:ring-blush-500 border-slate-300 rounded"
                   defaultChecked
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-xs text-slate-500">
@@ -142,7 +142,7 @@ export const Login: React.FC = () => {
                     setEmail('elena@stitchwise.studio');
                     setPassword('password123');
                   }}
-                  className="font-medium text-brand-600 hover:text-brand-500 hover:underline"
+                  className="font-medium text-blush-600 hover:text-blush-500 hover:underline"
                 >
                   Autofill Elena Demo
                 </button>
@@ -153,7 +153,7 @@ export const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center items-center gap-2 px-5 py-3 border border-transparent rounded-xl text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 shadow-md hover:shadow-lg transition-all focus:outline-none disabled:bg-slate-300 disabled:shadow-none"
+                className="w-full flex justify-center items-center gap-2 px-5 py-3 border border-transparent rounded-xl text-sm font-bold text-white bg-blush-500 hover:bg-blush-600 shadow-md hover:shadow-lg transition-all focus:outline-none disabled:bg-slate-300 disabled:shadow-none"
               >
                 {isLoading ? (
                   <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -168,7 +168,7 @@ export const Login: React.FC = () => {
 
           <div className="mt-6 border-t border-slate-100 pt-6">
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-start gap-2.5">
-              <Sparkles className="h-5 w-5 text-brand-500 shrink-0 mt-0.5" />
+              <Sparkles className="h-5 w-5 text-blush-500 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-500 leading-relaxed">
                 <span className="font-semibold text-slate-700 block">StitchWise Cloud Security</span>
                 Authorized credentials unlock collaborative workshops, AI-powered pattern generation, and secure DMC color matching databases.
