@@ -4,3 +4,4 @@ export * from "./projectInquiry";
 export * from "./workshop";
 export * from "./user";
 export * from "./showcase";
+export * from "./fabricEstimator";
