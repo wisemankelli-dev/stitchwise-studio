@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Move, RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
+  RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Flower2, Sparkles, Heart, ArrowLeft
+  ArrowLeft
 } from 'lucide-react';
 
 interface FabricLayer {

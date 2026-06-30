@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
-  Sparkles, Heart, Star, Clock, Users, Download,
-  ShoppingBag, Flower2, Crown, CheckCircle2, X,
-  AlertTriangle, Copy, ArrowRight, Eye
+  Sparkles, Star, Flower2, Crown, CheckCircle2,
+  AlertTriangle, Copy, ArrowRight
 } from 'lucide-react';
 import { api, User } from '../services/api';
 
@@ -21,7 +20,6 @@ interface GalleryDesign {
 }
 
 export const FeaturedGallery: React.FC = () => {
-  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [cloneStatus, setCloneStatus] = useState<string | null>(null);
 

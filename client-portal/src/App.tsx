@@ -8,7 +8,7 @@ import { ProjectDetail } from './pages/ProjectDetail';
 import { FloralThemeShowcase } from './pages/FloralThemeShowcase';
 import { FeaturedGallery } from './pages/FeaturedGallery';
 import { CollageStudio } from './pages/CollageStudio';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image } from 'lucide-react';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Image } from 'lucide-react';
 
 /**
  * Main application component setting up routing, layout, and global styling.
