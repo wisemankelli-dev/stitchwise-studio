@@ -4,3 +4,5 @@ export * from "./workshopRepo";
 export * from "./prismaWorkshopRepo";
 export * from "./marketplaceRepo";
 export * from "./prismaMarketplaceRepo";
+export * from "./collageRepo";
+export * from "./prismaCollageRepo";
