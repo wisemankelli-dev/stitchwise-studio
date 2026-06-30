@@ -107,7 +107,7 @@ export const Pricing: React.FC = () => {
         'Developer API & Affiliate integration access',
         'Dedicated customer success manager'
       ],
-      className: 'ring-2 ring-slate-800',
+      className: 'ring-2 ring-blush-200',
       ctaText: 'Upgrade to Studio',
       highlighted: false
     }
@@ -162,33 +162,33 @@ export const Pricing: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-50 min-h-screen py-16 px-6 lg:px-8">
+    <div className="bg-floral-soft min-h-screen py-16 px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         
         {/* Title / Hero Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-brand-50 text-brand-700 mb-4 animate-pulse">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blush-50 text-blush-700 mb-4 animate-pulse">
             <Scissors className="h-3 w-3 -rotate-45" />
             Premium Craft Subscription
           </span>
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-800 sm:text-5xl">
             Simple, Transparent Pricing
           </h1>
-          <p className="mt-4 text-base text-slate-500 leading-relaxed">
+          <p className="mt-4 text-base text-blush-600/80 leading-relaxed">
             Every crafter's dream is to bring their thoughts to life. Select the tier that matches your passion, from standard free grids to AI digitizers and machine format exports.
           </p>
 
           {/* Monthly / Annual Toggle Switch */}
           <div className="mt-10 flex justify-center items-center gap-4">
-            <span className={`text-sm font-semibold transition-colors ${billingPeriod === 'monthly' ? 'text-slate-900' : 'text-slate-400'}`}>
+            <span className={`text-sm font-semibold transition-colors ${billingPeriod === 'monthly' ? 'text-slate-800' : 'text-blush-400'}`}>
               Monthly
             </span>
             <button
               onClick={() => setPricePeriod(billingPeriod === 'monthly' ? 'annually' : 'monthly')}
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-200 hover:bg-slate-300 transition-colors duration-200 ease-in-out focus:outline-none"
+              className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blush-200 hover:bg-blush-300 transition-colors duration-200 ease-in-out focus:outline-none"
             >
               <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-brand-600 shadow ring-0 transition duration-200 ease-in-out ${billingPeriod === 'annually' ? 'translate-x-5 bg-brand-500' : 'translate-x-0'}`}
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-blush-500 shadow ring-0 transition duration-200 ease-in-out ${billingPeriod === 'annually' ? 'translate-x-5 bg-blush-600' : 'translate-x-0'}`}
               />
             </button>
             <span className="text-sm text-slate-500 font-semibold flex items-center gap-1.5">
@@ -201,14 +201,14 @@ export const Pricing: React.FC = () => {
 
           {/* Manage Subscription / Customer Portal Link */}
           {currentTier !== 'Hobbyist' && (
-            <div className="mt-8 inline-flex items-center gap-3 bg-brand-50/60 border border-brand-100 rounded-2xl px-5 py-3 max-w-md mx-auto text-left shadow-sm">
-              <ShieldCheck className="h-5 w-5 text-brand-600 shrink-0" />
+            <div className="mt-8 inline-flex items-center gap-3 bg-blush-50/60 border border-blush-100 rounded-2xl px-5 py-3 max-w-md mx-auto text-left shadow-sm">
+              <ShieldCheck className="h-5 w-5 text-blush-500 shrink-0" />
               <div className="flex-grow">
-                <p className="text-xs text-brand-900 font-semibold">Active Plan: <span className="font-extrabold">{currentTier}</span></p>
+                <p className="text-xs text-blush-800 font-semibold">Active Plan: <span className="font-extrabold">{currentTier}</span></p>
                 <button
                   onClick={handleManageSubscription}
                   disabled={isRedirecting}
-                  className="text-xs text-brand-700 font-bold underline hover:text-brand-600 transition-colors mt-0.5 inline-flex items-center gap-1"
+                  className="text-xs text-blush-700 font-bold underline hover:text-blush-600 transition-colors mt-0.5 inline-flex items-center gap-1"
                 >
                   Manage Subscription in Stripe Customer Portal &rarr;
                 </button>
@@ -218,14 +218,14 @@ export const Pricing: React.FC = () => {
 
           {/* Dynamic Loading, Success, and Error States */}
           {isRedirecting && (
-            <div className="mt-6 text-xs font-semibold text-brand-600 flex items-center justify-center gap-2 animate-pulse">
-              <div className="h-4 w-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            <div className="mt-6 text-xs font-semibold text-blush-600 flex items-center justify-center gap-2 animate-pulse">
+              <div className="h-4 w-4 border-2 border-blush-500 border-t-transparent rounded-full animate-spin" />
               Redirecting to Stripe Payment Gateway...
             </div>
           )}
 
           {errorMsg && (
-            <div className="mt-6 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2 max-w-md mx-auto">
+            <div className="mt-6 text-xs font-bold text-blush-700 bg-blush-50 border border-blush-100 rounded-xl px-4 py-2 max-w-md mx-auto">
               ✕ {errorMsg}
             </div>
           )}
@@ -246,21 +246,21 @@ export const Pricing: React.FC = () => {
             return (
               <div
                 key={plan.id}
-                className={`bg-white rounded-3xl p-8 border flex flex-col justify-between transition-all duration-200 relative ${plan.highlighted ? 'border-brand-500 shadow-lg scale-105 ring-2 ring-brand-500/20' : 'border-slate-200 shadow-sm hover:shadow-md'}`}
+                className={`bg-white rounded-3xl p-8 border flex flex-col justify-between transition-all duration-200 relative ${plan.highlighted ? 'border-blush-500 shadow-lg scale-105 ring-2 ring-blush-100' : 'border-blush-100 shadow-sm hover:shadow-blush'}`}
               >
                 {plan.badge && (
-                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 inline-flex items-center rounded-full bg-brand-500 px-4 py-1 text-xs font-bold text-white shadow-sm tracking-wide">
+                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 inline-flex items-center rounded-full bg-blush-500 px-4 py-1 text-xs font-bold text-white shadow-sm tracking-wide">
                     {plan.badge}
                   </span>
                 )}
 
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-900">{plan.name}</h3>
+                    <h3 className="text-xl font-bold text-slate-800">{plan.name}</h3>
                     <p className="mt-2 text-xs text-slate-500 min-h-[32px] leading-relaxed">{plan.description}</p>
                   </div>
 
-                  <div className="flex items-baseline text-slate-900 border-b border-slate-100 pb-6">
+                  <div className="flex items-baseline text-slate-800 border-b border-blush-100 pb-6">
                     <span className="text-5xl font-extrabold tracking-tight">${price}</span>
                     <span className="ml-1 text-sm font-semibold text-slate-500">
                       {plan.priceMonthly === 0 ? '' : billingPeriod === 'monthly' ? '/mo' : '/mo, billed annually'}
@@ -282,7 +282,7 @@ export const Pricing: React.FC = () => {
                   <button
                     onClick={() => handleUpgrade(plan.id, plan.name)}
                     disabled={isRedirecting || (isCurrentPlan && plan.priceMonthly === 0)}
-                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 ${isRedirecting ? 'opacity-50 cursor-not-allowed' : ''} ${isCurrentPlan ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-default' : plan.highlighted ? 'bg-brand-600 hover:bg-brand-500 text-white hover:scale-[1.02]' : 'bg-slate-900 hover:bg-slate-800 text-white'}`}
+                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 ${isRedirecting ? 'opacity-50 cursor-not-allowed' : ''} ${isCurrentPlan ? 'bg-blush-50 text-blush-400 border border-blush-200 cursor-default' : plan.highlighted ? 'bg-blush-500 hover:bg-blush-600 text-white hover:scale-[1.02] hover:shadow-blush' : 'bg-blush-100 hover:bg-blush-200 text-blush-700'}`}
                   >
                     {isCurrentPlan ? 'Active Plan' : plan.ctaText}
                     {!isCurrentPlan && <ArrowRight className="h-3.5 w-3.5" />}
@@ -294,59 +294,59 @@ export const Pricing: React.FC = () => {
         </div>
 
         {/* Detailed Comparison Table */}
-        <div className="mb-24 bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="p-6 bg-slate-900 text-white">
+        <div className="mb-24 bg-white rounded-3xl border border-blush-100 overflow-hidden shadow-sm">
+          <div className="p-6 bg-gradient-to-r from-blush-50 to-white text-slate-800">
             <h3 className="text-lg font-bold flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-brand-400" />
+              <ShieldCheck className="h-5 w-5 text-blush-500" />
               Full Tier Feature Comparison
             </h3>
-            <p className="text-xs text-slate-400 mt-1">Compare premium needlework features and administrative tools side by side.</p>
+            <p className="text-xs text-blush-600/70 mt-1">Compare premium needlework features and administrative tools side by side.</p>
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider">
+                <tr className="bg-blush-50 border-b border-blush-100 text-blush-700 font-bold uppercase tracking-wider">
                   <th className="p-4 pl-6 font-bold">Embroidery Features</th>
                   <th className="p-4 text-center">Hobbyist</th>
                   <th className="p-4 text-center">Pro Crafter</th>
                   <th className="p-4 text-center">Design Studio</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
+              <tbody className="divide-y divide-blush-50 text-slate-700">
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Embroidery Canvas Grid Size</td>
+                  <td className="p-4 pl-6 font-medium text-slate-800">Embroidery Canvas Grid Size</td>
                   <td className="p-4 text-center text-slate-500">Basic (16x16 Max)</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Standard (Up to 48x48)</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Commercial (Unlimited)</td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">AI Imagine-to-Pattern Digitizer</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Unlimited Generations</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Priority + Bulk Uploads</td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Machine Embroidery Exports (.PES, .DST, .EXP)</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Satin Stitch Auto-Fill Detailer</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Thread Skein & DMC Usage Estimator</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Commercial Use License</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center text-slate-500">Personal Only</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Full Commercial License</td>
                 </tr>
@@ -358,8 +358,8 @@ export const Pricing: React.FC = () => {
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Developer API Access</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-rose-400 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
               </tbody>
@@ -369,27 +369,27 @@ export const Pricing: React.FC = () => {
 
         {/* FAQ Section */}
         <div className="max-w-3xl mx-auto space-y-6">
-          <h3 className="text-xl font-bold text-slate-900 text-center mb-8 flex items-center justify-center gap-2">
-            <HelpCircle className="h-5 w-5 text-brand-500 animate-bounce" />
+          <h3 className="text-xl font-bold text-slate-800 text-center mb-8 flex items-center justify-center gap-2">
+            <HelpCircle className="h-5 w-5 text-blush-500 animate-bounce" />
             Frequently Asked Questions
           </h3>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-2">
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Can I switch plans or cancel at any time?</h4>
+          <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Can I switch plans or cancel at any time?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
               Yes, absolutely! There are no binding contracts. You can upgrade, downgrade, or cancel your subscription directly from your settings panel. If you cancel, your access stays active until the end of your billing cycle.
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-2">
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">What formats are supported for machine exports?</h4>
+          <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">What formats are supported for machine exports?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
               With our Pro Crafter and Design Studio plans, you can export patterns directly to machine-readable formats. Currently, we fully support **.PES** (Brother, Babylock, Bernina domestic loops), **.DST** (Tajima industrial machines), and **.EXP** (Melco/Bernina commercial loops).
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-2">
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">How does the AI Imagine-to-Pattern tool operate?</h4>
+          <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">How does the AI Imagine-to-Pattern tool operate?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
               The AI Pattern Digitizer analyzes the visual channels of your uploaded sketches or written text prompt, mapping standard color lines directly to real-world **DMC thread palettes**. It plans satin fill stitch directions and bating outlines so you get a perfect craft pattern with minimal edits needed.
             </p>
@@ -400,16 +400,16 @@ export const Pricing: React.FC = () => {
 
       {/* Upgrade Success Modal */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100 text-center animate-fade-in relative">
+        <div className="fixed inset-0 z-50 bg-blush-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-blush-100 text-center animate-fade-in relative">
             
-            <div className="h-16 w-16 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 mx-auto mb-6">
-              <Sparkles className="h-8 w-8 text-brand-500 animate-pulse" />
+            <div className="h-16 w-16 bg-blush-50 rounded-full flex items-center justify-center text-blush-500 mx-auto mb-6">
+              <Sparkles className="h-8 w-8 text-blush-500 animate-pulse" />
             </div>
 
-            <h3 className="text-2xl font-extrabold text-slate-900 mb-2">Subscription Activated!</h3>
+            <h3 className="text-2xl font-extrabold text-slate-800 mb-2">Subscription Activated!</h3>
             <p className="text-xs text-slate-500 leading-relaxed mb-6">
-              Congratulations! Your StitchWise Studio account has been upgraded to the <strong className="text-slate-900 font-semibold">{selectedPlanName}</strong> tier. Your digital needle is threaded and ready to bring your craft dreams to life.
+              Congratulations! Your StitchWise Studio account has been upgraded to the <strong className="text-slate-800 font-semibold">{selectedPlanName}</strong> tier. Your digital needle is threaded and ready to bring your craft dreams to life.
             </p>
 
             <div className="space-y-3">
@@ -418,7 +418,7 @@ export const Pricing: React.FC = () => {
                   setShowUpgradeModal(false);
                   navigate('/dashboard');
                 }}
-                className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                className="w-full py-3 rounded-xl bg-blush-500 hover:bg-blush-600 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm hover:shadow-blush"
               >
                 Go to Dashboard
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -429,7 +429,7 @@ export const Pricing: React.FC = () => {
                   setShowUpgradeModal(false);
                   navigate('/designer');
                 }}
-                className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className="w-full py-3 rounded-xl bg-blush-50 hover:bg-blush-100 text-blush-700 font-bold text-xs transition-colors"
               >
                 Open Pattern Designer
               </button>

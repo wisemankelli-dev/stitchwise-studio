@@ -212,9 +212,9 @@ export const MarketplaceDashboard: React.FC = () => {
               </Link>
             </div>
             <div className="flex items-center gap-2">
-              <Store className="h-5 w-5 text-brand-500" />
-              <span className="font-extrabold tracking-tight text-md text-white">Creator <span className="text-brand-500">Marketplace</span></span>
-              <span className="bg-brand-500/20 text-brand-400 text-[10px] font-extrabold px-2 py-0.5 rounded border border-brand-500/30">ALPHA</span>
+              <Store className="h-5 w-5 text-blush-500" />
+              <span className="font-extrabold tracking-tight text-md text-white">Creator <span className="text-blush-500">Marketplace</span></span>
+              <span className="bg-brand-500/20 text-blush-400 text-[10px] font-extrabold px-2 py-0.5 rounded border border-blush-500/30">ALPHA</span>
             </div>
           </div>
         </div>
@@ -222,7 +222,7 @@ export const MarketplaceDashboard: React.FC = () => {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
         {/* Banner */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-brand-950 via-slate-900 to-indigo-950 border border-slate-800 p-8 md:p-10 mb-8 shadow-xl">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blush-950 via-slate-900 to-indigo-950 border border-slate-800 p-8 md:p-10 mb-8 shadow-xl">
           <div className="relative z-10 max-w-2xl">
             <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
               Designer Portfolios & Marketplace
@@ -234,12 +234,12 @@ export const MarketplaceDashboard: React.FC = () => {
             <div className="mt-6 flex flex-wrap gap-4">
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow transition-all focus:outline-none"
+                className="flex items-center gap-2 rounded-lg bg-blush-500 hover:bg-blush-600 px-4 py-2 text-sm font-bold text-white shadow transition-all focus:outline-none"
               >
                 <Plus className="h-4 w-4" />
                 List New Pattern
               </button>
-              <div className="flex items-center gap-2 text-xs font-semibold text-brand-400 bg-brand-500/10 rounded-lg border border-brand-500/20 px-3 py-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-blush-400 bg-blush-500/10 rounded-lg border border-blush-500/20 px-3 py-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 15% platform commission applies to public sales as per platform guidelines.
               </div>
@@ -262,8 +262,8 @@ export const MarketplaceDashboard: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700/60 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-400 font-medium">Active Public Listings</span>
-              <div className="p-2 bg-brand-500/10 rounded-lg border border-brand-500/20">
-                <Tag className="h-4 w-4 text-brand-400" />
+              <div className="p-2 bg-blush-500/10 rounded-lg border border-blush-500/20">
+                <Tag className="h-4 w-4 text-blush-400" />
               </div>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
@@ -322,11 +322,11 @@ export const MarketplaceDashboard: React.FC = () => {
         <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
           <div className="p-6 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <Store className="h-5 w-5 text-brand-500" />
+              <Store className="h-5 w-5 text-blush-500" />
               Your Publicly and Privately Listed Assets
             </h2>
             <div className="text-xs text-slate-400 font-medium bg-slate-800 px-3 py-1.5 rounded-lg">
-              Catalog Sync Status: <span className="text-brand-400 font-bold">State Managed Alpha</span>
+              Catalog Sync Status: <span className="text-blush-400 font-bold">State Managed Alpha</span>
             </div>
           </div>
 
@@ -362,7 +362,7 @@ export const MarketplaceDashboard: React.FC = () => {
                             {pattern.name.substring(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-bold text-white text-sm hover:text-brand-400 cursor-pointer transition-colors">
+                            <div className="font-bold text-white text-sm hover:text-blush-400 cursor-pointer transition-colors">
                               {pattern.name}
                             </div>
                             <div className="text-slate-400 text-xs mt-0.5 flex items-center gap-1.5 font-semibold">
@@ -376,7 +376,7 @@ export const MarketplaceDashboard: React.FC = () => {
                         {/* Stitch Type Badge */}
                         <td className="py-4 px-6">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border capitalize ${
-                            pattern.primaryStitchType === 'satin' ? 'bg-brand-500/10 border-brand-500/20 text-brand-400' :
+                            pattern.primaryStitchType === 'satin' ? 'bg-blush-500/10 border-blush-500/20 text-blush-400' :
                             pattern.primaryStitchType === 'cross' ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' :
                             pattern.primaryStitchType === 'back' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
                             'bg-amber-500/10 border-amber-500/20 text-amber-400'
@@ -430,11 +430,11 @@ export const MarketplaceDashboard: React.FC = () => {
                                 type="text"
                                 value={tempPrice}
                                 onChange={(e) => setTempPrice(e.target.value)}
-                                className="w-16 bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-brand-500 focus:outline-none rounded-md px-1.5 py-1 text-xs font-bold text-center text-white"
+                                className="w-16 bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-blush-500 focus:outline-none rounded-md px-1.5 py-1 text-xs font-bold text-center text-white"
                               />
                               <button
                                 onClick={() => savePrice(pattern.id)}
-                                className="p-1 rounded-md bg-brand-600 hover:bg-brand-500 text-white transition-colors"
+                                className="p-1 rounded-md bg-blush-500 hover:bg-blush-600 text-white transition-colors"
                                 title="Save Price"
                               >
                                 <Save className="h-3.5 w-3.5" />
@@ -478,7 +478,7 @@ export const MarketplaceDashboard: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl animate-scale-up">
             <h3 className="text-xl font-extrabold text-white mb-2 flex items-center gap-2">
-              <Store className="h-5 w-5 text-brand-500" />
+              <Store className="h-5 w-5 text-blush-500" />
               List Pattern on Marketplace
             </h3>
             <p className="text-slate-400 text-xs mb-6 leading-relaxed">
@@ -494,7 +494,7 @@ export const MarketplaceDashboard: React.FC = () => {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Vintage Winter Snowflake"
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 font-medium"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-blush-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 font-medium"
                 />
               </div>
 
@@ -504,7 +504,7 @@ export const MarketplaceDashboard: React.FC = () => {
                   <select
                     value={newGridSize}
                     onChange={(e) => setNewGridSize(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white font-medium"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blush-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white font-medium"
                   >
                     <option value="16x16 Grid">16x16 Grid</option>
                     <option value="32x32 Grid">32x32 Grid</option>
@@ -516,7 +516,7 @@ export const MarketplaceDashboard: React.FC = () => {
                   <select
                     value={newStitchType}
                     onChange={(e) => setNewStitchType(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white font-medium capitalize"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blush-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-white font-medium capitalize"
                   >
                     <option value="satin">Satin Fill</option>
                     <option value="cross">Cross Stitch</option>
@@ -536,7 +536,7 @@ export const MarketplaceDashboard: React.FC = () => {
                     value={newPrice}
                     onChange={(e) => setNewPrice(e.target.value)}
                     placeholder="5.99"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 focus:outline-none rounded-lg pl-8 pr-3 py-2 text-sm text-white font-bold"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blush-500 focus:outline-none rounded-lg pl-8 pr-3 py-2 text-sm text-white font-bold"
                   />
                 </div>
               </div>
@@ -551,7 +551,7 @@ export const MarketplaceDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-brand-600 hover:bg-brand-500 px-4 py-2 text-sm font-extrabold text-white transition-all focus:outline-none shadow-md"
+                  className="flex-1 rounded-lg bg-blush-500 hover:bg-blush-600 px-4 py-2 text-sm font-extrabold text-white transition-all focus:outline-none shadow-md"
                 >
                   Submit Listing
                 </button>

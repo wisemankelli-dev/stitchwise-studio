@@ -80,8 +80,8 @@ export const Designer: React.FC = () => {
   const [collabSyncActive, setCollabSyncActive] = useState<boolean>(true);
   const [recentNotification, setRecentNotification] = useState<string | null>(null);
 
-  // Active Collaborators List
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([
+  // Active Viewers List
+  const [collaborators, setViewers] = useState<Collaborator[]>([
     { id: 'you', name: 'You (César)', avatar: '👑', color: '#e11d48', status: 'active', role: 'owner' },
     { id: 'elena', name: 'Elena Crafter', avatar: '🌸', color: '#8b5cf6', status: 'active', role: 'editor', cursorPos: '3,4' },
     { id: 'dave', name: 'Dave Digitizer', avatar: '🐕', color: '#f59e0b', status: 'active', role: 'editor', cursorPos: '11,12' },
@@ -478,7 +478,7 @@ export const Designer: React.FC = () => {
       });
 
       // Update collaborator's active cursor position
-      setCollaborators(prev => prev.map(collab => {
+      setViewers(prev => prev.map(collab => {
         if (collab.id === teammate.id) {
           return { ...collab, cursorPos: coordKey, status: 'active' };
         }
@@ -537,7 +537,7 @@ export const Designer: React.FC = () => {
           role: inviteRole
         };
         
-        setCollaborators(prev => [...prev, newInvitee]);
+        setViewers(prev => [...prev, newInvitee]);
         addCollabLog(`${formattedName} (Invited)`, '🎨', `Joined the collaborative session as ${inviteRole}`);
         setRecentNotification(`🎨 ${formattedName} joined the workshop live!`);
         
@@ -553,8 +553,8 @@ export const Designer: React.FC = () => {
       
       {/* Real-time sync floating alert toast */}
       {recentNotification && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-4 rounded-2xl shadow-lg border border-slate-800 flex items-center gap-3 animate-bounce max-w-sm">
-          <Activity className="h-5 w-5 text-brand-500 animate-pulse shrink-0" />
+        <div className="fixed bottom-6 right-6 z-50 bg-white text-slate-800 px-5 py-4 rounded-2xl shadow-lg border border-blush-100 flex items-center gap-3 animate-bounce max-w-sm">
+          <Activity className="h-5 w-5 text-blush-500 animate-pulse shrink-0" />
           <div className="text-xs">
             <span className="font-bold text-slate-200">Live Sync Update</span>
             <p className="text-slate-400 mt-0.5">{recentNotification}</p>
@@ -584,8 +584,8 @@ export const Designer: React.FC = () => {
 
         {/* Page Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-x-2 rounded-full bg-brand-50 px-4 py-1 text-sm font-semibold leading-6 text-brand-600 ring-1 ring-inset ring-brand-100 mb-4">
-            <Users className="h-4 w-4 text-brand-500" />
+          <div className="inline-flex items-center gap-x-2 rounded-full bg-blush-50 px-4 py-1 text-sm font-semibold leading-6 text-blush-600 ring-1 ring-inset ring-blush-100 mb-4">
+            <Users className="h-4 w-4 text-blush-500" />
             Collaborative Pattern Workshop
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
@@ -597,7 +597,7 @@ export const Designer: React.FC = () => {
         </div>
         
         {/* Workshop Collaboration Status Banner */}
-        <div className="bg-gradient-to-r from-brand-600 to-rose-500 rounded-3xl p-6 md:p-8 text-white shadow-md mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="bg-gradient-to-r from-blush-500 to-rose-500 rounded-3xl p-6 md:p-8 text-white shadow-md mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-20 pointer-events-none" />
           <div className="z-10 max-w-xl">
             <h2 className="text-xl md:text-2xl font-extrabold flex items-center gap-2">
@@ -616,9 +616,9 @@ export const Designer: React.FC = () => {
               <>
                 <button
                   onClick={() => setIsShareModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-white text-brand-700 hover:bg-slate-50 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl bg-white text-blush-700 hover:bg-slate-50 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
                 >
-                  <Share2 className="h-4 w-4 text-brand-600" />
+                  <Share2 className="h-4 w-4 text-blush-600" />
                   Invite & Manage
                 </button>
                 <button
@@ -658,7 +658,7 @@ export const Designer: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('prompt')}
                   disabled={isGenerating}
-                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'prompt' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'prompt' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                 >
                   <div className="flex items-center justify-center gap-1.5">
                     <Sparkles className="h-4 w-4" />
@@ -668,7 +668,7 @@ export const Designer: React.FC = () => {
                 <button
                   onClick={() => setActiveTab('image')}
                   disabled={isGenerating}
-                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'image' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'image' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                 >
                   <div className="flex items-center justify-center gap-1.5">
                     <Image className="h-4 w-4" />
@@ -680,7 +680,7 @@ export const Designer: React.FC = () => {
               {activeTab === 'prompt' ? (
                 <div>
                   <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 mb-2">
-                    <Sparkles className="h-5 w-5 text-brand-500" />
+                    <Sparkles className="h-5 w-5 text-blush-500" />
                     Describe Your Vision
                   </h2>
                   <p className="text-xs text-slate-500 mb-4 leading-relaxed">
@@ -694,18 +694,18 @@ export const Designer: React.FC = () => {
                       value={promptInput}
                       onChange={(e) => setPromptInput(e.target.value)}
                       placeholder="e.g., A cozy miniature red cardinal perched on a birch branch covered in winter snow"
-                      className="w-full rounded-xl border-slate-200 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:ring-brand-500 disabled:opacity-50"
+                      className="w-full rounded-xl border-slate-200 text-sm text-slate-900 shadow-sm focus:border-blush-500 focus:ring-blush-500 disabled:opacity-50"
                     />
                     
                     {isGenerating ? (
                       <div className="space-y-2">
-                        <div className="flex justify-between text-xs text-brand-700 font-semibold">
+                        <div className="flex justify-between text-xs text-blush-700 font-semibold">
                           <span>Digitizing stitches...</span>
                           <span>{Math.min(generatorProgress, 100)}%</span>
                         </div>
                         <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                           <div 
-                            className="bg-brand-600 h-full transition-all duration-300 ease-out" 
+                            className="bg-blush-500 h-full transition-all duration-300 ease-out" 
                             style={{ width: `${generatorProgress}%` }}
                           ></div>
                         </div>
@@ -714,7 +714,7 @@ export const Designer: React.FC = () => {
                       <button
                         type="submit"
                         disabled={!promptInput.trim()}
-                        className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:bg-slate-200 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all"
+                        className="w-full rounded-xl bg-blush-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blush-400 disabled:bg-slate-200 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all"
                       >
                         <Play className="h-4 w-4" />
                         Build Custom Pattern
@@ -725,7 +725,7 @@ export const Designer: React.FC = () => {
               ) : (
                 <div className="space-y-5">
                   <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <UploadCloud className="h-5 w-5 text-brand-500" />
+                    <UploadCloud className="h-5 w-5 text-blush-500" />
                     Upload Craft Sketch
                   </h2>
                   <p className="text-xs text-slate-500 leading-relaxed">
@@ -738,7 +738,7 @@ export const Designer: React.FC = () => {
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
-                      className={`border-2 border-dashed rounded-xl p-6 text-center transition-all ${isDraggingOver ? 'border-brand-500 bg-brand-50/50' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'}`}
+                      className={`border-2 border-dashed rounded-xl p-6 text-center transition-all ${isDraggingOver ? 'border-blush-500 bg-blush-50/50' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'}`}
                     >
                       <input
                         type="file"
@@ -756,7 +756,7 @@ export const Designer: React.FC = () => {
                   ) : (
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded bg-brand-100 flex items-center justify-center text-brand-600 shrink-0 font-bold text-xs uppercase">
+                        <div className="h-10 w-10 rounded bg-blush-100 flex items-center justify-center text-blush-600 shrink-0 font-bold text-xs uppercase">
                           IMG
                         </div>
                         <div className="overflow-hidden">
@@ -783,10 +783,10 @@ export const Designer: React.FC = () => {
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-xs">
                         <label className="font-bold text-slate-700 flex items-center gap-1">
-                          <Sliders className="h-3 w-3 text-brand-500" />
+                          <Sliders className="h-3 w-3 text-blush-500" />
                           Stitch Count
                         </label>
-                        <span className="font-mono text-brand-700 font-bold">{digitizeStitchCount} stitches</span>
+                        <span className="font-mono text-blush-700 font-bold">{digitizeStitchCount} stitches</span>
                       </div>
                       <input
                         type="range"
@@ -814,7 +814,7 @@ export const Designer: React.FC = () => {
                         value={digitizeColorsCount}
                         disabled={isGenerating}
                         onChange={(e) => setDigitizeColorsCount(parseInt(e.target.value))}
-                        className="w-full rounded-xl border-slate-200 text-xs text-slate-800 focus:border-brand-500 focus:ring-brand-500"
+                        className="w-full rounded-xl border-slate-200 text-xs text-slate-800 focus:border-blush-500 focus:ring-blush-500"
                       >
                         <option value={4}>4 Threads (Minimalist Retro)</option>
                         <option value={8}>8 Threads (Standard Starter)</option>
@@ -838,7 +838,7 @@ export const Designer: React.FC = () => {
                               setDigitizeStitchType(type);
                               setSelectedStitch(type);
                             }}
-                            className={`py-1.5 rounded-lg text-[10px] font-bold text-center border capitalize transition-all ${digitizeStitchType === type ? 'bg-brand-50 border-brand-500 text-brand-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold text-center border capitalize transition-all ${digitizeStitchType === type ? 'bg-blush-50 border-blush-500 text-blush-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                           >
                             {type === 'cross' ? 'Cross' : type === 'back' ? 'Back' : 'Satin'}
                           </button>
@@ -849,13 +849,13 @@ export const Designer: React.FC = () => {
                     {/* Digitize progress loader / submit button */}
                     {isGenerating ? (
                       <div className="space-y-2 pt-2">
-                        <div className="flex justify-between text-xs text-brand-700 font-semibold animate-pulse">
+                        <div className="flex justify-between text-xs text-blush-700 font-semibold animate-pulse">
                           <span>{digitizeStepText}</span>
                           <span>{Math.min(generatorProgress, 100)}%</span>
                         </div>
                         <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                           <div 
-                            className="bg-brand-600 h-full transition-all duration-300 ease-out animate-pulse" 
+                            className="bg-blush-500 h-full transition-all duration-300 ease-out animate-pulse" 
                             style={{ width: `${generatorProgress}%` }}
                           ></div>
                         </div>
@@ -864,7 +864,7 @@ export const Designer: React.FC = () => {
                       <button
                         type="submit"
                         disabled={!uploadedFile}
-                        className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all mt-2"
+                        className="w-full rounded-xl bg-blush-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blush-400 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all mt-2"
                       >
                         <Play className="h-4 w-4" />
                         Digitize & Generate Pattern
@@ -887,7 +887,7 @@ export const Designer: React.FC = () => {
             {/* Pattern Settings Box */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-5">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Palette className="h-5 w-5 text-brand-500" />
+                <Palette className="h-5 w-5 text-blush-500" />
                 Designer Thread Box
               </h2>
 
@@ -923,7 +923,7 @@ export const Designer: React.FC = () => {
                     <button
                       key={style.id}
                       onClick={() => setSelectedStitch(style.id)}
-                      className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-all ${selectedStitch === style.id ? 'border-brand-600 bg-brand-50 text-brand-800 ring-1 ring-brand-500' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
+                      className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-all ${selectedStitch === style.id ? 'border-blush-600 bg-blush-50 text-blush-800 ring-1 ring-blush-500' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
                     >
                       <div className="font-bold">{style.name}</div>
                       <div className="text-[10px] text-slate-500 font-normal leading-tight mt-0.5">{style.description}</div>
@@ -942,7 +942,7 @@ export const Designer: React.FC = () => {
               <div className="w-full flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-slate-100 pb-4 animate-fade-in">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Layers className="h-5 w-5 text-brand-500" />
+                    <Layers className="h-5 w-5 text-blush-500" />
                     Embroidery Fabric Canvas
                   </h3>
                   <p className="text-xs text-slate-500">
@@ -957,14 +957,14 @@ export const Designer: React.FC = () => {
                       onClick={() => setPreviewMode('pattern')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${previewMode === 'pattern' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
-                      <Layers className="h-3.5 w-3.5 text-brand-500" />
+                      <Layers className="h-3.5 w-3.5 text-blush-500" />
                       Pattern View
                     </button>
                     <button
                       onClick={() => setPreviewMode('original')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${previewMode === 'original' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
-                      <Eye className="h-3.5 w-3.5 text-brand-500" />
+                      <Eye className="h-3.5 w-3.5 text-blush-500" />
                       Original Image
                     </button>
                   </div>
@@ -982,7 +982,7 @@ export const Designer: React.FC = () => {
                   
                   <button
                     disabled={Object.keys(grid).length === 0}
-                    className="p-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:pointer-events-none"
+                    className="p-2 rounded-lg bg-blush-500 hover:bg-blush-400 text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:pointer-events-none"
                     title="Export Pattern to PES format"
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -996,7 +996,7 @@ export const Designer: React.FC = () => {
                 
                 {previewMode === 'original' ? (
                   <div className="flex flex-col items-center justify-center p-8 bg-white/90 rounded-2xl shadow-sm border border-slate-100 max-w-sm mx-auto text-center animate-fade-in relative z-10">
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-brand-600 mb-4 block">Original Sketch Source</span>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-blush-600 mb-4 block">Original Sketch Source</span>
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">
                       {renderOriginalImage()}
                     </div>
@@ -1082,7 +1082,7 @@ export const Designer: React.FC = () => {
               {isCollabMode && (
                 <div className="w-full mt-4 flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
                   <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-brand-600 animate-pulse" />
+                    <Activity className="h-4 w-4 text-blush-600 animate-pulse" />
                     <span className="text-xs font-bold text-slate-700">Workshop Sync Stream</span>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1094,7 +1094,7 @@ export const Designer: React.FC = () => {
                         setCollabSyncActive(e.target.checked);
                         addCollabLog('System', '⚙️', e.target.checked ? 'Enabled teammate update simulation' : 'Paused teammate update simulation');
                       }}
-                      className="rounded text-brand-600 focus:ring-brand-500 h-4.5 w-4.5"
+                      className="rounded text-blush-600 focus:ring-blush-500 h-4.5 w-4.5"
                     />
                   </label>
                 </div>
@@ -1107,14 +1107,14 @@ export const Designer: React.FC = () => {
           {isCollabMode && (
             <div className="lg:col-span-12 xl:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
               
-              {/* Collaborators List Panel */}
+              {/* Viewers List Panel */}
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Users className="h-5 w-5 text-brand-500" />
-                    Active Workshop Collaborators
+                    <Users className="h-5 w-5 text-blush-500" />
+                    Active Workshop Viewers
                   </h3>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blush-50 text-blush-700">
                     {collaborators.filter(c => c.status === 'active').length} Online
                   </span>
                 </div>
@@ -1160,7 +1160,7 @@ export const Designer: React.FC = () => {
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-brand-500" />
+                    <Activity className="h-5 w-5 text-blush-500" />
                     Workshop Activity Stream
                   </h3>
                 </div>
@@ -1194,7 +1194,7 @@ export const Designer: React.FC = () => {
       {isShareModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           {/* Modal Backdrop */}
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setIsShareModalOpen(false)} />
+          <div className="fixed inset-0 bg-blush-950/40 backdrop-blur-sm transition-opacity" onClick={() => setIsShareModalOpen(false)} />
 
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div className="relative transform overflow-hidden rounded-3xl bg-white px-6 pb-6 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-8">
@@ -1208,8 +1208,8 @@ export const Designer: React.FC = () => {
               </button>
 
               <div className="sm:flex sm:items-start mb-6">
-                <div className="mx-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-50 sm:mx-0 sm:h-10 sm:w-10">
-                  <Share2 className="h-6 w-6 text-brand-600" />
+                <div className="mx-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blush-50 sm:mx-0 sm:h-10 sm:w-10">
+                  <Share2 className="h-6 w-6 text-blush-600" />
                 </div>
                 <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
                   <h3 className="text-lg font-bold leading-6 text-slate-900">
@@ -1232,7 +1232,7 @@ export const Designer: React.FC = () => {
                       type="text"
                       readOnly
                       value={`${window.location.origin}/designer?session=${sessionId || 'quick-workshop'}`}
-                      className="block w-full rounded-xl border-slate-200 text-xs font-mono text-slate-500 bg-slate-50 py-2.5 focus:border-brand-500 focus:ring-brand-500"
+                      className="block w-full rounded-xl border-slate-200 text-xs font-mono text-slate-500 bg-slate-50 py-2.5 focus:border-blush-500 focus:ring-blush-500"
                     />
                     <button
                       onClick={handleCopyLink}
@@ -1275,14 +1275,14 @@ export const Designer: React.FC = () => {
                         value={inviteEmail}
                         onChange={(e) => setInviteEmail(e.target.value)}
                         placeholder="e.g. craftmate@gmail.com"
-                        className="block w-full rounded-xl border-slate-200 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        className="block w-full rounded-xl border-slate-200 text-sm text-slate-900 shadow-sm focus:border-blush-500 focus:ring-blush-500"
                       />
                     </div>
                     <div className="sm:col-span-4">
                       <select
                         value={inviteRole}
                         onChange={(e) => setInviteRole(e.target.value as 'editor' | 'viewer')}
-                        className="block w-full rounded-xl border-slate-200 text-sm text-slate-700 bg-white shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        className="block w-full rounded-xl border-slate-200 text-sm text-slate-700 bg-white shadow-sm focus:border-blush-500 focus:ring-blush-500"
                       >
                         <option value="editor">Editor</option>
                         <option value="viewer">Viewer</option>
@@ -1292,7 +1292,7 @@ export const Designer: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold py-2.5 text-sm shadow-sm flex items-center justify-center gap-2 transition-all"
+                    className="w-full rounded-xl bg-blush-500 hover:bg-blush-400 text-white font-bold py-2.5 text-sm shadow-sm flex items-center justify-center gap-2 transition-all"
                   >
                     <Send className="h-4 w-4" />
                     Send Invitation Email
@@ -1301,8 +1301,8 @@ export const Designer: React.FC = () => {
 
                 {/* Form Notification Messages */}
                 {inviteSuccessMsg && (
-                  <div className="mt-4 p-3.5 bg-brand-50 border border-brand-100 text-brand-800 rounded-xl text-xs font-semibold leading-relaxed flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-brand-600 shrink-0" />
+                  <div className="mt-4 p-3.5 bg-blush-50 border border-blush-100 text-blush-800 rounded-xl text-xs font-semibold leading-relaxed flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-blush-600 shrink-0" />
                     {inviteSuccessMsg}
                   </div>
                 )}

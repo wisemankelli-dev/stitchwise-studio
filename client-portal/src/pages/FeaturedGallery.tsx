@@ -79,7 +79,7 @@ export const FeaturedGallery: React.FC = () => {
                   <AlertTriangle className="h-4 w-4 text-amber-500" />
                   <span className="text-blush-600">
                     <strong>Hobbyist</strong> —{' '}
-                    <Link to="/pricing" className="text-brand-600 hover:text-brand-500 underline font-bold">
+                    <Link to="/pricing" className="text-blush-600 hover:text-blush-700 underline font-bold">
                       Upgrade to Pro
                     </Link>{' '}
                     to clone designs
