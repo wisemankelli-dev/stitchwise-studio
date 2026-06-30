@@ -255,10 +255,18 @@ def _sample_rail(segments: list, num_points: int, scale: float) -> list[tuple[in
     samples: list[tuple[int, int]] = []
     for i in range(num_points):
         target_dist = (i / max(num_points - 1, 1)) * total_length
+        # Snap the last point exactly to avoid floating-point off-by-one
+        if i == num_points - 1:
+            samples.append(points[-1])
+            continue
         # Find the segment containing this distance
         for j in range(1, len(distances)):
             if distances[j] >= target_dist:
-                t = (target_dist - distances[j - 1]) / (distances[j] - distances[j - 1] + 0.001)
+                seg_len = distances[j] - distances[j - 1]
+                if seg_len > 0:
+                    t = (target_dist - distances[j - 1]) / seg_len
+                else:
+                    t = 0.0
                 x = int(points[j - 1][0] + t * (points[j][0] - points[j - 1][0]))
                 y = int(points[j - 1][1] + t * (points[j][1] - points[j - 1][1]))
                 samples.append((x, y))
@@ -371,7 +379,7 @@ def export_pattern(
         )
 
     if output_path:
-        pyembroidery.write(pyemb_pattern, output_path, output_format)
+        pyembroidery.write(pyemb_pattern, output_path, {})
         with open(output_path, "rb") as f:
             return f.read()
     else:
@@ -385,7 +393,7 @@ def export_pattern(
             tmp_path = tmp.name
 
         try:
-            pyembroidery.write(pyemb_pattern, tmp_path, output_format)
+            pyembroidery.write(pyemb_pattern, tmp_path, {})
             with open(tmp_path, "rb") as f:
                 return f.read()
         finally:
@@ -410,7 +418,7 @@ def convert_file(
     pattern = pyembroidery.read(input_path)
 
     if output_path:
-        pyembroidery.write(pattern, output_path, output_format)
+        pyembroidery.write(pattern, output_path, {})
         with open(output_path, "rb") as f:
             return f.read()
     else:
@@ -420,7 +428,7 @@ def convert_file(
             tmp_path = tmp.name
 
         try:
-            pyembroidery.write(pattern, tmp_path, output_format)
+            pyembroidery.write(pattern, tmp_path, {})
             with open(tmp_path, "rb") as f:
                 return f.read()
         finally:
