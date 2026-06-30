@@ -22,7 +22,9 @@ model User {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  projects Project[]
+  projects              Project[]
+  marketplaceListings   MarketplaceListing[] @relation("MarketplaceDesigner")
+  collageProjects       CollageProject[]
 }
 
 // ─── Project Inquiry ───────────────────────────────────────────────────────
@@ -38,51 +40,22 @@ model ProjectInquiry {
   updatedAt   DateTime @updatedAt
 }
 
-// ─── Collaborative Workshop Models ─────────────────────────────────────────
+// ─── Solo Designer Project Model ───────────────────────────────────────────
 
-// Represents a design project within the Collaborative Workshop.
+// Represents a personal design project owned by a single user.
 // The `data` field stores SVG paths and pattern state as JSON.
+// visibility values: "PRIVATE" (default, user's own project),
+// "PUBLIC" (anyone can view), "SAMPLE" (curated sample design)
 model Project {
-  id        String   @id @default(uuid())
-  name      String
-  data      String   @default("{}")
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  name       String
+  data       String   @default("{}")
+  userId     String
+  visibility String   @default("PRIVATE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shares        ProjectShare[]
-  collaborators ProjectCollaborator[]
-}
-
-// Tracks sharing links for read-only or read-write access to a project.
-// permission values: "VIEWER", "EDITOR"
-model ProjectShare {
-  id            String   @id @default(uuid())
-  projectId     String
-  token         String   @unique
-  permission    String   @default("VIEWER")
-  isActive      Boolean  @default(true)
-  expiresAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
-
-// Tracks collaborators explicitly invited via email to a project.
-// permission values: "VIEWER", "EDITOR"
-model ProjectCollaborator {
-  id            String   @id @default(uuid())
-  projectId     String
-  email         String
-  permission    String   @default("EDITOR")
-  acceptedAt    DateTime?
-  invitedAt     DateTime @default(now())
-
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@unique([projectId, email])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Marketplace Models ────────────────────────────────────────────────────
@@ -102,5 +75,24 @@ model MarketplaceListing {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  designer User @relation(fields: [designerId], references: [id], onDelete: Cascade)
+  designer User @relation("MarketplaceDesigner", fields: [designerId], references: [id], onDelete: Cascade)
+}
+
+// ─── Collage Studio Models ─────────────────────────────────────────────────
+
+// Stores collage quilting projects with a JSON data column (Option A from research).
+// The `data` field holds the full canvas state: layers, fabrics, shapes, stitches.
+// This keeps the schema simple for MVP while allowing future migration to normalized tables.
+model CollageProject {
+  id        String   @id @default(uuid())
+  name      String
+  userId    String
+  data      String   @default("{}") // JSON: full canvas state (layers, fabrics, shapes, stitches)
+  width     Float    @default(300)   // canvas width in mm
+  height    Float    @default(300)   // canvas height in mm
+  thumbnail String?                  // URL to preview image
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
