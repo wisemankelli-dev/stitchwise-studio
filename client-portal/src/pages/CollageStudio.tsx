@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Flower2, Sparkles, Heart, ArrowLeft
+  Flower2, Ruler, Calculator
 } from 'lucide-react';
+import { api, FabricEstimateResult } from '../services/api';
 
 interface FabricLayer {
   id: string;
@@ -34,6 +35,8 @@ const FABRIC_COLORS = [
   '#c4b5fd', '#fca5a5', '#d9f99d', '#fed7aa', '#e2e8f0',
 ];
 
+const FABRIC_WIDTHS = [44, 45, 54, 60, 108];
+
 const DEFAULT_LAYERS: FabricLayer[] = [
   { id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
   { id: 'fabric-1', name: 'Petal Shape', color: '#f9a8d4', pattern: 'polka', x: 150, y: 130, width: 120, height: 100, rotation: 15, opacity: 0.9, zIndex: 1 },
@@ -45,6 +48,12 @@ export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
   const [zoom, setZoom] = useState(1);
+
+  // Fabric estimator state
+  const [fabricWidth, setFabricWidth] = useState<number>(45);
+  const [wasteBuffer, setWasteBuffer] = useState<number>(10);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateResult, setEstimateResult] = useState<FabricEstimateResult | null>(null);
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
 
@@ -77,6 +86,31 @@ export const CollageStudio: React.FC = () => {
       setSelectedLayerId(layers[layers.length - 2]?.id || '');
     }
   };
+
+  // Run fabric estimation when layers or settings change (debounced)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setEstimating(true);
+      try {
+        const result = await api.estimateFabricUsage({
+          layers: layers.map(l => ({
+            width: l.width,
+            height: l.height,
+            rotation: l.rotation,
+            name: l.name,
+          })),
+          fabricWidth,
+          wasteBuffer,
+        });
+        setEstimateResult(result);
+      } catch (err) {
+        console.error('Fabric estimation failed:', err);
+      } finally {
+        setEstimating(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [layers, fabricWidth, wasteBuffer]);
 
   return (
     <div className="min-h-screen bg-floral-soft">
@@ -112,8 +146,8 @@ export const CollageStudio: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left: Canvas (8 cols) */}
-          <div className="lg:col-span-8">
+          {/* Left: Canvas (7 cols) */}
+          <div className="lg:col-span-7">
             <div className="floral-card p-4">
               {/* Canvas Toolbar */}
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
@@ -132,7 +166,7 @@ export const CollageStudio: React.FC = () => {
               {/* Canvas Area */}
               <div
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
-                style={{ height: '500px' }}
+                style={{ height: '480px' }}
               >
                 <div
                   className="absolute inset-0"
@@ -175,8 +209,8 @@ export const CollageStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* Right: Inspector (4 cols) */}
-          <div className="lg:col-span-4 space-y-6">
+          {/* Right: Inspector + Material Requirements (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
             {/* Layers Panel */}
             <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
@@ -188,7 +222,7 @@ export const CollageStudio: React.FC = () => {
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              <div className="space-y-1.5 max-h-36 overflow-y-auto">
                 {layers.sort((a, b) => b.zIndex - a.zIndex).map((layer) => (
                   <div
                     key={layer.id}
@@ -287,6 +321,104 @@ export const CollageStudio: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* ===== MATERIAL REQUIREMENTS PANEL ===== */}
+            <div className="floral-card p-5 space-y-4">
+              <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                <Ruler className="h-4 w-4 text-blush-500" />
+                Material Requirements
+              </h3>
+
+              {/* Fabric Width & Waste Buffer Settings */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Fabric Width</label>
+                  <div className="flex flex-wrap gap-1">
+                    {FABRIC_WIDTHS.map((w) => (
+                      <button
+                        key={w}
+                        onClick={() => setFabricWidth(w)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                          fabricWidth === w
+                            ? 'bg-blush-500 text-white border-blush-500'
+                            : 'bg-white text-slate-600 border-blush-100 hover:border-blush-300'
+                        }`}
+                      >
+                        {w}"
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                    Waste Buffer: <span className="text-blush-600">{wasteBuffer}%</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    step="5"
+                    value={wasteBuffer}
+                    onChange={(e) => setWasteBuffer(Number(e.target.value))}
+                    className="w-full accent-blush-500"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+                    <span>0%</span>
+                    <span>15%</span>
+                    <span>30%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Estimation Results */}
+              {estimating ? (
+                <div className="flex items-center gap-2 py-4">
+                  <div className="h-4 w-4 border-2 border-blush-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-blush-500">Calculating material requirements...</span>
+                </div>
+              ) : estimateResult ? (
+                <div className="space-y-3">
+                  {/* Summary */}
+                  <div className="p-3 bg-blush-50 rounded-xl border border-blush-100">
+                    <div className="flex items-center gap-2 text-xs font-bold text-blush-700 mb-1">
+                      <Calculator className="h-3.5 w-3.5" />
+                      Total Estimate
+                    </div>
+                    <p className="text-xs text-slate-600">{estimateResult.summary}</p>
+                  </div>
+
+                  {/* Per-layer breakdown */}
+                  <div className="max-h-44 overflow-y-auto space-y-2">
+                    {estimateResult.requirements.map((req, i) => (
+                      <div key={i} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-blush-50">
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">{req.label}</p>
+                          <p className="text-[10px] text-slate-400">{req.areaSqInches} sq in</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-extrabold text-blush-700">{req.lengthYards} yd</p>
+                          <p className="text-[10px] text-slate-400">{req.lengthInches}" long</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Totals footer */}
+                  <div className="flex items-center justify-between pt-3 border-t border-blush-100">
+                    <span className="text-xs text-slate-500">Total fabric needed</span>
+                    <span className="text-sm font-extrabold text-blush-700">
+                      {estimateResult.totalAreaSqFeet} sq ft
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-4 text-center">
+                  <Calculator className="h-8 w-8 text-blush-300 mx-auto mb-2" />
+                  <p className="text-[11px] text-slate-400">Adjust layers to see material estimates.</p>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>

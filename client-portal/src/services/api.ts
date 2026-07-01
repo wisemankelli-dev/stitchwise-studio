@@ -89,6 +89,39 @@ export interface ShowcaseEntry {
   createdAt: string;
 }
 
+/** Input for fabric usage estimation */
+export interface FabricEstimateInput {
+  layers: Array<{
+    width: number;
+    height: number;
+    rotation: number;
+    name?: string;
+  }>;
+  fabricWidth: number;       // inches (44, 45, 54, 60, 108)
+  wasteBuffer: number;       // percentage (0-30)
+  seamAllowance?: number;    // mm (default: 6mm / 0.25in)
+}
+
+/** Per-fabric material requirement */
+export interface FabricRequirement {
+  label: string;
+  areaSqInches: number;
+  widthInches: number;
+  lengthInches: number;
+  lengthYards: number;
+  wasteInches: number;
+}
+
+/** Result from fabric usage estimation */
+export interface FabricEstimateResult {
+  totalAreaSqInches: number;
+  totalAreaSqFeet: number;
+  fabricWidth: number;
+  wasteBufferPercent: number;
+  requirements: FabricRequirement[];
+  summary: string;
+}
+
 // Utility function to simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1196,6 +1229,85 @@ class ApiClient {
     const filtered = entries.filter(e => e.id !== id);
     localStorage.setItem('stitchwise_showcase', JSON.stringify(filtered));
     return { success: true };
+  }
+
+  // ==================== FABRIC USAGE ESTIMATOR API ====================
+
+  /**
+   * Estimates fabric usage for a collage quilt project.
+   * POST /api/collage/fabric-estimate
+   */
+  async estimateFabricUsage(input: FabricEstimateInput): Promise<FabricEstimateResult> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/collage/fabric-estimate`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify(input),
+        });
+        if (!response.ok) throw new Error('Failed to estimate fabric usage');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to contact backend, falling back to local estimation', err);
+      }
+    }
+
+    // Mock/Local Estimation Algorithm
+    await delay(600);
+
+    const wasteFraction = input.wasteBuffer / 100;
+    const seamAllowance = input.seamAllowance || 6; // 6mm default (1/4 inch)
+
+    const requirements: FabricRequirement[] = [];
+    let totalAreaSqInches = 0;
+
+    for (let i = 0; i < input.layers.length; i++) {
+      const layer = input.layers[i];
+      const label = layer.name || `Layer ${i + 1}`;
+
+      // Calculate base area in square inches
+      // Convert canvas pixels to inches (assuming 100px ≈ 1 inch as a rough guide)
+      const widthIn = (layer.width + seamAllowance) / 100;
+      const heightIn = (layer.height + seamAllowance) / 100;
+      const baseArea = widthIn * heightIn;
+
+      // Account for rotation (use bounding box area)
+      const rad = (layer.rotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      const boundingWidth = widthIn * cos + heightIn * sin;
+      const boundingHeight = widthIn * sin + heightIn * cos;
+      const rotatedArea = boundingWidth * boundingHeight;
+
+      // Add waste buffer
+      const areaWithWaste = rotatedArea * (1 + wasteFraction);
+      totalAreaSqInches += areaWithWaste;
+
+      // Calculate required length based on fabric width
+      const fabricWidthIn = input.fabricWidth;
+      const requiredLengthIn = Math.ceil((areaWithWaste / fabricWidthIn) * 10) / 10;
+      const wasteInches = requiredLengthIn * wasteFraction;
+
+      requirements.push({
+        label,
+        areaSqInches: Math.round(rotatedArea * 100) / 100,
+        widthInches: fabricWidthIn,
+        lengthInches: Math.round(requiredLengthIn * 10) / 10,
+        lengthYards: Math.round((requiredLengthIn / 36) * 10) / 10,
+        wasteInches: Math.round(wasteInches * 10) / 10,
+      });
+    }
+
+    const totalYards = Math.round((totalAreaSqInches / input.fabricWidth / 36) * 10) / 10;
+
+    return {
+      totalAreaSqInches: Math.round(totalAreaSqInches * 100) / 100,
+      totalAreaSqFeet: Math.round((totalAreaSqInches / 144) * 100) / 100,
+      fabricWidth: input.fabricWidth,
+      wasteBufferPercent: input.wasteBuffer,
+      requirements,
+      summary: `Approximately ${Math.ceil(totalYards)} yard${Math.ceil(totalYards) !== 1 ? 's' : ''} of ${input.fabricWidth}" wide fabric needed (with ${input.wasteBuffer}% waste buffer)`,
+    };
   }
 }
 
