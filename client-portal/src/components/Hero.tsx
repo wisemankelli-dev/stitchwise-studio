@@ -22,9 +22,17 @@ export const Hero: React.FC = () => {
             Bring your crafting dreams to life with <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-400">perfect patterns</span>.
           </h1>
           
-          <p className="mt-6 text-lg leading-8 text-slate-600">
+          <p className="mt-4 text-lg leading-8 text-slate-600">
             Every crafter's dream is to bring their thoughts to life. StitchWise will allow you to achieve your crafting dreams with building the perfect pattern every time. If you can imagine the design, we can build it for you. Perfect for the serial crafter looking for a pattern they can never find.
           </p>
+
+          <div className="mt-5 inline-flex items-center gap-3 rounded-full bg-blush-50 px-6 py-2.5 border border-blush-200 shadow-sm">
+            <span className="text-sm font-extrabold text-blush-700 tracking-wide">Create.</span>
+            <span className="h-3 w-3 rounded-full bg-blush-300" />
+            <span className="text-sm font-extrabold text-blush-700 tracking-wide">Stitch.</span>
+            <span className="h-3 w-3 rounded-full bg-blush-300" />
+            <span className="text-sm font-extrabold text-blush-700 tracking-wide">Inspire.</span>
+          </div>
           
           <div className="mt-10 flex items-center justify-center gap-x-6">
             <Link

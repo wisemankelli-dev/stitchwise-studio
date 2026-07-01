@@ -122,9 +122,15 @@ function App() {
 
             <div className="flex flex-col sm:flex-row justify-between items-center text-xs text-slate-400 gap-4">
               <p>&copy; {new Date().getFullYear()} StitchWise Studio. All rights reserved.</p>
-              <p className="flex items-center gap-1">
-                Ref: <span className="font-mono text-blush-400">Owner Vision Verified</span>
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-blush-500">Create.</span>
+                <span className="text-blush-300">Stitch.</span>
+                <span className="font-bold text-blush-500">Inspire.</span>
+                <span className="mx-2 text-blush-200">|</span>
+                <span className="flex items-center gap-1">
+                  Ref: <span className="font-mono text-blush-400">Owner Vision Verified</span>
+                </span>
+              </div>
             </div>
           </div>
         </footer>
