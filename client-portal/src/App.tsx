@@ -8,7 +8,8 @@ import { ProjectDetail } from './pages/ProjectDetail';
 import { FloralThemeShowcase } from './pages/FloralThemeShowcase';
 import { FeaturedGallery } from './pages/FeaturedGallery';
 import { CollageStudio } from './pages/CollageStudio';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image } from 'lucide-react';
+import { CommunityShowcase } from './pages/CommunityShowcase';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image, Camera } from 'lucide-react';
 
 /**
  * Main application component setting up routing, layout, and global styling.
@@ -46,6 +47,10 @@ function App() {
                   <CreditCard className="h-4 w-4 text-blush-400" />
                   Plans & Pricing
                 </Link>
+                <Link to="/showcase" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
+                  <Camera className="h-4 w-4 text-blush-400" />
+                  Showcase
+                </Link>
                 <Link to="/gallery" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
                   <Image className="h-4 w-4 text-blush-400" />
                   Gallery
@@ -73,6 +78,7 @@ function App() {
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/floral-theme" element={<FloralThemeShowcase />} />
             <Route path="/gallery" element={<FeaturedGallery />} />
+            <Route path="/showcase" element={<CommunityShowcase />} />
             <Route path="/collage" element={<CollageStudio />} />
           </Routes>
         </main>
@@ -96,6 +102,7 @@ function App() {
                 <Link to="/" className="text-slate-400 hover:text-blush-600 transition-colors">Home</Link>
                 <Link to="/dashboard" className="text-slate-400 hover:text-blush-600 transition-colors">Dashboard</Link>
                 <Link to="/designer" className="text-slate-400 hover:text-blush-600 transition-colors">Pattern Designer</Link>
+                <Link to="/showcase" className="text-slate-400 hover:text-blush-600 transition-colors">Showcase</Link>
                 <Link to="/pricing" className="text-slate-400 hover:text-blush-600 transition-colors">Plans & Pricing</Link>
                 <Link to="/submit-project" className="text-slate-400 hover:text-blush-600 transition-colors">Custom Request</Link>
               </div>

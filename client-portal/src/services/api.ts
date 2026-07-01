@@ -67,6 +67,28 @@ export interface MarketplaceListing {
   isPublished: boolean;
 }
 
+/** Community Showcase entry data model */
+export interface ShowcaseEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  title: string;
+  description?: string;
+  tips?: string;
+  imageUrl: string;
+  projectType: 'embroidery' | 'collage' | 'quilt-block';
+  metadata: {
+    stitchCount?: number;
+    threadColors?: string[];
+    fabricType?: string;
+    patternSource?: string;
+    timeSpent?: string;
+  };
+  likes: number;
+  createdAt: string;
+}
+
 // Utility function to simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -921,6 +943,259 @@ class ApiClient {
     const filtered = listings.filter(l => l.id !== id);
     localStorage.setItem('stitchwise_marketplace', JSON.stringify(filtered));
     return true;
+  }
+
+  // ==================== COMMUNITY SHOWCASE API ====================
+
+  /** Mock initial showcase entries */
+  private INITIAL_SHOWCASE: ShowcaseEntry[] = [
+    {
+      id: 'show-1',
+      userId: 'usr-928174',
+      userName: 'Elena Crafter',
+      userAvatar: '🌸',
+      title: 'Spring Blossom Wreath',
+      description: 'A delicate wreath of cherry blossoms and wildflowers I designed for my grandmother\'s birthday.',
+      tips: 'Use a lighter stabilizer for delicate fabrics to avoid puckering.',
+      imageUrl: 'https://images.unsplash.com/photo-1603969072881-b0fc7f3d77d7?w=600&q=80',
+      projectType: 'embroidery',
+      metadata: { stitchCount: 1800, threadColors: ['#f9a8d4', '#f472b6', '#86efac'], fabricType: 'Cotton', patternSource: 'AI Generated', timeSpent: '4 hours' },
+      likes: 24,
+      createdAt: '2026-06-28T10:00:00Z',
+    },
+    {
+      id: 'show-2',
+      userId: 'usr-2',
+      userName: 'StitchMaster Pro',
+      userAvatar: '👑',
+      title: 'Vintage Rose Collage Quilt',
+      description: 'A romantic collage quilt featuring layered vintage rose fabric scraps.',
+      tips: 'Press each seam open before adding the next layer for a flat finish.',
+      imageUrl: 'https://images.unsplash.com/photo-1612887168953-0e7e8d7f5f5b?w=600&q=80',
+      projectType: 'collage',
+      metadata: { stitchCount: 4500, threadColors: ['#db2777', '#be185d', '#fbcfe8'], fabricType: 'Cotton Blend', patternSource: 'Manual', timeSpent: '12 hours' },
+      likes: 47,
+      createdAt: '2026-06-27T14:30:00Z',
+    },
+    {
+      id: 'show-3',
+      userId: 'usr-3',
+      userName: 'Dave Digitizer',
+      userAvatar: '🐕',
+      title: 'Garden Butterfly Block',
+      description: 'A monarch butterfly quilt block using raw-edge appliqué technique.',
+      tips: 'Fuse the butterfly wings with lightweight interfacing before stitching.',
+      imageUrl: 'https://images.unsplash.com/photo-1596460107916-430662021049?w=600&q=80',
+      projectType: 'quilt-block',
+      metadata: { stitchCount: 2800, threadColors: ['#f97316', '#f59e0b', '#a3e635'], fabricType: 'Quilting Cotton', patternSource: 'Uploaded', timeSpent: '6 hours' },
+      likes: 31,
+      createdAt: '2026-06-26T09:15:00Z',
+    },
+    {
+      id: 'show-4',
+      userId: 'usr-4',
+      userName: 'Sofia R.',
+      userAvatar: '🦉',
+      title: 'Peony Love Heart Pillow',
+      description: 'A heart-shaped peony embroidery on a throw pillow cover. Perfect gift for Valentine\'s!',
+      tips: 'Use a hoop large enough to hold the entire design without repositioning.',
+      imageUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=600&q=80',
+      projectType: 'embroidery',
+      metadata: { stitchCount: 1200, threadColors: ['#ec4899', '#f472b6', '#fbcfe8'], fabricType: 'Linen', patternSource: 'AI Generated', timeSpent: '3 hours' },
+      likes: 18,
+      createdAt: '2026-06-25T16:45:00Z',
+    },
+    {
+      id: 'show-5',
+      userId: 'usr-5',
+      userName: 'Crafty Mom',
+      userAvatar: '🧵',
+      title: 'Lavender Fields Table Runner',
+      description: 'A lavender-themed collage quilting table runner for summer entertaining.',
+      tips: 'Use a walking foot to prevent fabric shifting when sewing through multiple collage layers.',
+      imageUrl: 'https://images.unsplash.com/photo-1584999734482-0361aecad844?w=600&q=80',
+      projectType: 'collage',
+      metadata: { stitchCount: 3200, threadColors: ['#a855f7', '#d8b4fe', '#e9d5ff'], fabricType: 'Cotton', patternSource: 'Manual', timeSpent: '8 hours' },
+      likes: 12,
+      createdAt: '2026-06-24T11:20:00Z',
+    },
+    {
+      id: 'show-6',
+      userId: 'usr-6',
+      userName: 'QuiltMaster Jen',
+      userAvatar: '🧶',
+      title: 'Floral Monogram Wall Hanging',
+      description: 'Customizable monogram quilt block surrounded by intricate floral appliqué.',
+      tips: 'Starch your fabric before cutting for crisp, accurate shapes.',
+      imageUrl: 'https://images.unsplash.com/photo-1567103472660-0f2c7b3eaf8a?w=600&q=80',
+      projectType: 'quilt-block',
+      metadata: { stitchCount: 5200, threadColors: ['#db2777', '#f472b6', '#fef3c7'], fabricType: 'Cotton', patternSource: 'AI Generated', timeSpent: '15 hours' },
+      likes: 53,
+      createdAt: '2026-06-23T08:00:00Z',
+    },
+  ];
+
+  /**
+   * Fetches all community showcase entries (GET /api/showcase).
+   */
+  async getShowcaseEntries(): Promise<ShowcaseEntry[]> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/showcase`, {
+          headers: this.getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to fetch showcase entries');
+        return await response.json();
+      } catch (err) {
+        console.error('Failed to contact backend, falling back to mocked showcase data', err);
+      }
+    }
+    await delay(500);
+    const stored = localStorage.getItem('stitchwise_showcase');
+    if (stored) return JSON.parse(stored);
+    localStorage.setItem('stitchwise_showcase', JSON.stringify(this.INITIAL_SHOWCASE));
+    return this.INITIAL_SHOWCASE;
+  }
+
+  /**
+   * Fetches a single showcase entry by ID (GET /api/showcase/:id).
+   */
+  async getShowcaseEntry(id: string): Promise<ShowcaseEntry | null> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/showcase/${id}`, {
+          headers: this.getHeaders()
+        });
+        if (!response.ok) {
+          if (response.status === 404) return null;
+          throw new Error('Failed to fetch showcase entry');
+        }
+        return await response.json();
+      } catch (err) {
+        console.error(`Failed to fetch showcase entry ${id} from backend`, err);
+      }
+    }
+    await delay(300);
+    const entries = await this.getShowcaseEntries();
+    return entries.find(e => e.id === id) || null;
+  }
+
+  /**
+   * Uploads a new showcase entry (POST /api/showcase/upload).
+   * Handles tier gating: Hobbyist limited to 3 uploads/month.
+   */
+  async uploadShowcaseEntry(data: {
+    title: string;
+    description?: string;
+    tips?: string;
+    projectType: 'embroidery' | 'collage' | 'quilt-block';
+    metadata?: {
+      stitchCount?: number;
+      threadColors?: string[];
+      fabricType?: string;
+      patternSource?: string;
+      timeSpent?: string;
+    };
+  }): Promise<{ success: boolean; entry?: ShowcaseEntry; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/showcase/upload`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify(data)
+        });
+        if (response.status === 403) {
+          const errData = await response.json().catch(() => ({}));
+          return { success: false, error: errData.error || 'Upload limit reached for your plan' };
+        }
+        if (!response.ok) throw new Error('Failed to upload showcase entry');
+        const entry = await response.json();
+        return { success: true, entry };
+      } catch (err: any) {
+        console.error('Failed to upload showcase entry on backend', err);
+        return { success: false, error: err.message || 'Upload failed' };
+      }
+    }
+
+    // Mock/localStorage Implementation
+    await delay(1000);
+
+    // Check tier gating for Hobbyist (max 3/month)
+    const user = await this.getUserProfile();
+    const isHobbyist = user.subscriptionTier === 'Hobbyist';
+    if (isHobbyist) {
+      const entries = await this.getShowcaseEntries();
+      const now = new Date();
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      const userEntriesThisMonth = entries.filter(e => {
+        const d = new Date(e.createdAt);
+        return e.userId === user.id && d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+      });
+      if (userEntriesThisMonth.length >= 3) {
+        return { success: false, error: 'Hobbyist plan limited to 3 uploads per month. Upgrade to Pro for unlimited uploads!' };
+      }
+    }
+
+    const entries = await this.getShowcaseEntries();
+    const newEntry: ShowcaseEntry = {
+      id: `show-${Date.now()}`,
+      userId: user.id,
+      userName: user.name,
+      userAvatar: user.avatarUrl || '🧵',
+      title: data.title,
+      description: data.description || '',
+      tips: data.tips || '',
+      imageUrl: `https://images.unsplash.com/photo-${Math.floor(Math.random() * 900) + 100}?w=600&q=80`,
+      projectType: data.projectType,
+      metadata: {
+        stitchCount: data.metadata?.stitchCount,
+        threadColors: data.metadata?.threadColors,
+        fabricType: data.metadata?.fabricType,
+        patternSource: data.metadata?.patternSource,
+        timeSpent: data.metadata?.timeSpent,
+      },
+      likes: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    entries.unshift(newEntry);
+    localStorage.setItem('stitchwise_showcase', JSON.stringify(entries));
+    return { success: true, entry: newEntry };
+  }
+
+  /**
+   * Deletes a showcase entry (DELETE /api/showcase/:id).
+   * Only the owner can delete their own entry.
+   */
+  async deleteShowcaseEntry(id: string): Promise<{ success: boolean; error?: string }> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/showcase/${id}`, {
+          method: 'DELETE',
+          headers: this.getHeaders()
+        });
+        if (response.status === 403) return { success: false, error: 'You can only delete your own entries' };
+        if (response.status === 404) return { success: false, error: 'Entry not found' };
+        if (!response.ok) throw new Error('Failed to delete entry');
+        return { success: true };
+      } catch (err: any) {
+        console.error(`Failed to delete showcase entry ${id} on backend`, err);
+        return { success: false, error: err.message || 'Delete failed' };
+      }
+    }
+
+    await delay(400);
+    const entries = await this.getShowcaseEntries();
+    const entry = entries.find(e => e.id === id);
+    if (!entry) return { success: false, error: 'Entry not found' };
+
+    const user = await this.getUserProfile();
+    if (entry.userId !== user.id) return { success: false, error: 'You can only delete your own entries' };
+
+    const filtered = entries.filter(e => e.id !== id);
+    localStorage.setItem('stitchwise_showcase', JSON.stringify(filtered));
+    return { success: true };
   }
 }
 
