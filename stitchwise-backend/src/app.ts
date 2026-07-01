@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter } from "./infrastructure/routes";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter } from "./infrastructure/routes";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -65,6 +65,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createMarketplaceRouter(marketplaceRepo));
   app.use("/api", createCollageRouter(collageRepo));
   app.use("/api", createShowcaseRouter(showcaseRepo));
+  app.use("/api", createFabricEstimatorRouter(collageRepo));
 
   // Global error handler
   app.use(
