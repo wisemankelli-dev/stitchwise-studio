@@ -9,3 +9,4 @@ export { createMarketplaceRouter } from "./marketplace";
 export { createCollageRouter } from "./collage";
 export { createShowcaseRouter } from "./showcase";
 export { createFabricEstimatorRouter } from "./fabricEstimator";
+export { createQuiltBlockRouter } from "./quiltBlock";

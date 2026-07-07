@@ -25,6 +25,7 @@ model User {
   projects              Project[]
   marketplaceListings   MarketplaceListing[] @relation("MarketplaceDesigner")
   collageProjects       CollageProject[]
+  quiltBlockProjects    QuiltBlockProject[]
   showcasePhotos        ShowcasePhoto[]
 }
 
@@ -112,6 +113,26 @@ model CollageProject {
   width     Float    @default(300)   // canvas width in mm
   height    Float    @default(300)   // canvas height in mm
   thumbnail String?                  // URL to preview image
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Quilt Block Studio Models ────────────────────────────────────────────────
+
+// Stores quilt block design projects with JSON data column (same pattern as CollageProject).
+// The `data` field holds the full block state: grid dimensions, patches (geometric
+// shapes), fabric references, layout, and color palette.
+model QuiltBlockProject {
+  id        String   @id @default(uuid())
+  name      String
+  userId    String
+  data      String   @default("{}") // JSON: grid, patches, fabrics, layout, palette
+  blockSize Float    @default(12)   // Finished block size in inches (6-48 typical)
+  gridRows  Int      @default(4)    // Grid rows (e.g. 4 for a 4x4 block)
+  gridCols  Int      @default(4)    // Grid columns
+  thumbnail String?                 // URL to preview image
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

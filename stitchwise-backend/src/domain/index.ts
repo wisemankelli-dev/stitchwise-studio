@@ -5,3 +5,4 @@ export * from "./workshop";
 export * from "./user";
 export * from "./showcase";
 export * from "./fabricEstimator";
+export * from "./quiltBlock";
