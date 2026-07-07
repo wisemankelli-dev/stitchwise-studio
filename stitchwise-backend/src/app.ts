@@ -2,8 +2,8 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter } from "./infrastructure/routes";
-import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo } from "./infrastructure/db";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter } from "./infrastructure/routes";
+import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
 function log(event: string, meta?: Record<string, unknown>): void {
@@ -54,6 +54,7 @@ export async function createApp(): Promise<express.Application> {
   const marketplaceRepo = new PrismaMarketplaceRepo(prisma);
   const collageRepo = new PrismaCollageRepo(prisma);
   const showcaseRepo = new PrismaShowcaseRepo(prisma);
+  const quiltBlockRepo = new PrismaQuiltBlockRepo(prisma);
 
   // Routes
   app.use("/api", healthRouter);
@@ -66,6 +67,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createCollageRouter(collageRepo));
   app.use("/api", createShowcaseRouter(showcaseRepo));
   app.use("/api", createFabricEstimatorRouter(collageRepo));
+  app.use("/api", createQuiltBlockRouter(quiltBlockRepo));
 
   // Global error handler
   app.use(

@@ -8,3 +8,5 @@ export * from "./collageRepo";
 export * from "./prismaCollageRepo";
 export * from "./showcaseRepo";
 export * from "./prismaShowcaseRepo";
+export * from "./quiltBlockRepo";
+export * from "./prismaQuiltBlockRepo";
