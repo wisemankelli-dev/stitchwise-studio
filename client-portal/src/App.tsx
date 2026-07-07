@@ -56,6 +56,10 @@ function App() {
                   <Grid3X3 className="h-4 w-4 text-blush-400" />
                   Quilt Blocks
                 </Link>
+                <Link to="/collage" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
+                  <Scissors className="h-4 w-4 text-blush-400" />
+                  Collage Studio
+                </Link>
                 <Link to="/gallery" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
                   <Image className="h-4 w-4 text-blush-400" />
                   Gallery
