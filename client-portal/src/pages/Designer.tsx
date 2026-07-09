@@ -5,14 +5,15 @@ import {
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
-  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
+import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
-type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
+type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet';
 
 const COLORS = [
   { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
@@ -35,6 +36,7 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
   { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
   { id: 'paint', icon: <Paintbrush className="h-3.5 w-3.5" />, label: 'Paint' },
+  { id: 'alphabet', icon: <Type className="h-3.5 w-3.5" />, label: 'Text' },
 ];
 
 function toGridData(ai: AIPatternResponse): StitchGridData {
@@ -111,6 +113,12 @@ export const Designer: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Alphabet tool state
+  const [alphabetText, setAlphabetText] = useState('');
+  const [selectedFontId, setSelectedFontId] = useState('block');
+  const [placeRow, setPlaceRow] = useState(4);
+  const [placeCol, setPlaceCol] = useState(2);
 
   const setCell = useCallback((row: number, col: number, color: string, stitch: string) => {
     const key = `${row},${col}`;
@@ -304,6 +312,25 @@ export const Designer: React.FC = () => {
   };
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
+<<<<<<< HEAD
+  const handlePlaceText = () => {
+    if (!alphabetText.trim()) return;
+    const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
+    // Clear the area first
+    const width = alphabetText.length * (font.charWidth + font.spacing);
+    for (let r = placeRow; r < placeRow + font.charHeight; r++) {
+      for (let c = placeCol; c < placeCol + width; c++) {
+        if (r < gridSize && c < gridSize) clearCell(r, c);
+      }
+    }
+    renderTextToGrid(
+      alphabetText, font, placeRow, placeCol,
+      selectedColor, selectedStitch, gridSize, setCell
+    );
+  };
+
+=======
+>>>>>>> origin/main
   const stitchData: StitchGridData = aiResult
     ? toGridData(aiResult)
     : buildManualGridData(grid, gridStitchTypes, gridSize);
@@ -603,6 +630,54 @@ export const Designer: React.FC = () => {
                   )}
                   {activeTool === 'erase' && (
                     <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
+                  )}
+                  {activeTool === 'alphabet' && (
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={alphabetText}
+                        onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
+                        placeholder="TYPE TEXT"
+                        className="w-28 rounded-lg border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
+                        maxLength={12}
+                      />
+                      <select
+                        value={selectedFontId}
+                        onChange={(e) => setSelectedFontId(e.target.value)}
+                        className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
+                      >
+                        {FONTS.map((f) => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400">R:</span>
+                        <input
+                          type="number"
+                          value={placeRow}
+                          onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center"
+                          min={0}
+                          max={gridSize - 1}
+                        />
+                        <span className="text-[10px] text-slate-400">C:</span>
+                        <input
+                          type="number"
+                          value={placeCol}
+                          onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center"
+                          min={0}
+                          max={gridSize - 1}
+                        />
+                      </div>
+                      <button
+                        onClick={handlePlaceText}
+                        disabled={!alphabetText.trim()}
+                        className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all"
+                      >
+                        <Type className="h-3 w-3 inline mr-1" /> Place
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

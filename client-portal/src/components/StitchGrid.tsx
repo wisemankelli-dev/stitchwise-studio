@@ -22,7 +22,7 @@ interface StitchGridProps {
   onCellClick?: (row: number, col: number) => void;
   selectedColor?: string;
   /** Active tool for interaction */
-  activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
+  activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet';
   /** Whether mouse is currently held down (for paint/erase drag) */
   isMouseDown?: boolean;
   /** Fires on cell hover while dragging */
