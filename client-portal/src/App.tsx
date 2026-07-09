@@ -69,7 +69,23 @@ function App() {
               </Link>
               
               {/* Navigation Links */}
-              <nav className="flex items-center gap-x-6 lg:gap-x-8">
+              <nav className="flex items-center gap-x-4 lg:gap-x-6">
+                {/* === CORE DESIGN TOOLS (primary) === */}
+                <Link to="/designer" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+                  <Sparkles className="h-4 w-4 text-blush-500" />
+                  Pattern Designer
+                </Link>
+                <Link to="/collage" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+                  <Scissors className="h-4 w-4 text-blush-500" />
+                  Collage Studio
+                </Link>
+                <Link to="/quilt-block" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+                  <Grid3X3 className="h-4 w-4 text-blush-500" />
+                  Quilt Blocks
+                </Link>
+
+                {/* === SECONDARY LINKS === */}
+                <div className="h-5 w-px bg-slate-200 mx-1"></div>
                 <Link to="/" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors">
                   Home
                 </Link>
@@ -77,30 +93,20 @@ function App() {
                   <LayoutDashboard className="h-4 w-4 text-blush-400" />
                   Dashboard
                 </Link>
-                <Link to="/designer" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4 text-blush-400" />
-                  Pattern Designer
+                <Link to="/pricing" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5 text-slate-400" />
+                  Plans &amp; Pricing
                 </Link>
-                <Link to="/pricing" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4 text-blush-400" />
-                  Plans & Pricing
-                </Link>
-                <Link to="/showcase" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <Camera className="h-4 w-4 text-blush-400" />
+                <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5 text-slate-400" />
                   Showcase
                 </Link>
-                <Link to="/collage" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <Scissors className="h-4 w-4 text-blush-400" />
-                  Collage Studio
-                </Link>
-                <Link to="/quilt-block" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <Grid3X3 className="h-4 w-4 text-blush-400" />
-                  Quilt Blocks
-                </Link>
-                <Link to="/gallery" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <Image className="h-4 w-4 text-blush-400" />
+                <Link to="/gallery" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
+                  <Image className="h-3.5 w-3.5 text-slate-400" />
                   Gallery
                 </Link>
+
+                {/* === CTA BUTTON === */}
                 <Link
                   to="/submit-project"
                   className="rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blush-200/40 hover:shadow-lg hover:shadow-blush-300/40 hover:from-blush-600 hover:to-blush-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blush-400"
@@ -160,12 +166,12 @@ function App() {
               {/* Navigation links */}
               <div className="md:col-span-2">
                 <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+                  <Link to="/designer" className="text-blush-500 hover:text-blush-600 transition-colors font-medium">Pattern Designer</Link>
+                  <Link to="/collage" className="text-blush-500 hover:text-blush-600 transition-colors font-medium">Collage Studio</Link>
+                  <Link to="/quilt-block" className="text-blush-500 hover:text-blush-600 transition-colors font-medium">Quilt Blocks</Link>
                   <Link to="/" className="text-slate-400 hover:text-blush-600 transition-colors">Home</Link>
                   <Link to="/dashboard" className="text-slate-400 hover:text-blush-600 transition-colors">Dashboard</Link>
-                  <Link to="/designer" className="text-slate-400 hover:text-blush-600 transition-colors">Pattern Designer</Link>
                   <Link to="/showcase" className="text-slate-400 hover:text-blush-600 transition-colors">Showcase</Link>
-                  <Link to="/collage" className="text-slate-400 hover:text-blush-600 transition-colors">Collage Studio</Link>
-                  <Link to="/quilt-block" className="text-slate-400 hover:text-blush-600 transition-colors">Quilt Blocks</Link>
                   <Link to="/pricing" className="text-slate-400 hover:text-blush-600 transition-colors">Plans & Pricing</Link>
                   <Link to="/submit-project" className="text-slate-400 hover:text-blush-600 transition-colors">Custom Request</Link>
                 </div>
