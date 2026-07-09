@@ -1,16 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, AIPatternResponse } from '../services/api';
 import {
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
-  Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle
+  Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData } from '../components/StitchGrid';
 import { NeedleThread } from '../components/DecorativeSVGs';
 
 interface StitchStyle { id: string; name: string; description: string; }
+
+type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
 
 const COLORS = [
   { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
@@ -24,6 +27,15 @@ const STITCH_STYLES: StitchStyle[] = [
   { id: 'satin', name: 'Satin Stitch', description: 'Flat, glossy parallel stitches' },
   { id: 'back', name: 'Back Stitch', description: 'Perfect for outlining fine borders' },
   { id: 'french', name: 'French Knot', description: 'Raised, textured point details' },
+];
+
+const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
+  { id: 'select', icon: <MousePointer2 className="h-3.5 w-3.5" />, label: 'Select' },
+  { id: 'mirror', icon: <FlipHorizontal className="h-3.5 w-3.5" />, label: 'Mirror' },
+  { id: 'erase', icon: <Eraser className="h-3.5 w-3.5" />, label: 'Erase' },
+  { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
+  { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
+  { id: 'paint', icon: <Paintbrush className="h-3.5 w-3.5" />, label: 'Paint' },
 ];
 
 function toGridData(ai: AIPatternResponse): StitchGridData {
@@ -57,20 +69,143 @@ export const Designer: React.FC = () => {
   const [previewMode, setPreviewMode] = useState<'pattern' | 'original'>('pattern');
   const lastSaved = useRef<Record<string, string>>({});
 
-  const handleCellClick = (x: number, y: number) => {
-    const key = `${x},${y}`;
-    const newGrid = { ...grid };
-    const newStitchTypes = { ...gridStitchTypes };
-    if (newGrid[key] === selectedColor) {
-      delete newGrid[key]; delete newStitchTypes[key];
-    } else {
-      newGrid[key] = selectedColor; newStitchTypes[key] = selectedStitch;
+  // Editing Tools state
+  const [activeTool, setActiveTool] = useState<EditTool>('select');
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
+  const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  const setCell = useCallback((row: number, col: number, color: string, stitch: string) => {
+    const key = `${row},${col}`;
+    setGrid(prev => ({ ...prev, [key]: color }));
+    setGridStitchTypes(prev => ({ ...prev, [key]: stitch }));
+  }, []);
+
+  const clearCell = useCallback((row: number, col: number) => {
+    const key = `${row},${col}`;
+    setGrid(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setGridStitchTypes(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const mirrorCellEdit = useCallback((row: number, col: number, color: string, stitch: string) => {
+    if (!mirrorEnabled) return;
+    const mirroredRow = gridSize - 1 - row;
+    const mirroredCol = gridSize - 1 - col;
+    if (mirroredRow === row && mirroredCol === col) return;
+    setCell(mirroredRow, mirroredCol, color, stitch);
+  }, [mirrorEnabled, gridSize, setCell]);
+
+  const handleCellAction = useCallback((row: number, col: number) => {
+    const key = `${row},${col}`;
+
+    switch (activeTool) {
+      case 'erase': {
+        clearCell(row, col);
+        if (mirrorEnabled) {
+          const mRow = gridSize - 1 - row;
+          const mCol = gridSize - 1 - col;
+          if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
+        }
+        break;
+      }
+      case 'paint': {
+        setCell(row, col, selectedColor, selectedStitch);
+        if (mirrorEnabled) {
+          mirrorCellEdit(row, col, selectedColor, selectedStitch);
+        }
+        break;
+      }
+      case 'eyedropper': {
+        const existingColor = grid[key];
+        if (existingColor) {
+          setSelectedColor(existingColor);
+          setActiveTool('paint');
+        }
+        break;
+      }
+      case 'clone': {
+        if (!cloneSource) {
+          // First click: select source
+          if (grid[key]) {
+            setCloneSource({ row, col });
+          }
+        } else {
+          // Second click: paste to destination
+          const srcKey = `${cloneSource.row},${cloneSource.col}`;
+          const srcColor = grid[srcKey];
+          const srcStitch = gridStitchTypes[srcKey];
+          if (srcColor) {
+            setCell(row, col, srcColor, srcStitch || 'cross');
+            if (mirrorEnabled) {
+              mirrorCellEdit(row, col, srcColor, srcStitch || 'cross');
+            }
+          }
+          setCloneSource(null);
+        }
+        break;
+      }
+      default: {
+        // Select tool: normal toggle behavior
+        const newGrid = { ...grid };
+        const newStitchTypes = { ...gridStitchTypes };
+        if (newGrid[key] === selectedColor) {
+          delete newGrid[key];
+          delete newStitchTypes[key];
+        } else {
+          newGrid[key] = selectedColor;
+          newStitchTypes[key] = selectedStitch;
+        }
+        setGrid(newGrid);
+        setGridStitchTypes(newStitchTypes);
+
+        if (mirrorEnabled) {
+          const mRow = gridSize - 1 - row;
+          const mCol = gridSize - 1 - col;
+          if (mRow !== row || mCol !== col) {
+            const mKey = `${mRow},${mCol}`;
+            if (newGrid[key] === selectedColor) {
+              newGrid[mKey] = selectedColor;
+              newStitchTypes[mKey] = selectedStitch;
+            } else {
+              delete newGrid[mKey];
+              delete newStitchTypes[mKey];
+            }
+            setGrid({ ...newGrid });
+            setGridStitchTypes({ ...newStitchTypes });
+          }
+        }
+        break;
+      }
     }
-    setGrid(newGrid); setGridStitchTypes(newStitchTypes);
-  };
+  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridSize, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
+
+  const handleCellHover = useCallback((row: number, col: number) => {
+    if (!isMouseDown) return;
+    if (activeTool === 'paint') {
+      setCell(row, col, selectedColor, selectedStitch);
+      if (mirrorEnabled) mirrorCellEdit(row, col, selectedColor, selectedStitch);
+    } else if (activeTool === 'erase') {
+      clearCell(row, col);
+      if (mirrorEnabled) {
+        const mRow = gridSize - 1 - row;
+        const mCol = gridSize - 1 - col;
+        if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
+      }
+    }
+  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
 
   const handleClearGrid = () => {
     setGrid({}); setGridStitchTypes({}); setAiResult(null); setAiError(null);
+    setCloneSource(null);
   };
 
   const triggerTextGeneration = async (e: React.FormEvent) => {
@@ -382,7 +517,65 @@ export const Designer: React.FC = () => {
                 </div>
               </div>
 
-              <div className="w-full p-6 bg-amber-50/20 rounded-2xl border-4 border-dashed border-blush-100 shadow-inner min-h-[360px] flex items-center justify-center overflow-auto">
+              {/* Toolbar */}
+              <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                  {TOOLS.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={() => {
+                        setActiveTool(tool.id);
+                        if (tool.id !== 'clone') setCloneSource(null);
+                        if (tool.id !== 'mirror') setMirrorEnabled(false);
+                      }}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                        activeTool === tool.id
+                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      title={tool.label}
+                    >
+                      {tool.icon}
+                      <span className="hidden sm:inline">{tool.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeTool === 'mirror' && (
+                    <button
+                      onClick={() => setMirrorEnabled(!mirrorEnabled)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                        mirrorEnabled ? 'bg-blush-500 text-white shadow-sm' : 'bg-blush-50 text-slate-500 border border-blush-100'
+                      }`}
+                    >
+                      <FlipHorizontal className="h-3 w-3 inline mr-1" />
+                      {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
+                    </button>
+                  )}
+                  {activeTool === 'clone' && cloneSource && (
+                    <span className="text-[10px] font-bold text-blush-600 bg-blush-50 px-2 py-1 rounded-lg">
+                      Source: ({cloneSource.row},{cloneSource.col}) — click to paste
+                    </span>
+                  )}
+                  {activeTool === 'eyedropper' && (
+                    <span className="text-[10px] text-slate-500 italic">Click a cell to pick its color</span>
+                  )}
+                  {activeTool === 'paint' && (
+                    <span className="text-[10px] text-slate-500 italic">Click & drag to paint</span>
+                  )}
+                  {activeTool === 'erase' && (
+                    <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
+                  )}
+                </div>
+              </div>
+
+              <div
+                ref={canvasRef}
+                className="w-full p-6 bg-amber-50/20 rounded-2xl border-4 border-dashed border-blush-100 shadow-inner min-h-[360px] flex items-center justify-center overflow-auto"
+                onMouseDown={() => setIsMouseDown(true)}
+                onMouseUp={() => { setIsMouseDown(false); }}
+                onMouseLeave={() => { setIsMouseDown(false); }}
+              >
                 {previewMode === 'original' && aiResult ? (
                   <div className="flex flex-col items-center p-8 bg-white/90 rounded-2xl shadow-sm border border-blush-100 max-w-sm mx-auto text-center">
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-blush-600 mb-4">Generated Concept</span>
@@ -396,7 +589,16 @@ export const Designer: React.FC = () => {
                     <span className="text-xs font-bold text-slate-800 mt-4 truncate max-w-full">{aiResult.promptUsed || 'AI Generated'}</span>
                   </div>
                 ) : stitchData ? (
-                  <div className="w-full"><StitchGrid data={stitchData} zoom={zoom} onCellClick={handleCellClick} /></div>
+                  <div className="w-full">
+                    <StitchGrid
+                      data={stitchData}
+                      zoom={zoom}
+                      onCellClick={handleCellAction}
+                      activeTool={activeTool}
+                      isMouseDown={isMouseDown}
+                      onCellHover={handleCellHover}
+                    />
+                  </div>
                 ) : (
                   <div className="text-center p-12">
                     <NeedleThread className="h-16 w-16 mx-auto text-blush-300 mb-4" />
