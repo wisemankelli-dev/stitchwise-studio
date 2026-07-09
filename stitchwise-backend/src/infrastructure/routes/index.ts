@@ -12,3 +12,4 @@ export { createFabricEstimatorRouter } from "./fabricEstimator";
 export { createQuiltBlockRouter } from "./quiltBlock";
 export { createAIEmbroideryRouter } from "./aiEmbroidery";
 export { createAICollageRouter } from "./aiCollage";
+export { createEstimatorRouter } from "./estimator";
