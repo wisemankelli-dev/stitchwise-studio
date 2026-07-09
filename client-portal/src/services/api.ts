@@ -845,7 +845,7 @@ class ApiClient {
 
     // Mock Implementation
     await delay(3000);
-    const size = gridSize || 16;
+    const size = gridSize || 32;
     const dmcPalette = [
       { code: '310', name: 'Black', hex: '#1e293b', count: 0 },
       { code: '321', name: 'Christmas Red', hex: '#e11d48', count: 0 },
