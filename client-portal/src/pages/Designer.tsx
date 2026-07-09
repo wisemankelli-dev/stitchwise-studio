@@ -312,8 +312,7 @@ export const Designer: React.FC = () => {
   };
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
-<<<<<<< HEAD
-  const handlePlaceText = () => {
+const handlePlaceText = () => {
     if (!alphabetText.trim()) return;
     const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
     // Clear the area first
@@ -328,9 +327,6 @@ export const Designer: React.FC = () => {
       selectedColor, selectedStitch, gridSize, setCell
     );
   };
-
-=======
->>>>>>> origin/main
   const stitchData: StitchGridData = aiResult
     ? toGridData(aiResult)
     : buildManualGridData(grid, gridStitchTypes, gridSize);
