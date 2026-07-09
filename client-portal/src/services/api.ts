@@ -1054,6 +1054,325 @@ class ApiClient {
     };
   }
 
+  // ==================== AI COLLAGE GENERATION ====================
+
+  /**
+   * Collage fabric textures and colors used in smart mock fallback
+   */
+  private COLLAGE_FABRIC_TEXTURES = [
+    'solid', 'linen', 'polka', 'stripe', 'plaid'
+  ];
+
+  private COLLAGE_FABRIC_COLORS = [
+    '#ffffff', '#fce7f3', '#fbcfe8', '#f9a8d4', '#f472b6',
+    '#ec4899', '#db2777', '#86efac', '#fef3c7', '#bfdbfe',
+    '#c4b5fd', '#fca5a5', '#d9f99d', '#fed7aa', '#e2e8f0',
+  ];
+
+  /**
+   * Picks a random element from an array
+   */
+  private pickRandom<T>(arr: T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  /**
+   * Generates a collage design from a text prompt using AI.
+   * POST /api/ai/collage/text-to-collage
+   */
+  async generateCollageFromText(
+    prompt: string,
+    options?: { gridSize?: number }
+  ): Promise<AICollageResponse> {
+    if (this.isLiveBackend) {
+      try {
+        const response = await fetch(`${this.apiBaseUrl}/ai/collage/text-to-collage`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ prompt, ...options })
+        });
+        if (!response.ok) throw new Error('AI collage generation failed');
+        return await response.json();
+      } catch (err) {
+        console.error('AI text-to-collage backend error, using mock', err);
+      }
+    }
+
+    // Smart Mock Implementation — generates layers based on prompt keywords
+    await delay(3000);
+
+    const isFloral = /flower|floral|rose|blossom|garden|botanical|petal|bloom/i.test(prompt);
+    const isHeart = /heart|love|romantic|valentine/i.test(prompt);
+    const isGeometric = /geometric|mandala|symmetry|pattern|tile/i.test(prompt);
+    const isNature = /leaf|leaves|tree|branch|vine|nature|woodland|forest/i.test(prompt);
+    const isVintage = /vintage|retro|antique|shabby|rustic|lace/i.test(prompt);
+    const isAbstract = /abstract|modern|contemporary|artistic/i.test(prompt);
+
+    const layers: FabricLayer[] = [];
+
+    // Always start with a base fabric
+    const bgColor = isVintage ? '#fef3c7' : isFloral ? '#fce7f3' : isNature ? '#f0fdf4' : isAbstract ? '#f5f3ff' : '#ffffff';
+    layers.push({
+      id: 'bg', name: 'Base Fabric', color: bgColor, pattern: 'solid',
+      x: 100, y: 100, width: 400, height: 400, rotation: 0, opacity: 1, zIndex: 0,
+    });
+
+    if (isFloral) {
+      // Generate floral arrangement: large bloom center, smaller petals, leaves
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Large Bloom', color: '#f9a8d4', pattern: this.pickRandom(['solid', 'polka']),
+        x: 180, y: 150, width: 150, height: 150, rotation: 0, opacity: 0.9, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Inner Petal', color: '#f472b6', pattern: 'solid',
+        x: 215, y: 185, width: 80, height: 80, rotation: 0, opacity: 1, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Leaf Left', color: '#86efac', pattern: 'stripe',
+        x: 110, y: 220, width: 90, height: 50, rotation: -30, opacity: 0.85, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Leaf Right', color: '#86efac', pattern: 'stripe',
+        x: 310, y: 210, width: 90, height: 50, rotation: 25, opacity: 0.85, zIndex: 4,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-5`, name: 'Small Bud', color: '#fbcfe8', pattern: 'solid',
+        x: 260, y: 310, width: 50, height: 50, rotation: -10, opacity: 0.8, zIndex: 5,
+      });
+      // Extra accents for garden/botanical
+      if (/garden|botanical/i.test(prompt)) {
+        layers.push({
+          id: `layer-${Date.now()}-6`, name: 'Stem Detail', color: '#22c55e', pattern: 'linen',
+          x: 230, y: 320, width: 30, height: 80, rotation: 5, opacity: 0.7, zIndex: 6,
+        });
+        layers.push({
+          id: `layer-${Date.now()}-7`, name: 'Extra Bloom', color: '#d8b4fe', pattern: 'polka',
+          x: 130, y: 300, width: 60, height: 60, rotation: 15, opacity: 0.75, zIndex: 7,
+        });
+      }
+    } else if (isHeart) {
+      // Heart-shaped arrangement
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Heart Left', color: '#f472b6', pattern: 'solid',
+        x: 160, y: 180, width: 120, height: 150, rotation: -20, opacity: 0.9, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Heart Right', color: '#f472b6', pattern: 'solid',
+        x: 260, y: 180, width: 120, height: 150, rotation: 20, opacity: 0.9, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Heart Center', color: '#ec4899', pattern: 'polka',
+        x: 210, y: 230, width: 100, height: 80, rotation: 0, opacity: 1, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Love Accent', color: '#fbcfe8', pattern: 'solid',
+        x: 230, y: 310, width: 60, height: 40, rotation: 0, opacity: 0.8, zIndex: 4,
+      });
+    } else if (isGeometric) {
+      // Geometric mandala-like pattern
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Outer Ring', color: '#c4b5fd', pattern: 'solid',
+        x: 120, y: 120, width: 280, height: 280, rotation: 0, opacity: 0.6, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Ring Band', color: '#a78bfa', pattern: 'plaid',
+        x: 150, y: 150, width: 220, height: 220, rotation: 15, opacity: 0.7, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Inner Square', color: '#8b5cf6', pattern: 'stripe',
+        x: 190, y: 190, width: 140, height: 140, rotation: 45, opacity: 0.8, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Center Diamond', color: '#f472b6', pattern: 'solid',
+        x: 250, y: 250, width: 70, height: 70, rotation: 0, opacity: 0.9, zIndex: 4,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-5`, name: 'Center Dot', color: '#fbcfe8', pattern: 'polka',
+        x: 275, y: 275, width: 30, height: 30, rotation: 0, opacity: 1, zIndex: 5,
+      });
+    } else if (isNature) {
+      // Leafy/nature arrangement
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Large Leaf', color: '#86efac', pattern: 'linen',
+        x: 150, y: 200, width: 160, height: 90, rotation: -15, opacity: 0.85, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Medium Leaf', color: '#4ade80', pattern: 'stripe',
+        x: 220, y: 150, width: 120, height: 70, rotation: 20, opacity: 0.8, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Vine Curve', color: '#22c55e', pattern: 'solid',
+        x: 260, y: 250, width: 80, height: 140, rotation: 10, opacity: 0.75, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Berry Cluster', color: '#fca5a5', pattern: 'polka',
+        x: 180, y: 290, width: 50, height: 40, rotation: 0, opacity: 0.9, zIndex: 4,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-5`, name: 'Small Fern', color: '#86efac', pattern: 'linen',
+        x: 110, y: 170, width: 70, height: 80, rotation: -40, opacity: 0.7, zIndex: 5,
+      });
+    } else if (isVintage) {
+      // Vintage shabby chic
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Lace Border L', color: '#fef3c7', pattern: 'linen',
+        x: 80, y: 80, width: 180, height: 340, rotation: 0, opacity: 0.6, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Lace Border R', color: '#fef3c7', pattern: 'linen',
+        x: 260, y: 80, width: 180, height: 340, rotation: 0, opacity: 0.6, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Rose Motif', color: '#f9a8d4', pattern: 'polka',
+        x: 200, y: 180, width: 110, height: 110, rotation: 0, opacity: 0.85, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Center Rose', color: '#f472b6', pattern: 'solid',
+        x: 230, y: 210, width: 60, height: 60, rotation: 10, opacity: 0.9, zIndex: 4,
+      });
+    } else if (isAbstract) {
+      // Abstract/modern art
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Splash 1', color: '#c4b5fd', pattern: 'solid',
+        x: 120, y: 100, width: 180, height: 140, rotation: 25, opacity: 0.7, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Splash 2', color: '#fca5a5', pattern: 'stripe',
+        x: 240, y: 200, width: 150, height: 120, rotation: -15, opacity: 0.65, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Accent Block', color: '#d9f99d', pattern: 'solid',
+        x: 160, y: 260, width: 100, height: 100, rotation: 45, opacity: 0.75, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Highlight', color: '#fde68a', pattern: 'polka',
+        x: 300, y: 120, width: 60, height: 60, rotation: 0, opacity: 0.85, zIndex: 4,
+      });
+    } else {
+      // Default: mixed floral arrangement
+      layers.push({
+        id: `layer-${Date.now()}-1`, name: 'Main Pattern', color: '#f9a8d4', pattern: 'solid',
+        x: 170, y: 170, width: 160, height: 140, rotation: 0, opacity: 0.9, zIndex: 1,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-2`, name: 'Accent', color: '#fbcfe8', pattern: 'polka',
+        x: 210, y: 210, width: 80, height: 80, rotation: 15, opacity: 0.85, zIndex: 2,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-3`, name: 'Detail', color: '#d8b4fe', pattern: 'stripe',
+        x: 150, y: 290, width: 90, height: 50, rotation: -10, opacity: 0.75, zIndex: 3,
+      });
+      layers.push({
+        id: `layer-${Date.now()}-4`, name: 'Bottom Accent', color: '#86efac', pattern: 'linen',
+        x: 280, y: 290, width: 70, height: 50, rotation: 5, opacity: 0.7, zIndex: 4,
+      });
+    }
+
+    return {
+      success: true,
+      layers,
+      canvasWidth: 500,
+      canvasHeight: 500,
+      promptUsed: prompt,
+      processingTimeMs: 3000,
+      totalLayers: layers.length,
+    };
+  }
+
+  /**
+   * Generates a collage design from an uploaded image using AI.
+   * POST /api/ai/collage/image-to-collage
+   */
+  async generateCollageFromImage(
+    file: File,
+    options?: { complexity?: 'simple' | 'moderate' | 'complex' }
+  ): Promise<AICollageResponse> {
+    if (this.isLiveBackend) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (options?.complexity) formData.append('complexity', options.complexity);
+
+        const response = await fetch(`${this.apiBaseUrl}/ai/collage/image-to-collage`, {
+          method: 'POST',
+          headers: this.getHeaders({}, true),
+          body: formData,
+        });
+        if (!response.ok) throw new Error('AI image-to-collage generation failed');
+        return await response.json();
+      } catch (err) {
+        console.error('AI image-to-collage backend error, using mock', err);
+      }
+    }
+
+    // Smart Mock Implementation — generates a radial/sunburst layout
+    await delay(3500);
+
+    const complexity = options?.complexity || 'moderate';
+    const numLayers = complexity === 'simple' ? 4 : complexity === 'complex' ? 8 : 6;
+
+    const layers: FabricLayer[] = [];
+
+    // Base fabric
+    layers.push({
+      id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid',
+      x: 100, y: 100, width: 400, height: 400, rotation: 0, opacity: 1, zIndex: 0,
+    });
+
+    // Generate radial/sunburst layout
+    const centerX = 250, centerY = 250;
+    for (let i = 0; i < numLayers; i++) {
+      const angle = (i / numLayers) * Math.PI * 2;
+      const radius = 40 + (i * 25);
+      const xOff = Math.cos(angle) * radius;
+      const yOff = Math.sin(angle) * radius;
+
+      const colorIdx = (i * 3) % this.COLLAGE_FABRIC_COLORS.length;
+      const textureIdx = (i * 2) % this.COLLAGE_FABRIC_TEXTURES.length;
+
+      const layerSize = 40 + Math.floor(Math.random() * 50);
+
+      layers.push({
+        id: `layer-img-${i + 1}`,
+        name: `Patch ${i + 1}`,
+        color: this.COLLAGE_FABRIC_COLORS[colorIdx],
+        pattern: this.COLLAGE_FABRIC_TEXTURES[textureIdx],
+        x: centerX + xOff - layerSize / 2,
+        y: centerY + yOff - layerSize / 2,
+        width: layerSize,
+        height: layerSize + (i % 2 === 0 ? 20 : 0),
+        rotation: Math.round(angle * (180 / Math.PI) * 0.3),
+        opacity: 0.75 + (Math.random() * 0.2),
+        zIndex: i + 1,
+      });
+    }
+
+    // Center focal point
+    layers.push({
+      id: `layer-img-center`,
+      name: 'Center Focal',
+      color: '#f472b6',
+      pattern: 'solid',
+      x: centerX - 25,
+      y: centerY - 25,
+      width: 50,
+      height: 50,
+      rotation: 0,
+      opacity: 1,
+      zIndex: numLayers + 1,
+    });
+
+    return {
+      success: true,
+      layers,
+      canvasWidth: 500,
+      canvasHeight: 500,
+      promptUsed: `Image: ${file.name}`,
+      processingTimeMs: 3500,
+      totalLayers: layers.length,
+    };
+  }
+
   // ==================== MARKETPLACE API ====================
 
   /**
@@ -1450,3 +1769,31 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+// ==================== AI COLLAGE GENERATION TYPES ====================
+
+/** A single fabric layer in a collage design */
+export interface FabricLayer {
+  id: string;
+  name: string;
+  color: string;
+  pattern: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  zIndex: number;
+}
+
+/** Response from AI collage generation */
+export interface AICollageResponse {
+  success: boolean;
+  layers: FabricLayer[];
+  canvasWidth: number;
+  canvasHeight: number;
+  promptUsed?: string;
+  processingTimeMs: number;
+  totalLayers: number;
+}

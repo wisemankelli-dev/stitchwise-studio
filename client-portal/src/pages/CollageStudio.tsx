@@ -1,24 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { api, FabricLayer, AICollageResponse } from '../services/api';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Flower2, Sparkles, Heart, ArrowLeft
+  Flower2, Sparkles, UploadCloud,
+  Image, Play, CheckCircle2, AlertTriangle, RefreshCw
 } from 'lucide-react';
-
-interface FabricLayer {
-  id: string;
-  name: string;
-  color: string;
-  pattern: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  opacity: number;
-  zIndex: number;
-}
 
 const FABRIC_TEXTURES = [
   { id: 'solid', name: 'Solid Cotton', class: 'bg-current' },
@@ -45,6 +33,18 @@ export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
   const [zoom, setZoom] = useState(1);
+
+  // AI Generation state
+  const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
+  const [promptInput, setPromptInput] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; previewUrl: string } | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatorProgress, setGeneratorProgress] = useState(0);
+  const [progressPhase, setProgressPhase] = useState('');
+  const [aiResult, setAiResult] = useState<AICollageResponse | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [replaceMode, setReplaceMode] = useState<'replace' | 'append'>('replace');
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
 
@@ -78,6 +78,118 @@ export const CollageStudio: React.FC = () => {
     }
   };
 
+  const applyAiResult = () => {
+    if (!aiResult?.layers) return;
+
+    if (replaceMode === 'replace') {
+      // Replace all layers with AI-generated ones
+      setLayers(aiResult.layers);
+      setSelectedLayerId(aiResult.layers[aiResult.layers.length - 1]?.id || 'bg');
+    } else {
+      // Append AI-generated layers to existing canvas
+      const maxZ = layers.reduce((max, l) => Math.max(max, l.zIndex), 0);
+      const newLayers = aiResult.layers.filter(l => l.id !== 'bg').map(l => ({
+        ...l,
+        id: `ai-${Date.now()}-${l.id}`,
+        zIndex: maxZ + l.zIndex + 1,
+        x: l.x + 20,
+        y: l.y + 20,
+      }));
+      setLayers(prev => [...prev, ...newLayers]);
+      setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
+    }
+  };
+
+  // === Text-to-Collage ===
+  const triggerTextGeneration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promptInput.trim()) return;
+    setIsGenerating(true);
+    setGeneratorProgress(5);
+    setProgressPhase('Interpreting your design vision...');
+    setAiResult(null);
+    setAiError(null);
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const p = Math.min(95, Math.round(((Date.now() - startTime) / 3000) * 95));
+      setGeneratorProgress(p);
+      setProgressPhase(
+        p < 20 ? 'Interpreting your design vision...'
+          : p < 40 ? 'Detecting fabric patterns and colors...'
+          : p < 60 ? 'Arranging fabric layers...'
+          : p < 80 ? 'Applying textures...'
+          : 'Finalizing collage design...'
+      );
+    }, 100);
+    try {
+      const result = await api.generateCollageFromText(promptInput);
+      clearInterval(interval);
+      setGeneratorProgress(100);
+      setProgressPhase('Collage complete!');
+      setAiResult(result);
+    } catch (err: any) {
+      clearInterval(interval);
+      setAiError(err.message || 'AI collage generation failed.');
+    } finally {
+      setTimeout(() => setIsGenerating(false), 500);
+    }
+  };
+
+  // === Image-to-Collage ===
+  const triggerImageGeneration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadedFile) return;
+    setIsGenerating(true);
+    setGeneratorProgress(5);
+    setProgressPhase('Analyzing image composition...');
+    setAiResult(null);
+    setAiError(null);
+    const resp = await fetch(uploadedFile.previewUrl);
+    const blob = await resp.blob();
+    const file = new File([blob], uploadedFile.name, { type: blob.type });
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const p = Math.min(95, Math.round(((Date.now() - startTime) / 3500) * 95));
+      setGeneratorProgress(p);
+      setProgressPhase(
+        p < 20 ? 'Analyzing image composition...'
+          : p < 40 ? 'Detecting color regions...'
+          : p < 60 ? 'Mapping to fabric patches...'
+          : p < 80 ? 'Arranging radial layout...'
+          : 'Finalizing collage design...'
+      );
+    }, 100);
+    try {
+      const result = await api.generateCollageFromImage(file);
+      clearInterval(interval);
+      setGeneratorProgress(100);
+      setProgressPhase('Collage complete!');
+      setAiResult(result);
+    } catch (err: any) {
+      clearInterval(interval);
+      setAiError(err.message || 'Image collage generation failed.');
+    } finally {
+      setTimeout(() => setIsGenerating(false), 500);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDraggingOver(true); };
+  const handleDragLeave = () => setIsDraggingOver(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setIsDraggingOver(false);
+    if (e.dataTransfer.files?.[0]) {
+      const f = e.dataTransfer.files[0];
+      setUploadedFile({ name: f.name, size: `${(f.size / (1024 * 1024)).toFixed(2)} MB`, previewUrl: URL.createObjectURL(f) });
+    }
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const f = e.target.files[0];
+      setUploadedFile({ name: f.name, size: `${(f.size / (1024 * 1024)).toFixed(2)} MB`, previewUrl: URL.createObjectURL(f) });
+    }
+  };
+  const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
+
   return (
     <div className="min-h-screen bg-floral-soft">
       {/* Header */}
@@ -97,6 +209,28 @@ export const CollageStudio: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {aiResult && !isGenerating && (
+                <>
+                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
+                    <button
+                      onClick={() => setReplaceMode('replace')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
+                    </button>
+                    <button
+                      onClick={() => setReplaceMode('append')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
+                    </button>
+                  </div>
+                  <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3">
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Apply to Canvas
+                  </button>
+                </>
+              )}
               <button className="btn-floral-ghost text-xs py-1.5 px-3">
                 <Save className="h-3.5 w-3.5 mr-1" />
                 Save
@@ -177,6 +311,150 @@ export const CollageStudio: React.FC = () => {
 
           {/* Right: Inspector (4 cols) */}
           <div className="lg:col-span-4 space-y-6">
+            {/* AI Generation Panel */}
+            <div className="floral-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-blush-500" />
+                  AI Collage Generator
+                </h3>
+              </div>
+
+              <div className="flex border-b border-blush-100 mb-4">
+                <button onClick={() => setActiveTab('prompt')} disabled={isGenerating}
+                  className={`flex-1 pb-2 text-[10px] font-bold text-center border-b-2 transition-all ${
+                    activeTab === 'prompt' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'
+                  }`}>
+                  <Sparkles className="h-3.5 w-3.5 inline mr-1" /> Text-to-Collage
+                </button>
+                <button onClick={() => setActiveTab('image')} disabled={isGenerating}
+                  className={`flex-1 pb-2 text-[10px] font-bold text-center border-b-2 transition-all ${
+                    activeTab === 'image' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'
+                  }`}>
+                  <Image className="h-3.5 w-3.5 inline mr-1" /> Image-to-Collage
+                </button>
+              </div>
+
+              {activeTab === 'prompt' ? (
+                <div>
+                  <p className="text-[11px] text-slate-500 mb-3">Describe your collage quilt design and AI will generate fabric layers.</p>
+                  <form onSubmit={triggerTextGeneration} className="space-y-3">
+                    <textarea rows={3} disabled={isGenerating} value={promptInput}
+                      onChange={(e) => setPromptInput(e.target.value)}
+                      placeholder="e.g., A floral garden with pink roses and green leaves on a white background"
+                      className="w-full rounded-xl border-blush-100 text-sm text-slate-800 shadow-sm focus:border-blush-500 focus:ring-blush-500 disabled:opacity-50 placeholder:text-blush-300" />
+                    {isGenerating ? (
+                      <div className="space-y-2 p-3 bg-blush-50 rounded-xl border border-blush-100">
+                        <div className="flex items-center gap-2 text-[11px] text-blush-700 font-semibold">
+                          <div className="h-2 w-2 rounded-full bg-blush-500 animate-pulse" />
+                          <span className="flex-1">{progressPhase}</span>
+                          <span>{Math.min(generatorProgress, 100)}%</span>
+                        </div>
+                        <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
+                          <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="submit" disabled={!promptInput.trim()}
+                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
+                        <Play className="h-3.5 w-3.5" /> Generate Collage
+                      </button>
+                    )}
+                  </form>
+                  {aiResult && !isGenerating && activeTab === 'prompt' && (
+                    <button onClick={triggerTextGeneration as any}
+                      className="w-full mt-2 rounded-xl border border-blush-200 px-4 py-2 text-[10px] font-semibold text-blush-600 hover:bg-blush-50 flex items-center justify-center gap-2 transition-all">
+                      <RefreshCw className="h-3 w-3" /> Regenerate
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-[11px] text-slate-500">Upload an image to convert into a fabric collage layout.</p>
+                  {!uploadedFile ? (
+                    <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+                      className={`border-2 border-dashed rounded-xl p-5 text-center transition-all ${
+                        isDraggingOver ? 'border-blush-500 bg-blush-50/50' : 'border-blush-200 hover:bg-blush-50/50'
+                      }`}>
+                      <input type="file" id="collage-file-upload" className="hidden" accept="image/*" onChange={handleFileChange} />
+                      <label htmlFor="collage-file-upload" className="cursor-pointer block space-y-2">
+                        <UploadCloud className="h-7 w-7 mx-auto text-blush-400" />
+                        <span className="block text-xs font-bold text-slate-700">Drag & drop here</span>
+                        <span className="block text-[10px] text-slate-400">or click to browse (PNG, JPG)</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-blush-50/50 rounded-xl border border-blush-100 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded bg-blush-100 flex items-center justify-center text-blush-600 shrink-0 font-bold text-xs uppercase">IMG</div>
+                        <div className="overflow-hidden">
+                          <p className="text-xs font-bold text-slate-800 truncate">{uploadedFile.name}</p>
+                          <p className="text-[10px] text-slate-500">{uploadedFile.size}</p>
+                        </div>
+                      </div>
+                      <button onClick={handleRemoveFile} disabled={isGenerating}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  <form onSubmit={triggerImageGeneration} className="space-y-3">
+                    {isGenerating ? (
+                      <div className="space-y-2 p-3 bg-blush-50 rounded-xl border border-blush-100">
+                        <div className="flex items-center gap-2 text-[11px] text-blush-700 font-semibold">
+                          <div className="h-2 w-2 rounded-full bg-blush-500 animate-pulse" />
+                          <span className="flex-1">{progressPhase}</span>
+                          <span>{Math.min(generatorProgress, 100)}%</span>
+                        </div>
+                        <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
+                          <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="submit" disabled={!uploadedFile}
+                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
+                        <Play className="h-3.5 w-3.5" /> Convert to Collage
+                      </button>
+                    )}
+                  </form>
+                </div>
+              )}
+
+              {/* Success message */}
+              {aiResult && !isGenerating && (
+                <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <p className="text-[11px] text-emerald-800">
+                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. Click <strong>"Apply to Canvas"</strong> above to use them.
+                  </p>
+                </div>
+              )}
+
+              {/* Error message */}
+              {aiError && (
+                <div className="mt-3 p-3 bg-rose-50 rounded-xl border border-rose-100 flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
+                  <p className="text-[11px] text-rose-800">{aiError}</p>
+                </div>
+              )}
+
+              {/* Generated layers preview */}
+              {aiResult && !isGenerating && aiResult.layers.length > 1 && (
+                <div className="mt-3 pt-3 border-t border-blush-100">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Generated Layers</p>
+                  <div className="space-y-1 max-h-28 overflow-y-auto">
+                    {aiResult.layers.filter(l => l.id !== 'bg').map((layer) => (
+                      <div key={layer.id} className="flex items-center gap-2 text-[10px] text-slate-600">
+                        <div className="w-3 h-3 rounded border border-blush-100 shrink-0" style={{ backgroundColor: layer.color }} />
+                        <span className="font-medium truncate">{layer.name}</span>
+                        <span className="text-slate-400 ml-auto">{layer.pattern}, {Math.round(layer.width)}×{Math.round(layer.height)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Layers Panel */}
             <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
