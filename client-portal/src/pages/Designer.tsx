@@ -39,7 +39,7 @@ function toGridData(ai: AIPatternResponse): StitchGridData {
 }
 
 export const Designer: React.FC = () => {
-  const gridSize = 16;
+  const gridSize = 32;
   const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
   const [promptInput, setPromptInput] = useState('');
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; previewUrl: string } | null>(null);
