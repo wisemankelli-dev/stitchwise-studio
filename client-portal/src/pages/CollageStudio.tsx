@@ -5,8 +5,11 @@ import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
   Flower2, Sparkles, UploadCloud,
-  Image, Play, CheckCircle2, AlertTriangle, RefreshCw
+  Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2
 } from 'lucide-react';
+
+type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
 
 const FABRIC_TEXTURES = [
   { id: 'solid', name: 'Solid Cotton', class: 'bg-current' },
@@ -29,6 +32,18 @@ const DEFAULT_LAYERS: FabricLayer[] = [
   { id: 'fabric-3', name: 'Center Bloom', color: '#ec4899', pattern: 'solid', x: 200, y: 160, width: 60, height: 60, rotation: 0, opacity: 1, zIndex: 3 },
 ];
 
+const CANVAS_WIDTH = 500;
+const CANVAS_HEIGHT = 500;
+
+const TOOLS: { id: CollageTool; icon: React.ReactNode; label: string }[] = [
+  { id: 'select', icon: <MousePointer2 className="h-3.5 w-3.5" />, label: 'Select' },
+  { id: 'mirror', icon: <FlipHorizontal className="h-3.5 w-3.5" />, label: 'Mirror' },
+  { id: 'erase', icon: <Eraser className="h-3.5 w-3.5" />, label: 'Erase' },
+  { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
+  { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
+  { id: 'paint', icon: <Paintbrush className="h-3.5 w-3.5" />, label: 'Paint' },
+];
+
 export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
@@ -45,6 +60,10 @@ export const CollageStudio: React.FC = () => {
   const [aiResult, setAiResult] = useState<AICollageResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [replaceMode, setReplaceMode] = useState<'replace' | 'append'>('replace');
+
+  // Editing Tools state
+  const [activeTool, setActiveTool] = useState<CollageTool>('select');
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
 
@@ -82,11 +101,9 @@ export const CollageStudio: React.FC = () => {
     if (!aiResult?.layers) return;
 
     if (replaceMode === 'replace') {
-      // Replace all layers with AI-generated ones
       setLayers(aiResult.layers);
       setSelectedLayerId(aiResult.layers[aiResult.layers.length - 1]?.id || 'bg');
     } else {
-      // Append AI-generated layers to existing canvas
       const maxZ = layers.reduce((max, l) => Math.max(max, l.zIndex), 0);
       const newLayers = aiResult.layers.filter(l => l.id !== 'bg').map(l => ({
         ...l,
@@ -97,6 +114,65 @@ export const CollageStudio: React.FC = () => {
       }));
       setLayers(prev => [...prev, ...newLayers]);
       setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
+    }
+  };
+
+  const handleCanvasClick = (layerId: string) => {
+    switch (activeTool) {
+      case 'erase': {
+        if (layerId === 'bg') return;
+        deleteLayer(layerId);
+        break;
+      }
+      case 'clone': {
+        const source = layers.find(l => l.id === layerId);
+        if (!source || layerId === 'bg') return;
+        const newLayer: FabricLayer = {
+          ...source,
+          id: `fabric-${Date.now()}`,
+          name: `${source.name} (copy)`,
+          x: source.x + 20,
+          y: source.y + 20,
+          zIndex: layers.length,
+        };
+        setLayers(prev => [...prev, newLayer]);
+        setSelectedLayerId(newLayer.id);
+        break;
+      }
+      case 'eyedropper': {
+        const source = layers.find(l => l.id === layerId);
+        if (source) {
+          updateLayer(selectedLayerId, { color: source.color });
+        }
+        break;
+      }
+      case 'paint': {
+        const activeColor = selectedLayer?.color || '#fbcfe8';
+        const nextColor = FABRIC_COLORS[(FABRIC_COLORS.indexOf(activeColor) + 1) % FABRIC_COLORS.length];
+        updateLayer(layerId, { color: nextColor });
+        break;
+      }
+      case 'mirror': {
+        if (!mirrorEnabled || layerId === 'bg') {
+          setSelectedLayerId(layerId);
+          return;
+        }
+        const source = layers.find(l => l.id === layerId);
+        if (!source) return;
+        // Mirror position across center
+        const mirroredX = CANVAS_WIDTH - source.x - source.width;
+        const mirroredY = CANVAS_HEIGHT - source.y - source.height;
+        updateLayer(layerId, {
+          x: Math.max(0, Math.min(CANVAS_WIDTH - source.width, mirroredX)),
+          y: Math.max(0, Math.min(CANVAS_HEIGHT - source.height, mirroredY)),
+          rotation: -source.rotation,
+        });
+        break;
+      }
+      default: {
+        setSelectedLayerId(layerId);
+        break;
+      }
     }
   };
 
@@ -263,6 +339,55 @@ export const CollageStudio: React.FC = () => {
                 </div>
               </div>
 
+              {/* Editing Tools Toolbar */}
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                  {TOOLS.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={() => {
+                        setActiveTool(tool.id);
+                        if (tool.id !== 'mirror') setMirrorEnabled(false);
+                      }}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                        activeTool === tool.id
+                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      title={tool.label}
+                    >
+                      {tool.icon}
+                      <span className="hidden sm:inline">{tool.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeTool === 'mirror' && (
+                    <button
+                      onClick={() => setMirrorEnabled(!mirrorEnabled)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                        mirrorEnabled ? 'bg-blush-500 text-white shadow-sm' : 'bg-blush-50 text-slate-500 border border-blush-100'
+                      }`}
+                    >
+                      <FlipHorizontal className="h-3 w-3 inline mr-1" />
+                      {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
+                    </button>
+                  )}
+                  {activeTool === 'erase' && (
+                    <span className="text-[10px] text-slate-500 italic">Click a layer to erase</span>
+                  )}
+                  {activeTool === 'clone' && (
+                    <span className="text-[10px] text-slate-500 italic">Click a layer to duplicate</span>
+                  )}
+                  {activeTool === 'eyedropper' && (
+                    <span className="text-[10px] text-slate-500 italic">Pick color from a layer</span>
+                  )}
+                  {activeTool === 'paint' && (
+                    <span className="text-[10px] text-slate-500 italic">Cycle colors on click</span>
+                  )}
+                </div>
+              </div>
+
               {/* Canvas Area */}
               <div
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
@@ -277,33 +402,59 @@ export const CollageStudio: React.FC = () => {
                     transformOrigin: 'center center',
                   }}
                 >
-                  {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => (
-                    <div
-                      key={layer.id}
-                      onClick={() => setSelectedLayerId(layer.id)}
-                      className={`absolute cursor-move transition-shadow duration-200 ${
-                        selectedLayerId === layer.id ? 'ring-2 ring-blush-500 ring-offset-2' : ''
-                      }`}
-                      style={{
-                        left: layer.x,
-                        top: layer.y,
-                        width: layer.width,
-                        height: layer.height,
-                        transform: `rotate(${layer.rotation}deg)`,
-                        opacity: layer.opacity,
-                        zIndex: layer.zIndex,
-                        backgroundColor: layer.color,
-                        backgroundSize: layer.pattern === 'polka' ? '6px 6px' : layer.pattern === 'stripe' || layer.pattern === 'plaid' ? '' : '',
-                        borderRadius: layer.id === 'bg' ? '0' : '12px',
-                      }}
-                    >
-                      {layer.id !== 'bg' && (
-                        <div className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
-                          {layer.name}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
+                    const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
+                    const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
+                    const isPickTool = activeTool === 'eyedropper' && layer.id !== 'bg';
+                    const isPaintTool = activeTool === 'paint';
+                    const isMirrorTool = activeTool === 'mirror' && mirrorEnabled && layer.id !== 'bg';
+                    const isInteractable = isEraseTool || isCloneTool || isPickTool || isPaintTool || isMirrorTool;
+
+                    return (
+                      <div
+                        key={layer.id}
+                        onClick={() => handleCanvasClick(layer.id)}
+                        className={`absolute transition-shadow duration-200 ${
+                          selectedLayerId === layer.id && activeTool === 'select'
+                            ? 'ring-2 ring-blush-500 ring-offset-2'
+                            : isInteractable
+                            ? 'cursor-pointer hover:ring-2 hover:ring-blush-400 hover:ring-offset-1'
+                            : activeTool === 'select' || activeTool === 'mirror'
+                            ? 'cursor-move'
+                            : 'cursor-default'
+                        }`}
+                        style={{
+                          left: layer.x,
+                          top: layer.y,
+                          width: layer.width,
+                          height: layer.height,
+                          transform: `rotate(${layer.rotation}deg)`,
+                          opacity: layer.opacity,
+                          zIndex: layer.zIndex,
+                          backgroundColor: layer.color,
+                          backgroundSize: layer.pattern === 'polka' ? '6px 6px' : layer.pattern === 'stripe' || layer.pattern === 'plaid' ? '' : '',
+                          borderRadius: layer.id === 'bg' ? '0' : '12px',
+                        }}
+                      >
+                        {layer.id !== 'bg' && (
+                          <div className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
+                            {layer.name}
+                          </div>
+                        )}
+                        {/* Tool indicator badge */}
+                        {isEraseTool && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
+                            <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
+                          </div>
+                        )}
+                        {isCloneTool && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
+                            <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -420,7 +571,6 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
 
-              {/* Success message */}
               {aiResult && !isGenerating && (
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -430,7 +580,6 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
 
-              {/* Error message */}
               {aiError && (
                 <div className="mt-3 p-3 bg-rose-50 rounded-xl border border-rose-100 flex items-start gap-3">
                   <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
@@ -438,7 +587,6 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
 
-              {/* Generated layers preview */}
               {aiResult && !isGenerating && aiResult.layers.length > 1 && (
                 <div className="mt-3 pt-3 border-t border-blush-100">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Generated Layers</p>
@@ -470,7 +618,11 @@ export const CollageStudio: React.FC = () => {
                 {layers.sort((a, b) => b.zIndex - a.zIndex).map((layer) => (
                   <div
                     key={layer.id}
-                    onClick={() => setSelectedLayerId(layer.id)}
+                    onClick={() => {
+                      if (activeTool === 'select' || activeTool === 'mirror') {
+                        setSelectedLayerId(layer.id);
+                      }
+                    }}
                     className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-all text-xs ${
                       selectedLayerId === layer.id
                         ? 'bg-blush-50 border border-blush-200'
