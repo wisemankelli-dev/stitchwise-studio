@@ -8,8 +8,7 @@ import {
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
-import type { StitchGridData } from '../components/StitchGrid';
-import { NeedleThread } from '../components/DecorativeSVGs';
+import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -48,6 +47,43 @@ function toGridData(ai: AIPatternResponse): StitchGridData {
     }))
   );
   return { grid: cells, width: ai.width, height: ai.height, dmcPalette: ai.dmcPalette, totalStitches: ai.totalStitches };
+}
+
+/** Build a StitchGridData from the manual grid state (flat key-value records) */
+function buildManualGridData(
+  grid: Record<string, string>,
+  stitchTypes: Record<string, string>,
+  size: number
+): StitchGridData {
+  const dmcColorCounts: Record<string, number> = {};
+  Object.values(grid).forEach(color => {
+    if (color) dmcColorCounts[color] = (dmcColorCounts[color] || 0) + 1;
+  });
+  const dmcPalette = Object.entries(dmcColorCounts).map(([hex, count], i) => ({
+    code: `MAN-${i + 1}`,
+    name: hex,
+    hex,
+    count,
+  }));
+
+  const cells: StitchCell[][] = [];
+  for (let r = 0; r < size; r++) {
+    const row: StitchCell[] = [];
+    for (let c = 0; c < size; c++) {
+      const key = `${r},${c}`;
+      const color = grid[key] || '';
+      row.push({
+        row: r,
+        col: c,
+        color,
+        stitchType: (stitchTypes[key] as StitchCell['stitchType']) || 'cross',
+      });
+    }
+    cells.push(row);
+  }
+
+  const totalStitches = Object.values(grid).filter(Boolean).length;
+  return { grid: cells, width: size, height: size, dmcPalette, totalStitches };
 }
 
 export const Designer: React.FC = () => {
@@ -268,7 +304,9 @@ export const Designer: React.FC = () => {
   };
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
-  const stitchData: StitchGridData | null = aiResult ? toGridData(aiResult) : null;
+  const stitchData: StitchGridData = aiResult
+    ? toGridData(aiResult)
+    : buildManualGridData(grid, gridStitchTypes, gridSize);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -469,7 +507,7 @@ export const Designer: React.FC = () => {
               </div>
             </div>
 
-            {aiResult && stitchData && (
+            {stitchData && stitchData.dmcPalette.length > 0 && (
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
                 <DmcLegend palette={stitchData.dmcPalette} />
                 <div className="mt-3 pt-3 border-t border-blush-100 text-[10px] text-slate-500 space-y-0.5">
@@ -511,7 +549,7 @@ export const Designer: React.FC = () => {
                   <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
                     <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
-                  <button disabled={!stitchData} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">
+                  <button className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export
                   </button>
                 </div>
@@ -588,7 +626,7 @@ export const Designer: React.FC = () => {
                     </div>
                     <span className="text-xs font-bold text-slate-800 mt-4 truncate max-w-full">{aiResult.promptUsed || 'AI Generated'}</span>
                   </div>
-                ) : stitchData ? (
+                ) : (
                   <div className="w-full">
                     <StitchGrid
                       data={stitchData}
@@ -599,12 +637,6 @@ export const Designer: React.FC = () => {
                       onCellHover={handleCellHover}
                     />
                   </div>
-                ) : (
-                  <div className="text-center p-12">
-                    <NeedleThread className="h-16 w-16 mx-auto text-blush-300 mb-4" />
-                    <p className="text-sm font-bold text-slate-500">Your canvas is empty</p>
-                    <p className="text-xs text-slate-400 mt-1">Use AI or click cells to stitch manually.</p>
-                  </div>
                 )}
               </div>
 
@@ -614,7 +646,7 @@ export const Designer: React.FC = () => {
                   <span className="text-xs font-bold text-slate-700">{gridSize}x{gridSize} Grid</span>
                 </div>
                 <span className="text-xs text-slate-500">
-                  {stitchData ? `${stitchData.totalStitches} stitches` : `${Object.keys(grid).length} stitches`}
+                  {stitchData.totalStitches} stitches
                 </span>
               </div>
             </div>
