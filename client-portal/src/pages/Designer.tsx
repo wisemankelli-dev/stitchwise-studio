@@ -5,7 +5,7 @@ import {
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
-  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -113,6 +113,48 @@ export const Designer: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Material Estimator state
+  const [fabricCount, setFabricCount] = useState(14);
+
+  // --- Material Estimation Calculations ---
+  const threadPerStitchCm = 0.5; // ~0.5cm per cross stitch on 14-count Aida
+  const threadPerStitchAdjustment = fabricCount / 14; // scales with fabric count (finer fabric = less thread per stitch)
+
+  // Thread meters per color
+  const colorThreadEstimates = React.useMemo(() => {
+    const counts: Record<string, { count: number; hex: string }> = {};
+    Object.entries(grid).forEach(([key, hex]) => {
+      if (!hex) return;
+      if (!counts[hex]) counts[hex] = { count: 0, hex };
+      counts[hex].count++;
+    });
+    return Object.entries(counts).map(([hex, data]) => {
+      const meters = data.count * threadPerStitchCm * threadPerStitchAdjustment / 100;
+      const colorName = COLORS.find(c => c.hex === hex)?.name || hex;
+      return { hex, colorName, stitchCount: data.count, meters: Math.round(meters * 100) / 100 };
+    }).sort((a, b) => b.stitchCount - a.stitchCount);
+  }, [grid, fabricCount]);
+
+  // Fabric dimensions
+  const fabricEstimates = React.useMemo(() => {
+    const widthInches = gridSize / fabricCount;
+    const heightInches = gridSize / fabricCount;
+    // Standard margins: 2 inches on each side for framing/hoop
+    const fabricWidthInches = widthInches + 4;
+    const fabricHeightInches = heightInches + 4;
+    return {
+      designWidthInches: Math.round(widthInches * 100) / 100,
+      designHeightInches: Math.round(heightInches * 100) / 100,
+      designWidthCm: Math.round(widthInches * 2.54 * 100) / 100,
+      designHeightCm: Math.round(heightInches * 2.54 * 100) / 100,
+      fabricWidthInches: Math.round(fabricWidthInches * 100) / 100,
+      fabricHeightInches: Math.round(fabricHeightInches * 100) / 100,
+      totalSkeins: Math.max(1, Math.ceil(colorThreadEstimates.reduce((sum, c) => sum + c.meters, 0) / 8.7)),
+    };
+  }, [gridSize, fabricCount, colorThreadEstimates]);
+
+  const FABRIC_COUNTS = [11, 14, 18, 22, 25, 28, 32, 36];
 
   // Alphabet tool state
   const [alphabetText, setAlphabetText] = useState('');
@@ -539,6 +581,77 @@ const handlePlaceText = () => {
                 </div>
               </div>
             )}
+
+            {/* === MATERIAL ESTIMATOR === */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Ruler className="h-5 w-5 text-blush-500" /> Material Estimator
+              </h2>
+
+              {/* Fabric Count Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Fabric Count (stitches/inch)</label>
+                <select
+                  value={fabricCount}
+                  onChange={(e) => setFabricCount(Number(e.target.value))}
+                  className="w-full rounded-xl border-blush-100 text-sm text-slate-700 font-semibold px-3 py-2 bg-white shadow-sm focus:border-blush-500 focus:ring-blush-500"
+                >
+                  {FABRIC_COUNTS.map((count) => (
+                    <option key={count} value={count}>{count} count — {count === 11 ? 'Coarse' : count === 14 ? 'Standard' : count === 18 ? 'Fine' : count >= 28 ? 'Extra Fine' : 'Medium'}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Fabric Dimensions */}
+              <div className="bg-blush-50/50 rounded-xl p-4 border border-blush-100 space-y-2">
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Square className="h-3.5 w-3.5 text-blush-500" /> Design Size
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white rounded-lg p-2 border border-blush-100">
+                    <span className="text-slate-400">Width</span>
+                    <p className="font-bold text-slate-800">{fabricEstimates.designWidthInches}″ / {fabricEstimates.designWidthCm} cm</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-blush-100">
+                    <span className="text-slate-400">Height</span>
+                    <p className="font-bold text-slate-800">{fabricEstimates.designHeightInches}″ / {fabricEstimates.designHeightCm} cm</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 italic mt-1">
+                  Fabric needed (with 2″ margins): {fabricEstimates.fabricWidthInches}″ × {fabricEstimates.fabricHeightInches}″
+                </p>
+              </div>
+
+              {/* Thread Estimation */}
+              <div>
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5 text-blush-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
+                  Thread Estimate
+                </p>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {colorThreadEstimates.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 italic">Add stitches to see thread estimates</p>
+                  ) : (
+                    colorThreadEstimates.map((c) => (
+                      <div key={c.hex} className="flex items-center gap-2 p-1.5 bg-white rounded-lg border border-blush-100">
+                        <span className="h-4 w-4 rounded-full border border-slate-200 shrink-0" style={{ backgroundColor: c.hex }} />
+                        <span className="flex-1 text-[10px] font-semibold text-slate-700 truncate">{c.colorName}</span>
+                        <span className="text-[10px] text-slate-500">{c.stitchCount} st</span>
+                        <span className="text-[10px] font-bold text-blush-700">{c.meters}m</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-2 pt-2 border-t border-blush-100 flex justify-between text-[10px] text-slate-600">
+                  <span>Total thread</span>
+                  <span className="font-bold text-blush-700">{colorThreadEstimates.reduce((s, c) => s + c.meters, 0).toFixed(2)}m</span>
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-600">
+                  <span>DMC skeins needed (8.7m/skein)</span>
+                  <span className="font-bold text-blush-700">~{fabricEstimates.totalSkeins} skein{fabricEstimates.totalSkeins > 1 ? 's' : ''}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* RIGHT PANEL */}
