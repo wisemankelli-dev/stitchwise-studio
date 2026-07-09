@@ -21,6 +21,12 @@ interface StitchGridProps {
   zoom: number;
   onCellClick?: (row: number, col: number) => void;
   selectedColor?: string;
+  /** Active tool for interaction */
+  activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
+  /** Whether mouse is currently held down (for paint/erase drag) */
+  isMouseDown?: boolean;
+  /** Fires on cell hover while dragging */
+  onCellHover?: (row: number, col: number) => void;
 }
 
 /** DMC Color Legend - shows thread colors used with counts */
@@ -41,8 +47,19 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
 );
 
 /** StitchGrid renders a 2D array of colored cells representing stitches */
-const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, selectedColor }) => {
+const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, selectedColor, activeTool, isMouseDown, onCellHover }) => {
   const cellSize = Math.max(12, Math.round(28 * zoom));
+
+  const getToolCursor = () => {
+    switch (activeTool) {
+      case 'erase': return 'cursor-cell';
+      case 'paint': return 'cursor-pointer';
+      case 'eyedropper': return 'cursor-crosshair';
+      case 'clone': return 'cursor-copy';
+      case 'mirror': return 'cursor-default';
+      default: return 'cursor-pointer';
+    }
+  };
 
   return (
     <div className="overflow-auto rounded-xl border border-blush-100 shadow-inner bg-amber-50/10 p-3">
@@ -64,7 +81,12 @@ const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, select
               <button
                 key={`${row}-${col}`}
                 onClick={() => onCellClick?.(row, col)}
-                className="flex items-center justify-center transition-all duration-75 hover:scale-110 active:scale-95 focus:outline-none"
+                onMouseEnter={() => {
+                  if (isMouseDown && (activeTool === 'paint' || activeTool === 'erase')) {
+                    onCellHover?.(row, col);
+                  }
+                }}
+                className={`flex items-center justify-center transition-all duration-75 hover:scale-110 active:scale-95 focus:outline-none ${getToolCursor()}`}
                 style={{
                   width: cellSize,
                   height: cellSize,
