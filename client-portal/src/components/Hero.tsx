@@ -68,7 +68,7 @@ export const Hero: React.FC = () => {
               <img
                 src="/logo.png"
                 alt="StitchWise Studio"
-                className="relative h-28 w-28 sm:h-36 sm:w-36 rounded-full object-cover shadow-xl shadow-blush-200/50 ring-4 ring-white/80"
+                className="relative h-36 w-36 sm:h-48 sm:w-48 rounded-full object-cover shadow-2xl shadow-blush-200/60 ring-4 ring-white/80"
               />
             </div>
           </div>

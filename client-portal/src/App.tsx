@@ -89,21 +89,21 @@ function App() {
                 <Link to="/" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors">
                   Home
                 </Link>
-                <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
-                  <LayoutDashboard className="h-4 w-4 text-blush-400" />
-                  Dashboard
-                </Link>
                 <Link to="/pricing" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
                   <CreditCard className="h-3.5 w-3.5 text-slate-400" />
                   Plans &amp; Pricing
                 </Link>
-                <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
-                  <Camera className="h-3.5 w-3.5 text-slate-400" />
-                  Showcase
+                <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
+                  <LayoutDashboard className="h-4 w-4 text-blush-400" />
+                  Dashboard
                 </Link>
                 <Link to="/gallery" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
                   <Image className="h-3.5 w-3.5 text-slate-400" />
                   Gallery
+                </Link>
+                <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5 text-slate-400" />
+                  Showcase
                 </Link>
 
                 {/* === CTA BUTTON === */}
@@ -170,9 +170,10 @@ function App() {
                   <Link to="/collage" className="text-blush-500 hover:text-blush-600 transition-colors font-medium">Collage Studio</Link>
                   <Link to="/quilt-block" className="text-blush-500 hover:text-blush-600 transition-colors font-medium">Quilt Blocks</Link>
                   <Link to="/" className="text-slate-400 hover:text-blush-600 transition-colors">Home</Link>
-                  <Link to="/dashboard" className="text-slate-400 hover:text-blush-600 transition-colors">Dashboard</Link>
-                  <Link to="/showcase" className="text-slate-400 hover:text-blush-600 transition-colors">Showcase</Link>
                   <Link to="/pricing" className="text-slate-400 hover:text-blush-600 transition-colors">Plans & Pricing</Link>
+                  <Link to="/dashboard" className="text-slate-400 hover:text-blush-600 transition-colors">Dashboard</Link>
+                  <Link to="/gallery" className="text-slate-400 hover:text-blush-600 transition-colors">Gallery</Link>
+                  <Link to="/showcase" className="text-slate-400 hover:text-blush-600 transition-colors">Showcase</Link>
                   <Link to="/submit-project" className="text-slate-400 hover:text-blush-600 transition-colors">Custom Request</Link>
                 </div>
                 <div className="mt-4">
