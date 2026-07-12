@@ -47,7 +47,7 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
 );
 
 /** StitchGrid renders a 2D array of colored cells representing stitches */
-const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, selectedColor, activeTool, isMouseDown, onCellHover }) => {
+const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, activeTool, isMouseDown, onCellHover }) => {
   const cellSize = Math.max(12, Math.round(28 * zoom));
 
   const getToolCursor = () => {
@@ -62,12 +62,12 @@ const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, select
   };
 
   return (
-    <div className="overflow-auto rounded-xl border border-blush-100 shadow-inner bg-amber-50/10 p-3">
+    <div className="overflow-auto rounded-xl border border-blush-100 shadow-inner bg-white p-3">
       <div
-        className="grid gap-[1px] bg-blush-100/30 rounded-lg overflow-hidden"
+        className="grid gap-[0.5px] bg-blush-100/10 rounded-lg overflow-hidden"
         style={{
           gridTemplateColumns: `repeat(${data.width}, ${cellSize}px)`,
-          width: data.width * (cellSize + 1) + 2,
+          width: data.width * (cellSize + 0.5) + 1,
         }}
       >
         {Array.from({ length: data.height }).flatMap((_, row) =>
@@ -90,9 +90,9 @@ const StitchGrid: React.FC<StitchGridProps> = ({ data, zoom, onCellClick, select
                 style={{
                   width: cellSize,
                   height: cellSize,
-                  backgroundColor: color || '#fafaf9',
+                  backgroundColor: color || '#fdf2f8',
                   border: isFilled
-                    ? '1px solid rgba(0,0,0,0.08)'
+                    ? '1px solid rgba(0,0,0,0.06)'
                     : '1px solid #fce7f3',
                   backgroundImage: isFilled && stitchType === 'satin'
                     ? `linear-gradient(45deg, ${color} 25%, rgba(255,255,255,0.2) 50%, ${color} 75%)`
