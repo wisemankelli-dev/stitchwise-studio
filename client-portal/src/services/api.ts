@@ -913,9 +913,20 @@ class ApiClient {
             color = '#f59e0b';
           }
         } else {
-          if (Math.random() > 0.85) {
-            const colors = ['#e11d48', '#f472b6', '#16a34a', '#0284c7', '#f59e0b'];
-            color = colors[Math.floor(Math.random() * colors.length)];
+          // Generic/default pattern: subtle gradient or geometric
+          const cx = size / 2, cy = size / 2;
+          const dist = Math.hypot(r - cy, c - cx) / (size / 2);
+          if (dist < 0.3) {
+            color = '#e11d48';
+            stitch = Math.random() > 0.7 ? 'satin' : 'cross';
+          } else if (dist < 0.45) {
+            color = '#f472b6';
+            stitch = 'cross';
+          } else if (dist < 0.55) {
+            color = '#f59e0b';
+            stitch = Math.random() > 0.6 ? 'back' : 'cross';
+          } else if (dist < 0.7) {
+            if (c % 4 < 2 && r % 4 < 2) { color = '#16a34a'; stitch = 'cross'; }
           }
         }
 
