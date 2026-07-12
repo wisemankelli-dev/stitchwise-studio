@@ -11,7 +11,7 @@ import { CollageStudio } from './pages/CollageStudio';
 import { CommunityShowcase } from './pages/CommunityShowcase';
 import { QuiltBlockStudio } from './pages/QuiltBlockStudio';
 import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image, Camera, Grid3X3 } from 'lucide-react';
-import { FloralDivider, NeedleThread, DecorativeFlower } from './components/DecorativeSVGs';
+import { FloralDivider, DecorativeFlower } from './components/DecorativeSVGs';
 
 /**
  * Main application component — feminine floral aesthetic with logo and rich backgrounds.
