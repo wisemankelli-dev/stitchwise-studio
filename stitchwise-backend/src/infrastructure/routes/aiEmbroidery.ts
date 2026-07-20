@@ -60,14 +60,10 @@ export function createAIEmbroideryRouter(): Router {
 
         const { prompt, gridSize, negativePrompt } = parsed.data;
 
-        // Check if the prompt mentions specific colors — if so, skip the Shape Library
-        // so the user's color choices are respected (the AI will generate exactly what
-        // they asked for with the improved clip-art prompt and nearest-neighbor pipeline).
-        const colorWords =
-          /blue|red|green|yellow|orange|purple|pink|brown|black|white|gray|grey|gold|silver|teal|navy|maroon|magenta|violet|turquoise|aqua|coral|tan|beige|cream|ivory|bronze|rust|olive|mint|lavender|peach|salmon|indigo|charcoal|crimson|amber|emerald|jade|blush/i;
-
-        // Check if the prompt matches a known shape — if so, use the Shape Library directly
-        // (but only if no specific colors were mentioned, so user color preferences win).
+        // Check if the prompt matches a known shape — if so, use the Shape Library directly.
+        // The Shape Library draws pixel-perfect shapes directly on the grid. No AI needed.
+        // This always wins over the AI pipeline: a recognizable pixel-art shape is far better
+        // than noisy AI-generated blocks. Users can recolor the shape with editing tools.
         const shapeKeywords: Record<string, RegExp[]> = {
           rabbit: [/rabbit/i, /bunny/i, /hare/i],
           cat: [/cat/i, /kitten/i, /kitty/i],
@@ -86,19 +82,14 @@ export function createAIEmbroideryRouter(): Router {
           shell: [/shell/i, /conch/i, /seashell/i, /snail/i, /scallop/i, /nautilus/i],
           can: [/can/i, /coke/i, /soda/i, /cola/i, /bottle/i, /tin/i, /beer/i, /aluminum/i],
           car: [/car/i, /truck/i, /auto/i, /vehicle/i, /race/i],
+          bear: [/bear/i, /teddy/i, /teddybear/i, /cub/i, /panda/i, /grizzly/i],
         };
 
-        // Check if the user specified specific colors — if so, skip shape library
-        // so their color choices flow through to the AI pipeline
-        const hasSpecificColors = colorWords.test(prompt);
-
         let matchedShape: string | null = null;
-        if (!hasSpecificColors) {
-          for (const [shape, patterns] of Object.entries(shapeKeywords)) {
-            if (patterns.some(p => p.test(prompt))) {
-              matchedShape = shape;
-              break;
-            }
+        for (const [shape, patterns] of Object.entries(shapeKeywords)) {
+          if (patterns.some(p => p.test(prompt))) {
+            matchedShape = shape;
+            break;
           }
         }
 
