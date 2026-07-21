@@ -1777,6 +1777,107 @@ class ApiClient {
     localStorage.setItem('stitchwise_showcase', JSON.stringify(filtered));
     return { success: true };
   }
+
+  // ==================== UPLOAD IMAGE TO PATTERN (Generate Module) ====================
+
+  /**
+   * Uploads an image and converts it to a stitch pattern at the specified grid size.
+   * POST /api/ai/embroidery/image-to-pattern
+   * Grid sizes: 50, 75, 100, 150, 200
+   * Returns the stitch grid + the original image data for side-by-side preview.
+   */
+  async uploadImageToPattern(
+    file: File,
+    gridSize: number
+  ): Promise<AIPatternResponse & { originalImageData?: string }> {
+    if (this.isLiveBackend) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('gridSize', String(gridSize));
+
+      const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/image-to-pattern`, {
+        method: 'POST',
+        headers: this.getHeaders({}, true),
+        body: formData,
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || `Backend returned ${response.status}`);
+      }
+      return await response.json();
+    }
+
+    // Mock Implementation (fallback when isLiveBackend is false)
+    await delay(2000);
+    const size = gridSize;
+    const dmcPalette = [
+      { code: '310', name: 'Black', hex: '#1e293b', count: 0 },
+      { code: '321', name: 'Christmas Red', hex: '#e11d48', count: 0 },
+      { code: '743', name: 'Yellow', hex: '#f59e0b', count: 0 },
+      { code: '700', name: 'Green', hex: '#16a34a', count: 0 },
+      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },
+      { code: '554', name: 'Violet', hex: '#7c3aed', count: 0 },
+      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },
+      { code: '961', name: 'Dusty Rose', hex: '#f472b6', count: 0 },
+    ];
+    const colorCounts: Record<string, number> = {};
+    dmcPalette.forEach(c => colorCounts[c.hex] = 0);
+
+    const grid: string[][] = [];
+    const stitchTypes: string[][] = [];
+    const cx = size / 2, cy = size / 2;
+
+    for (let r = 0; r < size; r++) {
+      const row: string[] = [];
+      const stRow: string[] = [];
+      for (let c = 0; c < size; c++) {
+        const dist = Math.hypot(r - cy, c - cx) / (size / 2);
+        const angle = Math.atan2(r - cy, c - cx);
+        let color = '#fafaf9';
+        let st = 'cross';
+
+        if (dist < 0.15) {
+          color = '#f59e0b'; st = 'french';
+        } else if (dist < 0.3) {
+          const petal = Math.cos(angle * 5);
+          color = petal > 0.3 ? '#e11d48' : petal > -0.3 ? '#f472b6' : '#f59e0b';
+          st = Math.random() > 0.6 ? 'satin' : 'cross';
+        } else if (dist < 0.45) {
+          color = Math.cos(angle * 6) > 0 ? '#f472b6' : '#0284c7';
+        } else if (dist < 0.6) {
+          if (Math.cos(angle * 4) > 0.5) { color = '#16a34a'; st = 'back'; }
+        } else if (dist < 0.75) {
+          if (Math.sin(angle * 3) > 0.6) { color = '#7c3aed'; st = 'back'; }
+        } else if (dist < 0.9) {
+          if (Math.random() > 0.7) color = '#7c3aed';
+        }
+
+        row.push(color);
+        stRow.push(st);
+        if (color !== '#fafaf9') colorCounts[color] = (colorCounts[color] || 0) + 1;
+      }
+      grid.push(row);
+      stitchTypes.push(stRow);
+    }
+
+    const total = Object.values(colorCounts).reduce((a, b) => a + b, 0);
+    const activePalette = dmcPalette.map(c => ({
+      ...c,
+      count: colorCounts[c.hex] || 0,
+    })).filter(c => c.count > 0);
+
+    return {
+      success: true,
+      grid,
+      stitchTypes,
+      width: size,
+      height: size,
+      dmcPalette: activePalette,
+      totalStitches: total,
+      processingTimeMs: 2000,
+      originalImageData: '',
+    };
+  }
 }
 
 export const api = new ApiClient();
