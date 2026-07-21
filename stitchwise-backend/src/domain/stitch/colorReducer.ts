@@ -1,12 +1,16 @@
 /**
  * Color Reducer Engine — Dynamic color quantization for embroidery patterns.
  *
- * Reduces an image to a target number of colors using median-cut quantization,
- * then maps each reduced color to the nearest DMC thread color. Deduplicates
- * colors that map to the same DMC thread.
+ * Owner directive: "Reduce to a MINIMUM number of colors, not a maximum.
+ * Most embroidery patterns use no more than 15 colors."
  *
- * Owner directive: "Create clean artwork first, then convert to pixel grid."
- * This replaces the hardcoded 24-color palette with a dynamic per-image reducer.
+ * Strategy:
+ *   1. Extract all unique colors from the image
+ *   2. Group near-identical colors (handles photo noise/compression artifacts)
+ *   3. Take the most-frequent groups, keeping as many distinct colors as practical
+ *   4. Map each group's centroid to the nearest DMC thread
+ *
+ * This preserves distinct colors rather than forcing them into arbitrary buckets.
  */
 
 import { closestDmcColor, rgbToHex } from "./dmcColors";
@@ -20,152 +24,38 @@ interface RGBColor {
   b: number;
 }
 
-interface ColorBox {
-  /** Index range into the sorted pixel array */
-  start: number;
-  end: number;
-  /** Which channel this box was split on */
-  channel: number;
-  /** Average color of this box */
-  average: RGBColor;
+interface ColorGroup {
+  centroid: RGBColor;
+  members: Array<{ color: RGBColor; count: number }>;
+  totalCount: number;
 }
 
-// ─── Median-Cut Quantization ────────────────────────────────────────────────
+// ─── Merging Threshold ──────────────────────────────────────────────────────
 
 /**
- * Perform median-cut color quantization on a set of RGBA pixel data.
+ * Euclidean distance threshold for merging colors.
+ * Two colors within this distance are considered "the same color"
+ * in embroidery terms. This accounts for:
+ *   - Phone camera noise (typically ±5-10 per channel)
+ *   - JPEG compression artifacts
+ *   - Slight lighting variations
  *
- * @param pixels - Raw RGBA pixel buffer (Uint8ClampedArray)
- * @param targetColors - Desired number of colors (15–80)
- * @returns Array of quantized colors as RGB tuples
+ * A distance of ~30 in RGB space means roughly ±10 per channel.
+ * This is conservative — it won't merge genuinely different colors.
  */
-export function quantizePixels(
-  pixels: Uint8ClampedArray,
-  targetColors: number,
-): RGBColor[] {
-  // Clamp target colors to valid range
-  const numColors = Math.max(15, Math.min(80, targetColors));
+const MERGE_THRESHOLD = 30; // Euclidean distance in RGB space
+const PRACTICAL_MAX_COLORS = 15; // Embroidery-viable limit
 
-  // Build list of unique pixel colors (ignoring alpha)
-  const colorMap = new Map<string, { color: RGBColor; count: number }>();
-  for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i];
-    const g = pixels[i + 1];
-    const b = pixels[i + 2];
-    // Skip fully transparent pixels
-    if (pixels[i + 3] < 128) continue;
-    const key = `${r},${g},${b}`;
-    const existing = colorMap.get(key);
-    if (existing) {
-      existing.count++;
-    } else {
-      colorMap.set(key, { color: { r, g, b }, count: 1 });
-    }
-  }
+// ─── Color Distance ─────────────────────────────────────────────────────────
 
-  // If there are fewer unique colors than requested, return them all
-  if (colorMap.size <= numColors) {
-    return Array.from(colorMap.values()).map(c => c.color);
-  }
-
-  // Convert to array of weighted colors (weighted by frequency)
-  const weightedColors: Array<{ color: RGBColor; weight: number }> = [];
-  for (const [, entry] of colorMap) {
-    weightedColors.push({ color: entry.color, weight: entry.count });
-  }
-
-  // Sort by brightness for initial split
-  weightedColors.sort((a, b) => {
-    const lumA = a.color.r * 0.299 + a.color.g * 0.587 + a.color.b * 0.114;
-    const lumB = b.color.r * 0.299 + b.color.g * 0.587 + b.color.b * 0.114;
-    return lumA - lumB;
-  });
-
-  // Build boxes — start with one box containing all colors
-  const boxes: ColorBox[] = [];
-  const initialAvg = averageColors(weightedColors.map(w => w.color));
-  boxes.push({
-    start: 0,
-    end: weightedColors.length - 1,
-    channel: 0,
-    average: initialAvg,
-  });
-
-  // Recursively split boxes until we have enough
-  while (boxes.length < numColors) {
-    // Find the box with the largest range to split
-    let largestRange = -1;
-    let boxToSplit = -1;
-    for (let i = 0; i < boxes.length; i++) {
-      const box = boxes[i];
-      const range = colorRange(weightedColors, box.start, box.end);
-      if (range > largestRange) {
-        largestRange = range;
-        boxToSplit = i;
-      }
-    }
-
-    if (boxToSplit === -1) break; // Can't split further
-
-    const box = boxes[boxToSplit];
-    const boxColors = weightedColors.slice(box.start, box.end + 1);
-
-    // Find the channel with the widest spread
-    const spread = channelSpread(boxColors.map(w => w.color));
-    const channel = spread.indexOf(Math.max(...spread));
-
-    // Sort by the chosen channel
-    boxColors.sort((a, b) => {
-      const av = channelValue(a.color, channel);
-      const bv = channelValue(b.color, channel);
-      return av - bv;
-    });
-
-    // Find the median split point (weighted by pixel count)
-    const totalWeight = boxColors.reduce((sum, c) => sum + c.weight, 0);
-    let weightSoFar = 0;
-    let medianIdx = 0;
-    for (let i = 0; i < boxColors.length; i++) {
-      weightSoFar += boxColors[i].weight;
-      if (weightSoFar >= totalWeight / 2) {
-        medianIdx = i;
-        break;
-      }
-    }
-
-    // Ensure split creates two non-empty boxes
-    if (medianIdx === 0 || medianIdx >= boxColors.length - 1) break;
-
-    // Split the box
-    const leftColors = boxColors.slice(0, medianIdx + 1);
-    const rightColors = boxColors.slice(medianIdx + 1);
-
-    // Replace the original box with two new ones
-    boxes.splice(boxToSplit, 1);
-
-    // Rebuild the full weightedColors array order for the new boxes
-    // This is simplified: we just compute averages from the split colors
-    boxes.push({
-      start: 0,
-      end: 0,
-      channel,
-      average: averageColors(leftColors.map(w => w.color)),
-    });
-    boxes.push({
-      start: 0,
-      end: 0,
-      channel,
-      average: averageColors(rightColors.map(w => w.color)),
-    });
-  }
-
-  // Return the average color of each box
-  return boxes.map(b => b.average);
+function colorDistance(a: RGBColor, b: RGBColor): number {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function averageColors(colors: RGBColor[]): RGBColor {
+function averageColor(colors: RGBColor[]): RGBColor {
   if (colors.length === 0) return { r: 0, g: 0, b: 0 };
   let sumR = 0, sumG = 0, sumB = 0;
   for (const c of colors) {
@@ -174,36 +64,115 @@ function averageColors(colors: RGBColor[]): RGBColor {
     sumB += c.b;
   }
   const n = colors.length;
-  return { r: Math.round(sumR / n), g: Math.round(sumG / n), b: Math.round(sumB / n) };
+  return {
+    r: Math.round(sumR / n),
+    g: Math.round(sumG / n),
+    b: Math.round(sumB / n),
+  };
 }
 
-function channelValue(c: RGBColor, channel: number): number {
-  if (channel === 0) return c.r;
-  if (channel === 1) return c.g;
-  return c.b;
-}
+// ─── Main Quantization ──────────────────────────────────────────────────────
 
-function channelSpread(colors: RGBColor[]): [number, number, number] {
-  let minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
-  for (const c of colors) {
-    if (c.r < minR) minR = c.r;
-    if (c.r > maxR) maxR = c.r;
-    if (c.g < minG) minG = c.g;
-    if (c.g > maxG) maxG = c.g;
-    if (c.b < minB) minB = c.b;
-    if (c.b > maxB) maxB = c.b;
+/**
+ * Reduce pixel data to a minimal set of distinct colors.
+ *
+ * Algorithm:
+ *   1. Count unique colors (ignoring alpha)
+ *   2. Sort by frequency (most common first)
+ *   3. Build groups: for each color (in frequency order), if it's far enough
+ *      from all existing group centroids, start a new group; otherwise
+ *      merge into the closest group
+ *   4. Cap at PRACTICAL_MAX_COLORS groups if needed
+ *   5. Return group centroids
+ *
+ * @param pixels - Raw RGBA pixel buffer (Uint8ClampedArray)
+ * @param _targetColors - Ignored (kept for API compatibility); we auto-determine
+ * @returns Array of quantized colors as RGB tuples
+ */
+export function quantizePixels(
+  pixels: Uint8ClampedArray,
+  _targetColors: number,
+): RGBColor[] {
+  // ── Step 1: Count unique colors ──────────────────────────────────────────
+  const colorCounts = new Map<string, { color: RGBColor; count: number }>();
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    // Skip transparent/near-transparent pixels
+    if (pixels[i + 3] < 128) continue;
+
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const key = `${r},${g},${b}`;
+
+    const existing = colorCounts.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      colorCounts.set(key, { color: { r, g, b }, count: 1 });
+    }
   }
-  return [maxR - minR, maxG - minG, maxB - minB];
-}
 
-function colorRange(
-  colors: Array<{ color: RGBColor; weight: number }>,
-  start: number,
-  end: number,
-): number {
-  const slice = colors.slice(start, end + 1).map(w => w.color);
-  const spread = channelSpread(slice);
-  return Math.max(...spread);
+  if (colorCounts.size === 0) {
+    return [{ r: 255, g: 255, b: 255 }]; // fallback: white
+  }
+
+  // ── Step 2: Sort by frequency (most common first) ────────────────────────
+  const sorted = Array.from(colorCounts.values()).sort(
+    (a, b) => b.count - a.count,
+  );
+
+  // ── Step 3: Build color groups ───────────────────────────────────────────
+  const groups: ColorGroup[] = [];
+
+  for (const entry of sorted) {
+    // Find the closest existing group
+    let bestGroupIdx = -1;
+    let bestDist = Infinity;
+
+    for (let i = 0; i < groups.length; i++) {
+      const d = colorDistance(entry.color, groups[i].centroid);
+      if (d < bestDist) {
+        bestDist = d;
+        bestGroupIdx = i;
+      }
+    }
+
+    if (bestDist <= MERGE_THRESHOLD && bestGroupIdx >= 0) {
+      // Merge into existing group
+      const group = groups[bestGroupIdx];
+      group.members.push({ color: entry.color, count: entry.count });
+      group.totalCount += entry.count;
+      // Recompute centroid (weighted average)
+      const allColors: RGBColor[] = [];
+      for (const m of group.members) {
+        for (let j = 0; j < m.count; j++) {
+          allColors.push(m.color);
+        }
+      }
+      group.centroid = averageColor(allColors);
+    } else {
+      // Start a new group
+      groups.push({
+        centroid: { ...entry.color },
+        members: [{ color: entry.color, count: entry.count }],
+        totalCount: entry.count,
+      });
+    }
+  }
+
+  // ── Step 4: Cap at PRACTICAL_MAX_COLORS ──────────────────────────────────
+  // If we somehow have more than the embroidery-viable limit,
+  // keep only the most frequent groups
+  let finalGroups = groups;
+  if (finalGroups.length > PRACTICAL_MAX_COLORS) {
+    finalGroups = groups
+      .sort((a, b) => b.totalCount - a.totalCount)
+      .slice(0, PRACTICAL_MAX_COLORS);
+  }
+
+  // ── Step 5: Return centroids ─────────────────────────────────────────────
+  return finalGroups.map(g => g.centroid);
 }
 
 // ─── DMC Mapping ────────────────────────────────────────────────────────────
@@ -211,9 +180,6 @@ function colorRange(
 /**
  * Map quantized colors to DMC thread colors, deduplicating any that
  * map to the same DMC code. Returns the final palette.
- *
- * @param quantizedColors - Array of colors from quantizePixels
- * @returns Array of unique DmcUsage entries
  */
 export function mapToDmcPalette(quantizedColors: RGBColor[]): Array<{
   code: string;
@@ -221,7 +187,10 @@ export function mapToDmcPalette(quantizedColors: RGBColor[]): Array<{
   hex: string;
   count: number;
 }> {
-  const dmcMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
+  const dmcMap = new Map<
+    string,
+    { code: string; name: string; hex: string; count: number }
+  >();
 
   for (const color of quantizedColors) {
     const dmc = closestDmcColor(color.r, color.g, color.b);
@@ -246,10 +215,6 @@ export function mapToDmcPalette(quantizedColors: RGBColor[]): Array<{
 /**
  * Replace each pixel in a grid with the nearest DMC color from the given palette.
  * This is the final step: after quantization, snap each pixel to the nearest DMC.
- *
- * @param grid - The stitch grid (StitchCell[][])
- * @param paletteColors - The quantized palette colors before DMC mapping
- * @returns Updated grid with DMC-mapped colors
  */
 export function snapGridToDmc(
   grid: StitchCell[][],
@@ -258,7 +223,7 @@ export function snapGridToDmc(
   return grid.map(row =>
     row.map(cell => {
       // Parse the hex color
-      const hex = cell.color.replace('#', '');
+      const hex = cell.color.replace("#", "");
       const r = parseInt(hex.substring(0, 2), 16);
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
@@ -283,6 +248,6 @@ export function snapGridToDmc(
         dmcCode: dmc.code,
         dmcName: dmc.name,
       };
-    })
+    }),
   );
 }

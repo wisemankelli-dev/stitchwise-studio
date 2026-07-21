@@ -1,0 +1,8 @@
+nohup: ignoring input
+[stitchwise-backend] Failed to start: PrismaClientInitializationError: Error querying the database: Error code 14: Unable to open the database file
+    at t (/home/agent-lead/stitchwise-studio/stitchwise-backend/node_modules/@prisma/client/runtime/library.js:112:2488)
+    at async createApp (/home/agent-lead/stitchwise-studio/stitchwise-backend/dist/app.js:27:5)
+    at async main (/home/agent-lead/stitchwise-studio/stitchwise-backend/dist/index.js:14:21) {
+  clientVersion: '5.22.0',
+  errorCode: undefined
+}
