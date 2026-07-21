@@ -114,6 +114,11 @@ export const Designer: React.FC = () => {
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
+  const [cloneSelectionEnd, setCloneSelectionEnd] = useState<{ row: number; col: number } | null>(null);
+  const [mirrorAxis, setMirrorAxis] = useState<'horizontal' | 'vertical' | 'both' | null>(null);
+  const [patternId, setPatternId] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Material Estimator state
@@ -223,16 +228,46 @@ export const Designer: React.FC = () => {
       }
       case 'clone': {
         if (!cloneSource) {
-          if (grid[key]) setCloneSource({ row, col });
+          // First click: set source anchor
+          setCloneSource({ row, col });
+          setCloneSelectionEnd({ row, col });
+        } else if (!cloneSelectionEnd || cloneSelectionEnd.row === cloneSource.row && cloneSelectionEnd.col === cloneSource.col) {
+          // If we're still establishing selection, update it
+          setCloneSelectionEnd({ row, col });
         } else {
-          const srcKey = `${cloneSource.row},${cloneSource.col}`;
-          const srcColor = grid[srcKey];
-          const srcStitch = gridStitchTypes[srcKey];
-          if (srcColor) {
-            setCell(row, col, srcColor, srcStitch || 'cross');
-            if (mirrorEnabled) mirrorCellEdit(row, col, srcColor, srcStitch || 'cross');
+          // Second click after region selected: paste the cloned region
+          const rMin = Math.min(cloneSource.row, cloneSelectionEnd.row);
+          const rMax = Math.max(cloneSource.row, cloneSelectionEnd.row);
+          const cMin = Math.min(cloneSource.col, cloneSelectionEnd.col);
+          const cMax = Math.max(cloneSource.col, cloneSelectionEnd.col);
+          const regionW = rMax - rMin + 1;
+          const regionH = cMax - cMin + 1;
+          
+          // Paste cloned region starting at (row, col)
+          for (let dr = 0; dr < regionW; dr++) {
+            for (let dc = 0; dc < regionH; dc++) {
+              const srcRow = rMin + dr, srcCol = cMin + dc;
+              const destRow = row + dr, destCol = col + dc;
+              if (destRow < gridSize && destCol < gridSize) {
+                const srcKey = `${srcRow},${srcCol}`;
+                const srcColor = grid[srcKey];
+                const srcStitch = gridStitchTypes[srcKey];
+                if (srcColor) {
+                  setCell(destRow, destCol, srcColor, srcStitch || 'cross');
+                }
+              }
+            }
           }
+          // Clear selection
           setCloneSource(null);
+          setCloneSelectionEnd(null);
+          
+          // Call backend API if patternId is set
+          if (patternId) {
+            api.cloneRegion(patternId, {
+              row: rMin, col: cMin, width: regionW, height: regionH
+            }, { row, col }).catch(console.error);
+          }
         }
         break;
       }
@@ -287,7 +322,58 @@ export const Designer: React.FC = () => {
 
   const handleClearGrid = () => {
     setGrid({}); setGridStitchTypes({}); setAiResult(null); setAiError(null);
-    setCloneSource(null);
+    setCloneSource(null); setCloneSelectionEnd(null); setMirrorAxis(null);
+  };
+
+  const handleSavePattern = async () => {
+    if (!patternId.trim()) { setSaveMessage('Enter a pattern ID first'); return; }
+    setIsSaving(true); setSaveMessage(null);
+    try {
+      const flatGrid = Array.from({ length: gridSize }, (_, r) =>
+        Array.from({ length: gridSize }, (_, c) => grid[`${r},${c}`] || '')
+      );
+      await api.savePattern(patternId, flatGrid, stitchData.dmcPalette);
+      setSaveMessage('Pattern saved!');
+    } catch (err: any) {
+      setSaveMessage(err.message || 'Save failed');
+    } finally { setIsSaving(false); setTimeout(() => setSaveMessage(null), 3000); }
+  };
+
+  const handleLoadPattern = async () => {
+    if (!patternId.trim()) { setSaveMessage('Enter a pattern ID first'); return; }
+    setAiError(null); setSaveMessage(null);
+    try {
+      const pattern = await api.loadPattern(patternId);
+      setAiResult(pattern); setGrid({}); setGridStitchTypes({});
+      setSaveMessage('Pattern loaded!');
+    } catch (err: any) {
+      setAiError(err.message || 'Load failed');
+    } finally { setTimeout(() => setSaveMessage(null), 3000); }
+  };
+
+  const handleMirrorApply = async (axis: 'horizontal' | 'vertical' | 'both') => {
+    setMirrorAxis(axis);
+    // Local mirror application
+    const newGrid = { ...grid };
+    const newStitchTypes = { ...gridStitchTypes };
+    const entries = Object.entries(newGrid);
+    entries.forEach(([key, color]) => {
+      const [r, c] = key.split(',').map(Number);
+      let mr = r, mc = c;
+      if (axis === 'horizontal' || axis === 'both') mr = gridSize - 1 - r;
+      if (axis === 'vertical' || axis === 'both') mc = gridSize - 1 - c;
+      if (mr !== r || mc !== c) {
+        const mKey = `${mr},${mc}`;
+        if (!newGrid[mKey]) { newGrid[mKey] = color; newStitchTypes[mKey] = gridStitchTypes[key] || 'cross'; }
+      }
+    });
+    setGrid({ ...newGrid });
+    setGridStitchTypes({ ...newStitchTypes });
+
+    // Call backend API
+    if (patternId) {
+      api.mirrorGrid(patternId, axis).catch(console.error);
+    }
   };
 
   const triggerTextGeneration = async (e: React.FormEvent) => {
@@ -929,6 +1015,50 @@ export const Designer: React.FC = () => {
                 </div>
               </div>
 
+              {/* Pattern ID + Save/Load */}
+              <div className="w-full flex items-center gap-2 mb-4 pb-3 border-b border-blush-100">
+                <input
+                  type="text"
+                  value={patternId}
+                  onChange={(e) => setPatternId(e.target.value)}
+                  placeholder="Pattern ID (e.g. my-pattern)"
+                  className="flex-1 rounded-lg border-blush-100 text-xs text-slate-700 px-3 py-1.5 border focus:border-blush-500 focus:ring-blush-500 placeholder:text-slate-300"
+                />
+                <button onClick={handleLoadPattern} disabled={isSaving}
+                  className="px-3 py-1.5 rounded-lg bg-blush-50 hover:bg-blush-100 text-blush-700 text-xs font-bold border border-blush-100 transition-all">
+                  Load
+                </button>
+                <button onClick={handleSavePattern} disabled={isSaving}
+                  className="px-3 py-1.5 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-bold transition-all flex items-center gap-1">
+                  {isSaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  Save
+                </button>
+              </div>
+              {saveMessage && (
+                <div className="w-full mb-4 p-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <p className="text-[10px] text-emerald-700 font-semibold">{saveMessage}</p>
+                </div>
+              )}
+
+              {/* Mirror Axis Selector */}
+              {activeTool === 'mirror' && (
+                <div className="w-full flex items-center gap-2 mb-4 pb-3 border-b border-blush-100">
+                  <span className="text-xs font-bold text-slate-500">Mirror:</span>
+                  {(['horizontal', 'vertical', 'both'] as const).map((axis) => (
+                    <button key={axis}
+                      onClick={() => handleMirrorApply(axis)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all capitalize ${mirrorAxis === axis ? 'bg-blush-500 text-white border-blush-500' : 'bg-white text-slate-500 border-blush-100 hover:bg-blush-50'}`}
+                    >
+                      {axis}
+                    </button>
+                  ))}
+                  <button onClick={() => { setMirrorEnabled(!mirrorEnabled); if (!mirrorEnabled) setMirrorAxis(null); }}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${mirrorEnabled ? 'bg-blush-500 text-white border-blush-500' : 'bg-white text-slate-500 border-blush-100 hover:bg-blush-50'}`}>
+                    {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
+                  </button>
+                </div>
+              )}
+
               {/* Toolbar */}
               <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
                 <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
@@ -1039,6 +1169,9 @@ export const Designer: React.FC = () => {
                       activeTool={activeTool}
                       isMouseDown={isMouseDown}
                       onCellHover={handleCellHover}
+                      cloneSource={activeTool === 'clone' ? cloneSource : undefined}
+                      cloneSelectionEnd={activeTool === 'clone' ? cloneSelectionEnd : null}
+                      mirrorAxis={mirrorAxis}
                     />
                   </div>
                 )}

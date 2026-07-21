@@ -1878,6 +1878,211 @@ class ApiClient {
       originalImageData: '',
     };
   }
+
+  // ==================== PATTERN EDITOR API ====================
+
+  /**
+   * Load a pattern by ID.
+   * GET /api/patterns/:id
+   */
+  async loadPattern(id: string): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${id}`, {
+        headers: this.getHeaders(),
+      });
+      if (!response.ok) throw new Error(`Failed to load pattern ${id}`);
+      return await response.json();
+    }
+    // Mock: return empty grid
+    await delay(300);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: 0,
+      processingTimeMs: 300,
+    };
+  }
+
+  /**
+   * Save a pattern.
+   * PUT /api/patterns/:id
+   */
+  async savePattern(id: string, grid: string[][], palette: any[]): Promise<{ success: boolean }> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${id}`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ grid, palette }),
+      });
+      if (!response.ok) throw new Error('Failed to save pattern');
+      return await response.json();
+    }
+    await delay(400);
+    return { success: true };
+  }
+
+  /**
+   * Paint cells on a pattern.
+   * POST /api/patterns/:id/paint
+   */
+  async paintCells(patternId: string, cells: { row: number; col: number; color: string; stitchType?: string }[]): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/paint`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ cells }),
+      });
+      if (!response.ok) throw new Error('Failed to paint cells');
+      return await response.json();
+    }
+    // Mock: return success
+    await delay(100);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: cells.length,
+      processingTimeMs: 100,
+    };
+  }
+
+  /**
+   * Erase cells on a pattern.
+   * POST /api/patterns/:id/erase
+   */
+  async eraseCells(patternId: string, cells: { row: number; col: number }[]): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/erase`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ cells }),
+      });
+      if (!response.ok) throw new Error('Failed to erase cells');
+      return await response.json();
+    }
+    await delay(100);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: 0,
+      processingTimeMs: 100,
+    };
+  }
+
+  /**
+   * Mirror the grid along an axis.
+   * POST /api/patterns/:id/mirror
+   */
+  async mirrorGrid(patternId: string, axis: 'horizontal' | 'vertical' | 'both'): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/mirror`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ axis }),
+      });
+      if (!response.ok) throw new Error('Failed to mirror grid');
+      return await response.json();
+    }
+    await delay(200);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: 0,
+      processingTimeMs: 200,
+    };
+  }
+
+  /**
+   * Clone a region of the grid.
+   * POST /api/patterns/:id/clone-region
+   */
+  async cloneRegion(
+    patternId: string,
+    source: { row: number; col: number; width: number; height: number },
+    target: { row: number; col: number }
+  ): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/clone-region`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ source, target }),
+      });
+      if (!response.ok) throw new Error('Failed to clone region');
+      return await response.json();
+    }
+    await delay(200);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: 0,
+      processingTimeMs: 200,
+    };
+  }
+
+  /**
+   * Sample a cell color using eyedropper.
+   * POST /api/patterns/:id/eyedropper
+   */
+  async eyedropper(patternId: string, row: number, col: number): Promise<{ color: string; dmcCode?: string; stitchType?: string }> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/eyedropper`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ row, col }),
+      });
+      if (!response.ok) throw new Error('Failed to sample color');
+      return await response.json();
+    }
+    await delay(50);
+    return { color: '', stitchType: 'cross' };
+  }
+
+  /**
+   * Stamp text onto the pattern.
+   * POST /api/patterns/:id/text
+   */
+  async stampText(
+    patternId: string,
+    text: string,
+    row: number,
+    col: number,
+    color: string,
+    fontId?: string
+  ): Promise<AIPatternResponse> {
+    if (this.isLiveBackend) {
+      const response = await fetch(`${this.apiBaseUrl}/patterns/${patternId}/text`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ text, row, col, color, fontId }),
+      });
+      if (!response.ok) throw new Error('Failed to stamp text');
+      return await response.json();
+    }
+    await delay(150);
+    return {
+      success: true,
+      grid: Array.from({ length: 32 }, () => Array(32).fill('#fafaf9')),
+      stitchTypes: Array.from({ length: 32 }, () => Array(32).fill('cross')),
+      width: 32, height: 32,
+      dmcPalette: [],
+      totalStitches: text.length * 12,
+      processingTimeMs: 150,
+    };
+  }
 }
 
 export const api = new ApiClient();
