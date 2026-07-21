@@ -4,63 +4,20 @@
  * Defines the data structures for:
  * - Text-to-Pattern: generating a design from a text prompt
  * - Image-to-Pattern: converting an uploaded image into a stitch grid
- * - StitchGrid: the core 2D array representing a pixelated embroidery pattern
+ *
+ * Grid types (StitchCell, StitchGrid, etc.) are now in domain/stitch/types.ts
+ * as the canonical module-agnostic representation. This file re-exports them
+ * for backward compatibility and defines AI-specific request/response types.
  */
 
 import { z } from "zod";
+import type { StitchCell, StitchGrid, DmcUsage, PatternResult } from "../stitch/types";
+import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../stitch/types";
 
-// ─── Stitch Grid ────────────────────────────────────────────────────────────
+// ─── Re-exports (backward compatibility) ────────────────────────────────────
 
-/**
- * A single cell in the stitch grid.
- * Each cell represents one embroidery stitch with a color.
- */
-export interface StitchCell {
-  /** Hex color string (e.g. "#ff0000") */
-  color: string;
-  /** DMC thread code if matched */
-  dmcCode?: string;
-  /** DMC color name */
-  dmcName?: string;
-}
-
-/**
- * 2D grid of stitch cells representing the embroidery pattern.
- * grid[row][col] where row 0 is the top of the design.
- */
-export type StitchGrid = StitchCell[][];
-
-// ─── DMC Usage ──────────────────────────────────────────────────────────────
-
-/** A DMC color used in the pattern with count information. */
-export interface DmcUsage {
-  code: string;
-  name: string;
-  hex: string;
-  count: number; // Number of stitches using this color
-}
-
-// ─── Pattern Result ─────────────────────────────────────────────────────────
-
-/** Complete pattern generation result. */
-export interface PatternResult {
-  /** 2D grid of colors */
-  grid: StitchGrid;
-  /** Grid dimensions */
-  gridSize: number;
-  /** Total number of stitches */
-  stitchCount: number;
-  /** DMC color usage breakdown */
-  dmcColors: DmcUsage[];
-  /** URL to the AI-generated preview image (for text-to-pattern) */
-  previewUrl?: string;
-  /** Original prompt used (for text-to-pattern) */
-  prompt?: string;
-  /** Base64 data URL of the original uploaded image (for image-to-pattern) */
-  originalImageData?: string;
-  /** URL to the original uploaded image (for image-to-pattern) */
-  originalImageUrl?: string;
-}
+export type { StitchCell, StitchGrid, DmcUsage, PatternResult };
+export { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE };
 
 // ─── Request / Response Types ───────────────────────────────────────────────
 
@@ -112,57 +69,38 @@ export interface LeonardoGenerationResponse {
 
 // ─── Zod Schemas ────────────────────────────────────────────────────────────
 
-export const AVAILABLE_GRID_SIZES = [50, 75, 100, 150, 200] as const;
-export type GridSize = (typeof AVAILABLE_GRID_SIZES)[number];
-
 const gridSizeSchema = z
-  .preprocess(
-    val => (typeof val === "string" ? Number(val) : val),
-    z.union([
-      z.literal(50),
-      z.literal(75),
-      z.literal(100),
-      z.literal(150),
-      z.literal(200),
-    ])
-  )
+  .union([
+    z.literal(50),
+    z.literal(75),
+    z.literal(100),
+    z.literal(150),
+    z.literal(200),
+  ])
   .optional()
   .default(50);
-
-const maxColorsSchema = z
-  .preprocess(
-    val => (typeof val === "string" ? Number(val) : val),
-    z.number().int().min(15).max(80)
-  )
-  .optional()
-  .default(24);
 
 export const TextToPatternSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
   gridSize: gridSizeSchema,
-  maxColors: maxColorsSchema,
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
   negativePrompt: z.string().max(500).optional(),
 });
 
 export const ImageToPatternSchema = z.object({
   gridSize: gridSizeSchema,
-  maxColors: maxColorsSchema,
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
 });
 
 export const ResizePatternSchema = z.object({
   grid: z.array(z.array(z.string().min(1))).min(1),
-  gridSize: z.preprocess(
-    val => (typeof val === "string" ? Number(val) : val),
-    z.union([
+  gridSize: z
+    .union([
       z.literal(50),
       z.literal(75),
       z.literal(100),
       z.literal(150),
       z.literal(200),
-    ])
-  ),
-  maxColors: maxColorsSchema,
+    ]),
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
 });
-
-/** Default grid size if not specified. */
-export const DEFAULT_GRID_SIZE = 50;
