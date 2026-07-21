@@ -10,6 +10,7 @@
  */
 
 import { closestDmcColor, rgbToHex } from "./dmcColors";
+import type { StitchCell } from "../ai/embroideryAI";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

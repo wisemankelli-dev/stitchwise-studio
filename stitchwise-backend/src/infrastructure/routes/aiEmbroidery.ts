@@ -25,7 +25,6 @@ import {
   imageBufferToStitchGrid,
   resizeStitchGrid,
 } from "../../domain/stitch/patternConverter";
-import { generatePatternFromPrompt } from "../../domain/ai/patternGenerator";
 import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 
@@ -158,14 +157,8 @@ export function createAIEmbroideryRouter(): Router {
             return;
           }
 
-          if (generation.isMock) {
-            // Use direct stitch grid generation (avoids downscale blur)
-            const gs = gridSize || DEFAULT_GRID_SIZE;
-            pattern = generatePatternFromPrompt(prompt, gs);
-          } else {
-            // Step 2: Download the real AI-generated image and convert to stitch grid
-            pattern = await imageUrlToStitchGrid(generation.url, gridSize);
-          }
+          // Step 2: Download the real AI-generated image and convert to stitch grid
+          pattern = await imageUrlToStitchGrid(generation.url, gridSize);
         }
 
         res.json(buildPatternResponse(pattern, { promptUsed: prompt, processingTimeMs: 0 }));

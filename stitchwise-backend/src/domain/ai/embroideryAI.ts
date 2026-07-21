@@ -116,39 +116,52 @@ export const AVAILABLE_GRID_SIZES = [50, 75, 100, 150, 200] as const;
 export type GridSize = (typeof AVAILABLE_GRID_SIZES)[number];
 
 const gridSizeSchema = z
-  .union([
-    z.literal(50),
-    z.literal(75),
-    z.literal(100),
-    z.literal(150),
-    z.literal(200),
-  ])
-  .optional()
-  .default(50);
-
-export const TextToPatternSchema = z.object({
-  prompt: z.string().min(1, "Prompt is required").max(1000),
-  gridSize: gridSizeSchema,
-  maxColors: z.number().int().min(15).max(80).optional().default(24),
-  negativePrompt: z.string().max(500).optional(),
-});
-
-export const ImageToPatternSchema = z.object({
-  gridSize: gridSizeSchema,
-  maxColors: z.number().int().min(15).max(80).optional().default(24),
-});
-
-export const ResizePatternSchema = z.object({
-  grid: z.array(z.array(z.string().min(1))).min(1),
-  gridSize: z
-    .union([
+  .preprocess(
+    val => (typeof val === "string" ? Number(val) : val),
+    z.union([
       z.literal(50),
       z.literal(75),
       z.literal(100),
       z.literal(150),
       z.literal(200),
-    ]),
-  maxColors: z.number().int().min(15).max(80).optional().default(24),
+    ])
+  )
+  .optional()
+  .default(50);
+
+const maxColorsSchema = z
+  .preprocess(
+    val => (typeof val === "string" ? Number(val) : val),
+    z.number().int().min(15).max(80)
+  )
+  .optional()
+  .default(24);
+
+export const TextToPatternSchema = z.object({
+  prompt: z.string().min(1, "Prompt is required").max(1000),
+  gridSize: gridSizeSchema,
+  maxColors: maxColorsSchema,
+  negativePrompt: z.string().max(500).optional(),
+});
+
+export const ImageToPatternSchema = z.object({
+  gridSize: gridSizeSchema,
+  maxColors: maxColorsSchema,
+});
+
+export const ResizePatternSchema = z.object({
+  grid: z.array(z.array(z.string().min(1))).min(1),
+  gridSize: z.preprocess(
+    val => (typeof val === "string" ? Number(val) : val),
+    z.union([
+      z.literal(50),
+      z.literal(75),
+      z.literal(100),
+      z.literal(150),
+      z.literal(200),
+    ])
+  ),
+  maxColors: maxColorsSchema,
 });
 
 /** Default grid size if not specified. */
