@@ -71,3 +71,23 @@ export {
   deletePattern,
 } from "./patternRepository";
 export type { EmbroideryPatternRecord } from "./patternRepository";
+
+// Editor operations
+export {
+  paintCells,
+  eraseCells,
+  cloneRegion,
+  eyedropper,
+  floodFill,
+  stampText,
+} from "./editorOperations";
+export type { PaintCell, CloneRegionParams } from "./editorOperations";
+
+// Pixel font
+export {
+  PIXEL_FONT,
+  FONT_WIDTH,
+  FONT_HEIGHT,
+  FONT_SPACING,
+  renderTextToCells,
+} from "./pixelFont";
