@@ -15,8 +15,8 @@
 
 import sharp from "sharp";
 import axios from "axios";
-import type { StitchGrid, StitchCell, PatternResult, DmcUsage } from "../ai/embroideryAI";
-import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../ai/embroideryAI";
+import type { StitchGrid, StitchCell, PatternResult, DmcUsage } from "./types";
+import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "./types";
 import { closestDmcColor, rgbToHex } from "./dmcColors";
 import { quantizePixels, mapToDmcPalette } from "./colorReducer";
 
