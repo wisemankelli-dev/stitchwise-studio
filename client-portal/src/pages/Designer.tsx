@@ -39,6 +39,8 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'alphabet', icon: <Type className="h-3.5 w-3.5" />, label: 'Text' },
 ];
 
+const GRID_SIZES = [50, 75, 100, 150, 200];
+
 function toGridData(ai: AIPatternResponse): StitchGridData {
   const cells = ai.grid.map((row, r) =>
     row.map((color, c) => ({
@@ -117,11 +119,19 @@ export const Designer: React.FC = () => {
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
 
-  // --- Material Estimation Calculations ---
-  const threadPerStitchCm = 0.5; // ~0.5cm per cross stitch on 14-count Aida
-  const threadPerStitchAdjustment = fabricCount / 14; // scales with fabric count (finer fabric = less thread per stitch)
+  // ==================== GENERATE MODULE STATE ====================
+  const [genFile, setGenFile] = useState<{ name: string; previewUrl: string } | null>(null);
+  const [genImagePreview, setGenImagePreview] = useState<string | null>(null);
+  const [selectedGenGridSize, setSelectedGenGridSize] = useState<number>(100);
+  const [genResult, setGenResult] = useState<AIPatternResponse | null>(null);
+  const [isGenUploading, setIsGenUploading] = useState(false);
+  const [isDraggingGen, setIsDraggingGen] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
-  // Thread meters per color
+  // --- Material Estimation Calculations ---
+  const threadPerStitchCm = 0.5;
+  const threadPerStitchAdjustment = fabricCount / 14;
+
   const colorThreadEstimates = React.useMemo(() => {
     const counts: Record<string, { count: number; hex: string }> = {};
     Object.entries(grid).forEach(([key, hex]) => {
@@ -136,11 +146,9 @@ export const Designer: React.FC = () => {
     }).sort((a, b) => b.stitchCount - a.stitchCount);
   }, [grid, fabricCount]);
 
-  // Fabric dimensions
   const fabricEstimates = React.useMemo(() => {
     const widthInches = gridSize / fabricCount;
     const heightInches = gridSize / fabricCount;
-    // Standard margins: 2 inches on each side for framing/hoop
     const fabricWidthInches = widthInches + 4;
     const fabricHeightInches = heightInches + 4;
     return {
@@ -205,42 +213,30 @@ export const Designer: React.FC = () => {
       }
       case 'paint': {
         setCell(row, col, selectedColor, selectedStitch);
-        if (mirrorEnabled) {
-          mirrorCellEdit(row, col, selectedColor, selectedStitch);
-        }
+        if (mirrorEnabled) mirrorCellEdit(row, col, selectedColor, selectedStitch);
         break;
       }
       case 'eyedropper': {
         const existingColor = grid[key];
-        if (existingColor) {
-          setSelectedColor(existingColor);
-          setActiveTool('paint');
-        }
+        if (existingColor) { setSelectedColor(existingColor); setActiveTool('paint'); }
         break;
       }
       case 'clone': {
         if (!cloneSource) {
-          // First click: select source
-          if (grid[key]) {
-            setCloneSource({ row, col });
-          }
+          if (grid[key]) setCloneSource({ row, col });
         } else {
-          // Second click: paste to destination
           const srcKey = `${cloneSource.row},${cloneSource.col}`;
           const srcColor = grid[srcKey];
           const srcStitch = gridStitchTypes[srcKey];
           if (srcColor) {
             setCell(row, col, srcColor, srcStitch || 'cross');
-            if (mirrorEnabled) {
-              mirrorCellEdit(row, col, srcColor, srcStitch || 'cross');
-            }
+            if (mirrorEnabled) mirrorCellEdit(row, col, srcColor, srcStitch || 'cross');
           }
           setCloneSource(null);
         }
         break;
       }
       default: {
-        // Select tool: normal toggle behavior
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
         if (newGrid[key] === selectedColor) {
@@ -354,21 +350,86 @@ export const Designer: React.FC = () => {
   };
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
-const handlePlaceText = () => {
-    if (!alphabetText.trim()) return;
-    const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
-    // Clear the area first
-    const width = alphabetText.length * (font.charWidth + font.spacing);
-    for (let r = placeRow; r < placeRow + font.charHeight; r++) {
-      for (let c = placeCol; c < placeCol + width; c++) {
-        if (r < gridSize && c < gridSize) clearCell(r, c);
+  // ==================== GENERATE MODULE HANDLERS ====================
+
+  const handleGenDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setIsDraggingGen(false);
+    if (e.dataTransfer.files?.[0]) {
+      const f = e.dataTransfer.files[0];
+      const url = URL.createObjectURL(f);
+      setGenFile({ name: f.name, previewUrl: url });
+      setGenImagePreview(url);
+      setGenResult(null);
+      setGenError(null);
+    }
+  };
+
+  const handleGenFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const f = e.target.files[0];
+      const url = URL.createObjectURL(f);
+      setGenFile({ name: f.name, previewUrl: url });
+      setGenImagePreview(url);
+      setGenResult(null);
+      setGenError(null);
+    }
+  };
+
+  const handleGenRemove = () => {
+    if (genFile?.previewUrl) URL.revokeObjectURL(genFile.previewUrl);
+    setGenFile(null);
+    setGenImagePreview(null);
+    setGenResult(null);
+    setGenError(null);
+  };
+
+  const handleGenerate = async () => {
+    if (!genFile) return;
+    setIsGenUploading(true);
+    setGenError(null);
+    setGenResult(null);
+    try {
+      const resp = await fetch(genFile.previewUrl);
+      const blob = await resp.blob();
+      const file = new File([blob], genFile.name, { type: blob.type });
+      const result = await api.uploadImageToPattern(file, selectedGenGridSize);
+      setGenResult(result);
+    } catch (err: any) {
+      setGenError(err.message || 'Generation failed');
+    } finally {
+      setIsGenUploading(false);
+    }
+  };
+
+  const handleResize = async (newSize: number) => {
+    setSelectedGenGridSize(newSize);
+    if (genResult && genFile) {
+      setIsGenUploading(true);
+      setGenError(null);
+      try {
+        const resp = await fetch(genFile.previewUrl);
+        const blob = await resp.blob();
+        const file = new File([blob], genFile.name, { type: blob.type });
+        const result = await api.uploadImageToPattern(file, newSize);
+        setGenResult(result);
+      } catch (err: any) {
+        setGenError(err.message || 'Resize failed');
+      } finally {
+        setIsGenUploading(false);
       }
     }
-    renderTextToGrid(
-      alphabetText, font, placeRow, placeCol,
-      selectedColor, selectedStitch, gridSize, setCell
-    );
   };
+
+  const handleSendToCanvas = () => {
+    if (genResult) {
+      setAiResult(genResult);
+      setGrid({});
+      setGridStitchTypes({});
+      // Scroll to canvas
+      canvasRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const stitchData: StitchGridData = aiResult
     ? toGridData(aiResult)
     : buildManualGridData(grid, gridStitchTypes, gridSize);
@@ -413,6 +474,186 @@ const handlePlaceText = () => {
           <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design perfect patterns stitch by stitch using AI.</p>
         </div>
 
+        {/* ==================== GENERATE MODULE: Upload + Grid Preview ==================== */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <UploadCloud className="h-5 w-5 text-blush-500" />
+            <h2 className="text-lg font-bold text-slate-800">Generate from Image</h2>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Upload clean artwork, then convert to a stitch grid. Each pixel = one stitch.</p>
+
+          {/* Upload Drop Zone */}
+          {!genFile ? (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDraggingGen(true); }}
+              onDragLeave={() => setIsDraggingGen(false)}
+              onDrop={handleGenDrop}
+              className={`border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer ${isDraggingGen ? 'border-blush-500 bg-blush-50/50' : 'border-blush-200 hover:bg-blush-50/50'}`}
+            >
+              <input type="file" id="gen-file-upload" className="hidden" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleGenFileChange} />
+              <label htmlFor="gen-file-upload" className="cursor-pointer block space-y-3">
+                <UploadCloud className="h-10 w-10 mx-auto text-blush-400" />
+                <span className="block text-sm font-bold text-slate-700">Drag & drop your artwork here</span>
+                <span className="block text-xs text-slate-400">or click to browse (PNG, JPEG, WebP, GIF)</span>
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {/* File info + remove */}
+              <div className="flex items-center justify-between p-3 bg-blush-50/50 rounded-xl border border-blush-100">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded bg-blush-100 flex items-center justify-center text-blush-600 shrink-0 font-bold text-xs uppercase">IMG</div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{genFile.name}</p>
+                  </div>
+                </div>
+                <button onClick={handleGenRemove} disabled={isGenUploading}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Grid Size Selector */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3">Grid Size (each cell = one stitch)</label>
+                <div className="flex flex-wrap gap-2">
+                  {GRID_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => { setSelectedGenGridSize(size); }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
+                        selectedGenGridSize === size
+                          ? 'bg-blush-500 text-white border-blush-500 shadow-md'
+                          : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
+                      }`}
+                    >
+                      {size}×{size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerate}
+                disabled={isGenUploading}
+                className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 text-white font-semibold text-sm px-6 py-3 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isGenUploading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Generating...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" /> Generate Stitch Grid
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Error */}
+          {genError && (
+            <div className="mt-4 p-3 bg-rose-50 rounded-xl border border-rose-100 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
+              <p className="text-xs text-rose-800">{genError}</p>
+            </div>
+          )}
+        </div>
+
+        {/* ==================== SPLIT VIEW: Artwork + Stitch Grid ==================== */}
+        {genResult && genImagePreview && (
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Layers className="h-5 w-5 text-blush-500" /> Preview
+              </h3>
+              <div className="flex items-center gap-3">
+                {/* Re-size buttons */}
+                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                  {GRID_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => handleResize(size)}
+                      disabled={isGenUploading}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        selectedGenGridSize === size
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={handleSendToCanvas}
+                  className="rounded-xl bg-blush-500 hover:bg-blush-600 text-white text-xs font-bold px-4 py-2 shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <Paintbrush className="h-3.5 w-3.5" /> Edit in Canvas
+                </button>
+              </div>
+            </div>
+
+            {isGenUploading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <RefreshCw className="h-8 w-8 text-blush-400 animate-spin" />
+                  <p className="text-sm text-slate-500 font-semibold">Generating stitch grid...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* LEFT: Clean Artwork */}
+                <div className="bg-blush-50/30 rounded-xl border border-blush-100 p-4">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5 text-blush-500" /> Clean Artwork
+                  </h4>
+                  <div className="flex items-center justify-center bg-white rounded-lg border border-blush-100 p-4 min-h-[200px]">
+                    <img
+                      src={genImagePreview}
+                      alt="Uploaded artwork"
+                      className="max-w-full max-h-[300px] object-contain rounded-lg shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* RIGHT: Stitch Grid */}
+                <div className="bg-blush-50/30 rounded-xl border border-blush-100 p-4">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5 text-blush-500" /> Stitch Grid ({selectedGenGridSize}×{selectedGenGridSize})
+                  </h4>
+                  <div className="flex items-center justify-center bg-white rounded-lg border border-blush-100 p-4 min-h-[200px]">
+                    {genResult && (
+                      <StitchGrid
+                        data={toGridData(genResult)}
+                        zoom={Math.min(1, 300 / selectedGenGridSize)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Stats row */}
+            {genResult && !isGenUploading && (
+              <div className="mt-4 flex flex-wrap items-center gap-4 p-3 bg-blush-50/50 rounded-xl border border-blush-100">
+                <span className="text-xs text-slate-600">
+                  Total stitches: <strong className="text-blush-600">{genResult.totalStitches.toLocaleString()}</strong>
+                </span>
+                <span className="text-xs text-slate-600">
+                  Grid: <strong className="text-slate-700">{genResult.width}×{genResult.height}</strong>
+                </span>
+                <span className="text-xs text-slate-600">
+                  Colors: <strong className="text-slate-700">{genResult.dmcPalette.length}</strong>
+                </span>
+                <DmcLegend palette={genResult.dmcPalette} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================== EXISTING GRID EDITOR ==================== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* LEFT PANEL */}
           <div className="lg:col-span-4 space-y-6">
@@ -588,7 +829,6 @@ const handlePlaceText = () => {
                 <Ruler className="h-5 w-5 text-blush-500" /> Material Estimator
               </h2>
 
-              {/* Fabric Count Selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Fabric Count (stitches/inch)</label>
                 <select
@@ -602,7 +842,6 @@ const handlePlaceText = () => {
                 </select>
               </div>
 
-              {/* Fabric Dimensions */}
               <div className="bg-blush-50/50 rounded-xl p-4 border border-blush-100 space-y-2">
                 <p className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   <Square className="h-3.5 w-3.5 text-blush-500" /> Design Size
@@ -622,7 +861,6 @@ const handlePlaceText = () => {
                 </p>
               </div>
 
-              {/* Thread Estimation */}
               <div>
                 <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <svg className="h-3.5 w-3.5 text-blush-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
@@ -742,48 +980,30 @@ const handlePlaceText = () => {
                   )}
                   {activeTool === 'alphabet' && (
                     <div className="flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={alphabetText}
+                      <input type="text" value={alphabetText}
                         onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
                         placeholder="TYPE TEXT"
                         className="w-28 rounded-lg border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
                         maxLength={12}
                       />
-                      <select
-                        value={selectedFontId}
+                      <select value={selectedFontId}
                         onChange={(e) => setSelectedFontId(e.target.value)}
                         className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
                       >
-                        {FONTS.map((f) => (
-                          <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
+                        {FONTS.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
                       </select>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-400">R:</span>
-                        <input
-                          type="number"
-                          value={placeRow}
+                        <input type="number" value={placeRow}
                           onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center"
-                          min={0}
-                          max={gridSize - 1}
-                        />
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridSize - 1} />
                         <span className="text-[10px] text-slate-400">C:</span>
-                        <input
-                          type="number"
-                          value={placeCol}
+                        <input type="number" value={placeCol}
                           onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center"
-                          min={0}
-                          max={gridSize - 1}
-                        />
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridSize - 1} />
                       </div>
-                      <button
-                        onClick={handlePlaceText}
-                        disabled={!alphabetText.trim()}
-                        className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all"
-                      >
+                      <button onClick={handlePlaceText} disabled={!alphabetText.trim()}
+                        className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all">
                         <Type className="h-3 w-3 inline mr-1" /> Place
                       </button>
                     </div>
