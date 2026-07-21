@@ -4,16 +4,30 @@
  * Endpoints:
  *   POST /api/ai/embroidery/text-to-pattern  — Generate a pattern from a text prompt
  *   POST /api/ai/embroidery/image-to-pattern — Convert an uploaded image to a pattern
+ *   POST /api/ai/embroidery/resize-pattern   — Re-process an existing grid at a different size
+ *   POST /api/ai/embroidery/shape-to-pattern  — Generate a pattern from a predefined shape
  */
 
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
-import { TextToPatternSchema, ImageToPatternSchema, type PatternResult } from "../../domain/ai/embroideryAI";
+import {
+  TextToPatternSchema,
+  ImageToPatternSchema,
+  ResizePatternSchema,
+  AVAILABLE_GRID_SIZES,
+  DEFAULT_GRID_SIZE,
+  type PatternResult,
+  type StitchCell,
+} from "../../domain/ai/embroideryAI";
 import { generateImageFromText } from "../services/leonardoAIService";
-import { imageUrlToStitchGrid, imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
+import {
+  imageUrlToStitchGrid,
+  imageBufferToStitchGrid,
+  resizeStitchGrid,
+} from "../../domain/stitch/patternConverter";
 import { generatePatternFromPrompt } from "../../domain/ai/patternGenerator";
 import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
-import { authenticate, optionalAuth } from "../middleware/auth";
+import { optionalAuth } from "../middleware/auth";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -28,6 +42,38 @@ const upload = multer({
   },
 });
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a StitchCell[][] grid to a flat string[][] of hex colors for the frontend.
+ */
+function flattenGrid(grid: StitchCell[][]): string[][] {
+  return grid.map(row => row.map(cell => cell.color));
+}
+
+/**
+ * Build the standard pattern response body shared across endpoints.
+ */
+function buildPatternResponse(pattern: PatternResult, extra: Record<string, unknown> = {}) {
+  const flatGrid = flattenGrid(pattern.grid);
+  return {
+    success: true,
+    grid: flatGrid,
+    stitchTypes: flatGrid.map(row => row.map(() => "cross")),
+    width: pattern.gridSize,
+    height: pattern.gridSize,
+    dmcPalette: pattern.dmcColors.map(c => ({
+      code: c.code,
+      name: c.name,
+      hex: c.hex,
+      count: c.count,
+    })),
+    totalStitches: pattern.stitchCount,
+    gridSizes: [...AVAILABLE_GRID_SIZES],
+    ...extra,
+  };
+}
+
 /**
  * Creates a router for AI Embroidery pattern generation endpoints.
  */
@@ -38,10 +84,10 @@ export function createAIEmbroideryRouter(): Router {
    * POST /api/ai/embroidery/text-to-pattern
    *
    * Generate an embroidery pattern from a text description.
-   * Uses Leonardo AI to generate an image, then converts it to a stitch grid.
+   * Uses Stability AI to generate an image, then converts it to a stitch grid.
    *
-   * Request body: { prompt: string, gridSize?: 16|24|32|48|64, negativePrompt?: string }
-   * Response: { success: true, data: PatternResult }
+   * Request body: { prompt: string, gridSize?: 50|75|100|150|200, negativePrompt?: string }
+   * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches, gridSizes, ... }
    */
   router.post(
     "/ai/embroidery/text-to-pattern",
@@ -61,9 +107,6 @@ export function createAIEmbroideryRouter(): Router {
         const { prompt, gridSize, negativePrompt } = parsed.data;
 
         // Check if the prompt matches a known shape — if so, use the Shape Library directly.
-        // The Shape Library draws pixel-perfect shapes directly on the grid. No AI needed.
-        // This always wins over the AI pipeline: a recognizable pixel-art shape is far better
-        // than noisy AI-generated blocks. Users can recolor the shape with editing tools.
         const shapeKeywords: Record<string, RegExp[]> = {
           rabbit: [/rabbit/i, /bunny/i, /hare/i],
           cat: [/cat/i, /kitten/i, /kitty/i],
@@ -97,11 +140,10 @@ export function createAIEmbroideryRouter(): Router {
 
         if (matchedShape) {
           // Use Shape Library directly — instant, pixel-perfect, no AI needed
-          const gs = gridSize || 32;
+          const gs = gridSize || DEFAULT_GRID_SIZE;
           pattern = generateShape(matchedShape, gs);
         } else {
           // No shape match — use AI image generation
-          // Enhance prompt for embroidery-friendly output.
           const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
           const enhancedPrompt = `${prompt}, ${styleHints}`;
 
@@ -118,7 +160,7 @@ export function createAIEmbroideryRouter(): Router {
 
           if (generation.isMock) {
             // Use direct stitch grid generation (avoids downscale blur)
-            const gs = gridSize || 32;
+            const gs = gridSize || DEFAULT_GRID_SIZE;
             pattern = generatePatternFromPrompt(prompt, gs);
           } else {
             // Step 2: Download the real AI-generated image and convert to stitch grid
@@ -126,27 +168,7 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
 
-        // Map StitchCell[][] to string[][] (hex colors) for frontend compatibility
-        const flatGrid: string[][] = pattern.grid.map(row =>
-          row.map(cell => cell.color)
-        );
-
-        res.json({
-          success: true,
-          grid: flatGrid,
-          stitchTypes: flatGrid.map(row => row.map(() => "cross")),
-          width: pattern.gridSize,
-          height: pattern.gridSize,
-          dmcPalette: pattern.dmcColors.map(c => ({
-            code: c.code,
-            name: c.name,
-            hex: c.hex,
-            count: c.count,
-          })),
-          totalStitches: pattern.stitchCount,
-          promptUsed: prompt,
-          processingTimeMs: 0,
-        });
+        res.json(buildPatternResponse(pattern, { promptUsed: prompt, processingTimeMs: 0 }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "text_to_pattern_error", error: message });
@@ -159,9 +181,12 @@ export function createAIEmbroideryRouter(): Router {
    * POST /api/ai/embroidery/image-to-pattern
    *
    * Convert an uploaded image (PNG, JPEG, WebP, GIF) to an embroidery pattern.
+   * Returns the clean stitch grid plus the original image as a base64 data URL
+   * so the frontend can display both side by side.
+   *
    * Multipart form: file (image) + gridSize (optional)
    *
-   * Response: { success: true, data: PatternResult }
+   * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches, gridSizes, originalImageData }
    */
   router.post(
     "/ai/embroidery/image-to-pattern",
@@ -192,30 +217,65 @@ export function createAIEmbroideryRouter(): Router {
         // Convert the uploaded image buffer to stitch grid
         const pattern = await imageBufferToStitchGrid(req.file.buffer, gridSize);
 
-        // Map StitchCell[][] to string[][] (hex colors) for frontend compatibility
-        const flatGrid: string[][] = pattern.grid.map(row =>
-          row.map(cell => cell.color)
-        );
+        // Convert the original uploaded image to a base64 data URL
+        const mimeType = req.file.mimetype || "image/png";
+        const originalImageData = `data:${mimeType};base64,${req.file.buffer.toString("base64")}`;
 
-        res.json({
-          success: true,
-          grid: flatGrid,
-          stitchTypes: flatGrid.map(row => row.map(() => "cross")),
-          width: pattern.gridSize,
-          height: pattern.gridSize,
-          dmcPalette: pattern.dmcColors.map(c => ({
-            code: c.code,
-            name: c.name,
-            hex: c.hex,
-            count: c.count,
-          })),
-          totalStitches: pattern.stitchCount,
+        res.json(buildPatternResponse(pattern, {
           promptUsed: `Image: ${req.file!.originalname}`,
+          originalImageData,
           processingTimeMs: 0,
-        });
+        }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "image_to_pattern_error", error: message });
+        res.status(500).json({ success: false, error: message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/ai/embroidery/resize-pattern
+   *
+   * Re-process an existing grid at a different size.
+   * Takes the current stitch grid and a target grid size, then re-samples
+   * using nearest-neighbor scaling. This lets the user switch sizes without
+   * re-uploading the source image or re-running the AI.
+   *
+   * Request body: { grid: string[][], gridSize: 50|75|100|150|200 }
+   * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches, gridSizes }
+   */
+  router.post(
+    "/ai/embroidery/resize-pattern",
+    (req: Request, res: Response) => {
+      try {
+        const parsed = ResizePatternSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            success: false,
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        const { grid, gridSize } = parsed.data;
+
+        // Convert the flat string[][] grid back to StitchCell[][]
+        const stitchGrid: StitchCell[][] = grid.map(row =>
+          row.map(color => ({ color }))
+        );
+
+        resizeStitchGrid(stitchGrid, gridSize).then(pattern => {
+          res.json(buildPatternResponse(pattern, { processingTimeMs: 0 }));
+        }).catch(err => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error({ event: "resize_pattern_error", error: message });
+          res.status(500).json({ success: false, error: message });
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error({ event: "resize_pattern_error", error: message });
         res.status(500).json({ success: false, error: message });
       }
     },
@@ -227,38 +287,20 @@ export function createAIEmbroideryRouter(): Router {
    * Generate a pattern from a predefined shape (no AI needed).
    * Shapes are drawn directly on the grid at the target resolution.
    *
-   * Request body: { shape: string, gridSize?: 16|24|32|48|64 }
+   * Request body: { shape: string, gridSize?: 50|75|100|150|200 }
    * Available shapes: rabbit, cat, dog, bird, butterfly, heart, flower, star, geometric
-   * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches }
+   * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches, gridSizes }
    */
   router.post(
     "/ai/embroidery/shape-to-pattern",
     (req: Request, res: Response) => {
       const { shape, gridSize } = req.body;
-      const gs = [16, 24, 32, 48, 64].includes(gridSize) ? gridSize : 32;
+      const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
+      const gs = validSizes.includes(Number(gridSize)) ? Number(gridSize) : DEFAULT_GRID_SIZE;
 
       try {
         const pattern = generateShape(shape || "", gs);
-        const flatGrid: string[][] = pattern.grid.map(row =>
-          row.map(cell => cell.color)
-        );
-
-        res.json({
-          success: true,
-          grid: flatGrid,
-          stitchTypes: flatGrid.map(row => row.map(() => "cross")),
-          width: pattern.gridSize,
-          height: pattern.gridSize,
-          dmcPalette: pattern.dmcColors.map(c => ({
-            code: c.code,
-            name: c.name,
-            hex: c.hex,
-            count: c.count,
-          })),
-          totalStitches: pattern.stitchCount,
-          shape,
-          processingTimeMs: 0,
-        });
+        res.json(buildPatternResponse(pattern, { shape, processingTimeMs: 0 }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "shape_to_pattern_error", error: message });
