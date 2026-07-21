@@ -212,10 +212,10 @@ export function createAIEmbroideryRouter(): Router {
           return;
         }
 
-        const { gridSize } = parsed.data;
+        const { gridSize, maxColors } = parsed.data;
 
         // Convert the uploaded image buffer to stitch grid
-        const pattern = await imageBufferToStitchGrid(req.file.buffer, gridSize);
+        const pattern = await imageBufferToStitchGrid(req.file.buffer, gridSize, maxColors);
 
         // Convert the original uploaded image to a base64 data URL
         const mimeType = req.file.mimetype || "image/png";
@@ -259,14 +259,14 @@ export function createAIEmbroideryRouter(): Router {
           return;
         }
 
-        const { grid, gridSize } = parsed.data;
+        const { grid, gridSize, maxColors } = parsed.data;
 
         // Convert the flat string[][] grid back to StitchCell[][]
         const stitchGrid: StitchCell[][] = grid.map(row =>
           row.map(color => ({ color }))
         );
 
-        resizeStitchGrid(stitchGrid, gridSize).then(pattern => {
+        resizeStitchGrid(stitchGrid, gridSize, maxColors).then(pattern => {
           res.json(buildPatternResponse(pattern, { processingTimeMs: 0 }));
         }).catch(err => {
           const message = err instanceof Error ? err.message : String(err);

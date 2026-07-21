@@ -129,11 +129,13 @@ const gridSizeSchema = z
 export const TextToPatternSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
   gridSize: gridSizeSchema,
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
   negativePrompt: z.string().max(500).optional(),
 });
 
 export const ImageToPatternSchema = z.object({
   gridSize: gridSizeSchema,
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
 });
 
 export const ResizePatternSchema = z.object({
@@ -146,6 +148,7 @@ export const ResizePatternSchema = z.object({
       z.literal(150),
       z.literal(200),
     ]),
+  maxColors: z.number().int().min(15).max(80).optional().default(24),
 });
 
 /** Default grid size if not specified. */

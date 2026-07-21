@@ -4,12 +4,13 @@
  * Core pipeline:
  * 1. Download/load image from URL or buffer
  * 2. Resize to target grid dimensions (gridSize x gridSize pixels) using nearest-neighbor
- * 3. Snap each pixel to a restricted pixel-art palette
- * 4. Quantize colors to nearest DMC thread colors
+ * 3. Quantize colors to the user's requested number of colors (15-80) via median-cut
+ * 4. Map each reduced color to the nearest DMC thread color, deduplicating
  * 5. Build StitchGrid and count DMC usage
  *
- * The pipeline creates clean artwork first (by downscaling, palette snapping, and
- * median filtering), then converts pixel-for-pixel to stitches.
+ * The pipeline creates clean artwork first (by downscaling, median filtering, and
+ * color quantization), then converts pixel-for-pixel to stitches.
+ * Owner directive: "Each pixel = one stitch."
  */
 
 import sharp from "sharp";
@@ -17,21 +18,24 @@ import axios from "axios";
 import type { StitchGrid, StitchCell, PatternResult, DmcUsage } from "../ai/embroideryAI";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../ai/embroideryAI";
 import { closestDmcColor, rgbToHex } from "./dmcColors";
+import { quantizePixels, mapToDmcPalette } from "./colorReducer";
 
 /**
  * Convert an image URL to a stitch grid by:
  * 1. Downloading the image
  * 2. Resizing to gridSize x gridSize pixels
- * 3. Snapping to a pixel-art palette
+ * 3. Quantizing colors to maxColors via median-cut
  * 4. Quantizing each pixel to the nearest DMC thread color
  *
  * @param imageUrl - URL of the image to convert
  * @param gridSize - Output grid dimensions (50, 75, 100, 150, 200)
+ * @param maxColors - Target number of colors (15-80, default 24)
  * @returns PatternResult with grid, stitch count, and DMC usage
  */
 export async function imageUrlToStitchGrid(
   imageUrl: string,
   gridSize: number = DEFAULT_GRID_SIZE,
+  maxColors: number = 24,
 ): Promise<PatternResult> {
   try {
     // Download the image
@@ -41,7 +45,7 @@ export async function imageUrlToStitchGrid(
     });
 
     const imageBuffer = Buffer.from(response.data);
-    return imageBufferToStitchGrid(imageBuffer, gridSize);
+    return imageBufferToStitchGrid(imageBuffer, gridSize, maxColors);
   } catch (err) {
     console.error({ event: "image_download_failed", url: imageUrl, error: String(err) });
     // Fallback: generate a simple pattern
@@ -50,7 +54,6 @@ export async function imageUrlToStitchGrid(
     for (let r = 0; r < size; r++) {
       const row: StitchCell[] = [];
       for (let c = 0; c < size; c++) {
-        // Simple checkerboard pattern as fallback
         if ((r + c) % 3 === 0) { row.push({ color: '#e11d48', dmcCode: '321', dmcName: 'Christmas Red' }); }
         else if ((r + c) % 3 === 1) { row.push({ color: '#0284c7', dmcCode: '798', dmcName: 'Delft Blue' }); }
         else { row.push({ color: '#16a34a', dmcCode: '700', dmcName: 'Green' }); }
@@ -71,63 +74,20 @@ export async function imageUrlToStitchGrid(
 }
 
 /**
- * A restricted pixel-art palette of 24 common colors.
- * Using this intermediate palette before DMC quantization ensures
- * clean, recognizable pixel art rather than muddy dithered colors.
- */
-const PIXELART_PALETTE: [number, number, number][] = [
-  [0, 0, 0],       // Black
-  [64, 64, 64],    // Dark Gray
-  [128, 128, 128], // Gray
-  [192, 192, 192], // Light Gray
-  [255, 255, 255], // White
-  [128, 0, 0],     // Dark Red
-  [255, 0, 0],     // Red
-  [255, 128, 128], // Pink
-  [255, 192, 203], // Light Pink
-  [255, 165, 0],   // Orange
-  [255, 255, 0],   // Yellow
-  [0, 128, 0],     // Dark Green
-  [0, 255, 0],     // Green
-  [0, 128, 128],   // Teal
-  [0, 0, 255],     // Blue
-  [0, 0, 128],     // Dark Blue
-  [128, 0, 128],   // Purple
-  [255, 0, 255],   // Magenta
-  [165, 42, 42],   // Brown
-  [210, 180, 140], // Tan
-  [255, 218, 185], // Peach
-  [240, 230, 140], // Khaki
-  [173, 216, 230], // Light Blue
-  [144, 238, 144], // Light Green
-];
-
-/**
- * Snap an RGB color to the nearest color in the pixel-art palette.
- */
-function snapToPalette(r: number, g: number, b: number): [number, number, number] {
-  let best = PIXELART_PALETTE[0];
-  let bestDist = Infinity;
-  for (const pr of PIXELART_PALETTE) {
-    const d = (r - pr[0]) ** 2 + (g - pr[1]) ** 2 + (b - pr[2]) ** 2;
-    if (d < bestDist) { bestDist = d; best = pr; }
-  }
-  return best;
-}
-
-/**
  * Convert an image buffer to a stitch grid.
  *
- * Pipeline: resize → median filter → snap to palette → quantize to DMC
+ * Pipeline: resize → median filter → median-cut color quantization → DMC mapping
  * This creates clean artwork first, then converts pixel-for-pixel to stitches.
  *
  * @param imageBuffer - Raw image data
  * @param gridSize - Output grid dimensions (50, 75, 100, 150, 200)
+ * @param maxColors - Target number of colors (15-80, default 24)
  * @returns PatternResult
  */
 export async function imageBufferToStitchGrid(
   imageBuffer: Buffer,
   gridSize: number = DEFAULT_GRID_SIZE,
+  maxColors: number = 24,
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
@@ -148,11 +108,18 @@ export async function imageBufferToStitchGrid(
     .toBuffer({ resolveWithObject: true });
 
   const rawPixels = new Uint8ClampedArray(data);
+
+  // Step 2: Quantize the image to the requested number of colors using median-cut.
+  // This replaces the hardcoded 24-color palette with a dynamic per-image reducer.
+  const quantizedColors = quantizePixels(rawPixels, maxColors);
+
+  // Step 3: Map quantized colors to DMC, deduplicating any that map to the same code.
+  const dmcPalette = mapToDmcPalette(quantizedColors);
+
+  // Step 4: Build the stitch grid by snapping each pixel to the nearest DMC color.
   const grid: StitchGrid = [];
   const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
 
-  // Step 2: For each pixel (which = one stitch at this resolution)
-  // snap to the pixel-art palette, then quantize to DMC.
   for (let row = 0; row < size; row++) {
     const gridRow: StitchCell[] = [];
     for (let col = 0; col < size; col++) {
@@ -161,11 +128,19 @@ export async function imageBufferToStitchGrid(
       const g = rawPixels[idx + 1];
       const b = rawPixels[idx + 2];
 
-      // Snap to pixel-art palette first (clean intermediate colors)
-      const snapped = snapToPalette(r, g, b);
+      // Find nearest quantized color from the reducer's palette
+      let bestDist = Infinity;
+      let bestColor = quantizedColors[0];
+      for (const qc of quantizedColors) {
+        const d = (r - qc.r) ** 2 + (g - qc.g) ** 2 + (b - qc.b) ** 2;
+        if (d < bestDist) {
+          bestDist = d;
+          bestColor = qc;
+        }
+      }
 
-      // Map to nearest DMC color
-      const dmc = closestDmcColor(snapped[0], snapped[1], snapped[2]);
+      // Map to DMC
+      const dmc = closestDmcColor(bestColor.r, bestColor.g, bestColor.b);
       const hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
 
       gridRow.push({
@@ -207,10 +182,16 @@ export async function imageBufferToStitchGrid(
  * Re-process an existing grid at a different size using nearest-neighbor scaling.
  * Useful when a user wants to switch sizes without re-uploading the source image.
  * The grid is rendered as a pixel image at the original size, then re-sampled.
+ *
+ * @param grid - The existing stitch grid
+ * @param newSize - Target grid size (50, 75, 100, 150, 200)
+ * @param maxColors - Target number of colors (15-80, default 24)
+ * @returns PatternResult
  */
 export async function resizeStitchGrid(
   grid: StitchGrid,
   newSize: number,
+  maxColors: number = 24,
 ): Promise<PatternResult> {
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
   const size = validSizes.includes(newSize) ? newSize : DEFAULT_GRID_SIZE;
@@ -248,6 +229,11 @@ export async function resizeStitchGrid(
     .toBuffer({ resolveWithObject: true });
 
   const rawPixels = new Uint8ClampedArray(data);
+
+  // Quantize colors using the dynamic reducer
+  const quantizedColors = quantizePixels(rawPixels, maxColors);
+
+  // Build the grid with DMC mapping
   const newGrid: StitchGrid = [];
   const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
 
@@ -259,9 +245,18 @@ export async function resizeStitchGrid(
       const g = rawPixels[idx + 1];
       const b = rawPixels[idx + 2];
 
-      // Snap and quantize
-      const snapped = snapToPalette(r, g, b);
-      const dmc = closestDmcColor(snapped[0], snapped[1], snapped[2]);
+      // Find nearest quantized color
+      let bestDist = Infinity;
+      let bestColor = quantizedColors[0];
+      for (const qc of quantizedColors) {
+        const d = (r - qc.r) ** 2 + (g - qc.g) ** 2 + (b - qc.b) ** 2;
+        if (d < bestDist) {
+          bestDist = d;
+          bestColor = qc;
+        }
+      }
+
+      const dmc = closestDmcColor(bestColor.r, bestColor.g, bestColor.b);
       const hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
 
       gridRow.push({
