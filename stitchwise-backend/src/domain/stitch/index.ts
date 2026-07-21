@@ -52,3 +52,22 @@ export {
   mapToDmcPalette,
   snapGridToDmc,
 } from "./colorReducer";
+
+// Pattern data model (serialization)
+export {
+  serializeGrid,
+  deserializeGrid,
+  serializePalette,
+  deserializePalette,
+} from "./patternDataModel";
+
+// Pattern repository (persistence)
+export {
+  savePattern,
+  getPatternById,
+  getPatternsByUser,
+  getPublicPatterns,
+  updatePattern,
+  deletePattern,
+} from "./patternRepository";
+export type { EmbroideryPatternRecord } from "./patternRepository";

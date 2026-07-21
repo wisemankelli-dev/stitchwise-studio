@@ -27,6 +27,7 @@ model User {
   collageProjects       CollageProject[]
   quiltBlockProjects    QuiltBlockProject[]
   showcasePhotos        ShowcasePhoto[]
+  embroideryPatterns    EmbroideryPattern[]
 }
 
 // ─── Project Inquiry ───────────────────────────────────────────────────────
@@ -135,6 +136,29 @@ model QuiltBlockProject {
   thumbnail String?                 // URL to preview image
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Embroidery Pattern Model ───────────────────────────────────────────────
+
+// Stores generated embroidery patterns with full grid data.
+// gridData and dmcPalette are JSON strings for flexible storage.
+// visibility values: "PRIVATE" (default), "PUBLIC", "UNLISTED"
+model EmbroideryPattern {
+  id          String   @id @default(uuid())
+  name        String
+  userId      String
+  gridData    String   // JSON string of StitchCell[][]
+  gridSize    Int      // grid dimension (50, 75, 100, 150, 200)
+  dmcPalette  String   // JSON string of DmcUsage[]
+  stitchCount Int      // total stitches
+  previewUrl  String?  // optional preview image URL
+  prompt      String?  // original text prompt (if AI-generated)
+  sourceImage String?  // URL of original uploaded image
+  visibility  String   @default("PRIVATE") // PRIVATE, PUBLIC, UNLISTED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
