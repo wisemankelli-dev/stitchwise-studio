@@ -1039,6 +1039,7 @@ export const Designer: React.FC = () => {
                       activeTool={activeTool}
                       isMouseDown={isMouseDown}
                       onCellHover={handleCellHover}
+                      onZoomChange={setZoom}
                     />
                   </div>
                 )}
