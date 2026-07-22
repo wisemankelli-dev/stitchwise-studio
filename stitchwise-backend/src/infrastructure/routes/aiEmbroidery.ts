@@ -27,6 +27,11 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
+import {
+  DEFAULT_FABRIC_COUNT,
+  AVAILABLE_FABRIC_COUNTS,
+  getMaxColors,
+} from "../../domain/stitch/fabricCounts";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -73,6 +78,18 @@ function buildPatternResponse(pattern: PatternResult, extra: Record<string, unkn
   };
 }
 
+/** Clamp a raw stitch count to the nearest valid grid size. */
+function clampToGridSize(raw: number): number {
+  const sizes = AVAILABLE_GRID_SIZES as readonly number[];
+  let closest = sizes[0];
+  let minDiff = Math.abs(raw - closest);
+  for (const s of sizes) {
+    const diff = Math.abs(raw - s);
+    if (diff < minDiff) { minDiff = diff; closest = s; }
+  }
+  return closest;
+}
+
 /**
  * Creates a router for AI Embroidery pattern generation endpoints.
  */
@@ -103,7 +120,17 @@ export function createAIEmbroideryRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize, negativePrompt } = parsed.data;
+        const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches } = parsed.data;
+
+        // Resolve fabric-aware grid size and color limit
+        const fc = fabricCount || DEFAULT_FABRIC_COUNT;
+        const maxColors = getMaxColors(fc);
+        let gridSize = rawGridSize;
+        if (desiredInches && desiredInches > 0) {
+          const rawStitches = Math.round(desiredInches * fc);
+          gridSize = clampToGridSize(rawStitches) as typeof rawGridSize;
+        }
+        const fabricInches = (gridSize || DEFAULT_GRID_SIZE) / fc;
 
         // Check if the prompt matches a known shape — if so, use the Shape Library directly.
         const shapeKeywords: Record<string, RegExp[]> = {
@@ -163,10 +190,14 @@ export function createAIEmbroideryRouter(): Router {
           }
 
           // Step 2: Download the real AI-generated image and convert to stitch grid
-          pattern = await imageUrlToStitchGrid(generation.url, gridSize);
+          pattern = await imageUrlToStitchGrid(generation.url, gridSize, maxColors);
         }
 
-        res.json(buildPatternResponse(pattern, { promptUsed: prompt, processingTimeMs: 0 }));
+        res.json(buildPatternResponse(pattern, {
+          promptUsed: prompt,
+          processingTimeMs: 0,
+          fabric: { count: fc, inches: +fabricInches.toFixed(2) },
+        }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "text_to_pattern_error", error: message });

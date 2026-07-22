@@ -85,11 +85,15 @@ export const TextToPatternSchema = z.object({
   gridSize: gridSizeSchema,
   maxColors: z.number().int().min(15).max(80).optional().default(24),
   negativePrompt: z.string().max(500).optional(),
+  fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
+  desiredInches: z.number().positive().max(30).optional(),
 });
 
 export const ImageToPatternSchema = z.object({
   gridSize: gridSizeSchema,
   maxColors: z.number().int().min(15).max(80).optional().default(24),
+  fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
+  desiredInches: z.number().positive().max(30).optional(),
 });
 
 export const ResizePatternSchema = z.object({
