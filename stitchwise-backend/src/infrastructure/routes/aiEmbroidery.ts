@@ -135,13 +135,18 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
 
-        let pattern: PatternResult;
+        let pattern: PatternResult | null = null;
 
         if (matchedShape) {
-          // Use Shape Library directly — instant, pixel-perfect, no AI needed
-          const gs = gridSize || DEFAULT_GRID_SIZE;
-          pattern = generateShape(matchedShape, gs);
-        } else {
+          // Only use Shape Library for simple prompts (≤3 words).
+          // Complex prompts with colors/context should go to AI generation.
+          const wordCount = prompt.trim().split(/\s+/).length;
+          if (wordCount <= 3) {
+            const gs = gridSize || DEFAULT_GRID_SIZE;
+            pattern = generateShape(matchedShape, gs);
+          }
+        }
+        if (!pattern) {
           // No shape match — use AI image generation
           const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
           const enhancedPrompt = `${prompt}, ${styleHints}`;
