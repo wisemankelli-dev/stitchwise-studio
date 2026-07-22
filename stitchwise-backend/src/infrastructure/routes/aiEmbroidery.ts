@@ -166,10 +166,12 @@ export function createAIEmbroideryRouter(): Router {
         let pattern: PatternResult | null = null;
 
         if (matchedShape) {
-          // Only use Shape Library for simple prompts (≤3 words).
-          // Complex prompts with colors/context should go to AI generation.
-          const wordCount = prompt.trim().split(/\s+/).length;
-          if (wordCount <= 3) {
+          // Only use Shape Library when the prompt is JUST the shape name
+          // (possibly with articles). "monarch butterfly" should go to AI,
+          // because "monarch" is a descriptor, not a shape keyword.
+          const words = prompt.toLowerCase().split(/\s+/).filter(w => !['a','an','the','my'].includes(w));
+          const allWordsAreShapeKeywords = words.every(w => shapeKeywords[matchedShape!]?.some(p => p.test(w)));
+          if (allWordsAreShapeKeywords) {
             const gs = gridSize || DEFAULT_GRID_SIZE;
             pattern = generateShape(matchedShape, gs);
           }
