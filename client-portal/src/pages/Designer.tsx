@@ -1200,16 +1200,16 @@ export const Designer: React.FC = () => {
                 onMouseLeave={() => { setIsMouseDown(false); }}
               >
                 {previewMode === 'original' && aiResult ? (
-                  <div className="flex flex-col items-center p-8 bg-white/90 rounded-2xl shadow-sm border border-blush-100 max-w-sm mx-auto text-center">
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-blush-600 mb-4">Generated Concept</span>
-                    <div className="p-4 bg-blush-50/50 rounded-2xl border border-blush-100 shadow-inner">
-                      <svg className="w-48 h-48" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="30" fill="#f472b6" opacity="0.3" stroke="#db2777" strokeWidth="2" />
-                        <circle cx="50" cy="50" r="15" fill="#f9a8d4" opacity="0.5" stroke="#db2777" strokeWidth="1.5" />
-                        <path d="M30 50 L70 50 M50 30 L50 70" stroke="#db2777" strokeWidth="2" opacity="0.6" />
-                      </svg>
-                    </div>
-                    <span className="text-xs font-bold text-slate-800 mt-4 truncate max-w-full">{aiResult.promptUsed || 'AI Generated'}</span>
+                  <div className="flex flex-col items-center p-4 bg-white/90 rounded-2xl shadow-sm border border-blush-100 max-w-lg mx-auto text-center">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-blush-600 mb-3">AI Generated Artwork</span>
+                    {aiResult.previewUrl ? (
+                      <img src={aiResult.previewUrl} alt={aiResult.promptUsed || 'AI generated'} className="max-w-full max-h-[300px] object-contain rounded-xl shadow-sm border border-blush-100" />
+                    ) : (
+                      <div className="p-6 bg-blush-50/50 rounded-2xl border border-blush-100">
+                        <p className="text-xs text-blush-400">Preview not available for this generation</p>
+                      </div>
+                    )}
+                    <span className="text-xs font-bold text-slate-800 mt-3 truncate max-w-full">{aiResult.promptUsed || 'AI Generated'}</span>
                   </div>
                 ) : (
                   <div className="w-full">

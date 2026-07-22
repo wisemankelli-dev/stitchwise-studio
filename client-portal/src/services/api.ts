@@ -102,6 +102,8 @@ export interface AIPatternResponse {
   totalStitches: number;
   promptUsed?: string;
   processingTimeMs: number;
+  /** Base64 data URL of the AI-generated preview image */
+  previewUrl?: string;
   /** Fabric context returned by backend */
   fabric?: FabricInfo;
   fabricPiece?: FabricPieceInfo;

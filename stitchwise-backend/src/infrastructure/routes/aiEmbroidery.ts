@@ -184,8 +184,10 @@ export function createAIEmbroideryRouter(): Router {
           // Step 1: Try Stability AI first (we have an API key)
           const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt);
 
+          let previewUrl: string | undefined;
           if (stabilityResult) {
-            // Stability returned a buffer — convert directly
+            // Stability returned a buffer — convert directly and capture preview
+            previewUrl = `data:image/png;base64,${stabilityResult.buffer.toString("base64")}`;
             pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gridSize, maxColors);
           } else {
             // Step 2: Fall back to Leonardo AI
@@ -208,6 +210,7 @@ export function createAIEmbroideryRouter(): Router {
           promptUsed: prompt,
           processingTimeMs: 0,
           fabric: { count: fc, inches: +fabricInches.toFixed(2) },
+          previewUrl,
         }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
