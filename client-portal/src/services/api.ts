@@ -102,6 +102,23 @@ export interface AIPatternResponse {
   totalStitches: number;
   promptUsed?: string;
   processingTimeMs: number;
+  /** Fabric context returned by backend */
+  fabric?: FabricInfo;
+  fabricPiece?: FabricPieceInfo;
+}
+
+/** Fabric count and resulting physical dimensions */
+export interface FabricInfo {
+  count: number;    // stitches per inch (e.g. 14)
+  inches: number;   // pattern size in inches
+}
+
+/** Fabric piece sizing with margins */
+export interface FabricPieceInfo {
+  patternInches: number;   // design size (same as fabric.inches)
+  fabricInches: number;    // total fabric needed (pattern + margins)
+  fabricStitches: number;  // fabric size in stitches
+  marginInches: number;    // margin on each side (default 3)
 }
 
 // Utility function to simulate network delay
@@ -954,6 +971,13 @@ class ApiClient {
       totalStitches: total,
       promptUsed: prompt,
       processingTimeMs: 3000,
+      fabric: { count: 14, inches: Math.round(size / 14 * 100) / 100 },
+      fabricPiece: {
+        patternInches: Math.round(size / 14 * 100) / 100,
+        fabricInches: Math.round((size / 14 + 6) * 100) / 100,
+        fabricStitches: size + Math.round(6 * 14),
+        marginInches: 3,
+      },
     };
   }
 
@@ -1062,6 +1086,13 @@ class ApiClient {
       totalStitches: total,
       promptUsed: `Image: ${file.name}`,
       processingTimeMs: 3500,
+      fabric: { count: 14, inches: Math.round(size / 14 * 100) / 100 },
+      fabricPiece: {
+        patternInches: Math.round(size / 14 * 100) / 100,
+        fabricInches: Math.round((size / 14 + 6) * 100) / 100,
+        fabricStitches: size + Math.round(6 * 14),
+        marginInches: 3,
+      },
     };
   }
 
@@ -1876,6 +1907,13 @@ class ApiClient {
       totalStitches: total,
       processingTimeMs: 2000,
       originalImageData: '',
+      fabric: { count: 14, inches: Math.round(size / 14 * 100) / 100 },
+      fabricPiece: {
+        patternInches: Math.round(size / 14 * 100) / 100,
+        fabricInches: Math.round((size / 14 + 6) * 100) / 100,
+        fabricStitches: size + Math.round(6 * 14),
+        marginInches: 3,
+      },
     };
   }
 }
