@@ -13,7 +13,7 @@ export interface StitchGridData {
   grid: StitchCell[][];
   width: number;
   height: number;
-  dmcPalette: { code: string; name: string; hex: string; count: number }[];
+  dmcPalette: { code: string; name: string; hex: string; count: number; symbol?: string }[];
   totalStitches: number;
 }
 
@@ -52,6 +52,15 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
 // ── Drawing helpers ──────────────────────────────────────────────────────────
 
 const BASE_CELL_SIZE = 4; // pixels per cell at zoom=1 (before devicePixelRatio)
+
+/** Determine if a hex color is "light" (luminance > 0.5) */
+function isLightColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  // Relative luminance formula
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 0.5;
+}
 
 /** Draw a cross-stitch 'X' symbol centered at (cx, cy) */
 function drawCross(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
@@ -242,17 +251,46 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       }
     }
 
+    // ── Build color → symbol lookup from palette ──
+    const colorSymbolMap = new Map<string, string>();
+    if (showGridLines && cellSize >= 8) {
+      for (const entry of data.dmcPalette) {
+        if (entry.symbol && entry.hex) {
+          colorSymbolMap.set(entry.hex.toLowerCase(), entry.symbol);
+        }
+      }
+    }
+
     // ── Grid lines (on top of cells) ──
     if (showGridLines && cellSize >= 3) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+      // Standard grid lines: every cell
+      ctx.strokeStyle = 'rgba(0,0,0,0.10)';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       for (let r = 1; r < data.height; r++) {
+        if (r % 10 === 0) continue; // skip bold lines
         const y = r * cellSize;
         ctx.moveTo(0, y);
         ctx.lineTo(cw, y);
       }
       for (let c = 1; c < data.width; c++) {
+        if (c % 10 === 0) continue;
+        const x = c * cellSize;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, ch);
+      }
+      ctx.stroke();
+
+      // Bold 10×10 grid lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let r = 10; r < data.height; r += 10) {
+        const y = r * cellSize;
+        ctx.moveTo(0, y);
+        ctx.lineTo(cw, y);
+      }
+      for (let c = 10; c < data.width; c += 10) {
         const x = c * cellSize;
         ctx.moveTo(x, 0);
         ctx.lineTo(x, ch);
@@ -317,6 +355,26 @@ const StitchGrid: React.FC<StitchGridProps> = ({
             const cy = r * cellSize + cellSize / 2;
             drawCross(ctx, cx, cy, cellSize);
           }
+        }
+      }
+    }
+
+    // ── DMC palette symbols ──
+    if (showGridLines && cellSize >= 8 && colorSymbolMap.size > 0) {
+      const fontSize = Math.max(6, Math.round(cellSize * 0.7));
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let r = 0; r < data.height; r++) {
+        for (let c = 0; c < data.width; c++) {
+          const cell = data.grid[r]?.[c];
+          if (!cell?.color) continue;
+          const symbol = colorSymbolMap.get(cell.color.toLowerCase());
+          if (!symbol) continue;
+          const cx = c * cellSize + cellSize / 2;
+          const cy = r * cellSize + cellSize / 2;
+          ctx.fillStyle = isLightColor(cell.color) ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)';
+          ctx.fillText(symbol, cx, cy + 1); // +1 for vertical optical centering
         }
       }
     }
