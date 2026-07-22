@@ -703,7 +703,7 @@ export const Designer: React.FC = () => {
                     {genResult && (
                       <StitchGrid
                         data={toGridData(genResult)}
-                        zoom={Math.min(1, 300 / selectedGenGridSize)}
+                        zoom={Math.max(1, Math.min(4, Math.round(500 / (selectedGenGridSize * 4) * 10) / 10))}
                       />
                     )}
                   </div>
