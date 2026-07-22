@@ -199,16 +199,29 @@ const INITIAL_PROJECTS: Project[] = [
 ];
 
 class ApiClient {
-  public isLiveBackend: boolean = false; // Toggle to true when backend is ready
+  public isLiveBackend: boolean = true; // Auto-detect — try backend first, fall to mock on failure
   private apiBaseUrl: string = '/api';
 
   constructor() {
-    // Detect environment or check search params to force mock mode if desired
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('mock') === 'false') {
+      // Verify backend is actually reachable
+      this.checkBackendHealth();
+    }
+  }
+
+  private async checkBackendHealth(): Promise<void> {
+    try {
+      const resp = await fetch(`${this.apiBaseUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      if (resp.ok) {
         this.isLiveBackend = true;
+        console.log('[api] Backend detected — using live API');
+      } else {
+        this.isLiveBackend = false;
+        console.warn('[api] Backend unhealthy — using mock data');
       }
+    } catch {
+      this.isLiveBackend = false;
+      console.warn('[api] Backend unreachable — using mock data');
     }
   }
 
