@@ -20,6 +20,7 @@ import {
   type StitchCell,
 } from "../../domain/ai/embroideryAI";
 import { generateImageFromText } from "../services/leonardoAIService";
+import { generateImageWithStability } from "../services/stabilityAIService";
 import {
   imageUrlToStitchGrid,
   imageBufferToStitchGrid,
@@ -178,19 +179,27 @@ export function createAIEmbroideryRouter(): Router {
           const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
           const enhancedPrompt = `${prompt}, ${styleHints}`;
 
-          // Step 1: Generate image from text using Stability AI
-          const generation = await generateImageFromText(enhancedPrompt, negativePrompt);
+          // Step 1: Try Stability AI first (we have an API key)
+          const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt);
 
-          if (!generation.url) {
-            res.status(500).json({
-              success: false,
-              error: "AI generation returned no image URL",
-            });
-            return;
+          if (stabilityResult) {
+            // Stability returned a buffer — convert directly
+            pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gridSize, maxColors);
+          } else {
+            // Step 2: Fall back to Leonardo AI
+            const generation = await generateImageFromText(enhancedPrompt, negativePrompt);
+
+            if (!generation.url) {
+              res.status(500).json({
+                success: false,
+                error: "AI generation returned no image URL",
+              });
+              return;
+            }
+
+            // Step 3: Download the Leonardo image and convert to stitch grid
+            pattern = await imageUrlToStitchGrid(generation.url, gridSize, maxColors);
           }
-
-          // Step 2: Download the real AI-generated image and convert to stitch grid
-          pattern = await imageUrlToStitchGrid(generation.url, gridSize, maxColors);
         }
 
         res.json(buildPatternResponse(pattern, {
