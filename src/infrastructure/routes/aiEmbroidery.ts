@@ -1,0 +1,225 @@
+/**
+ * AI Embroidery Pattern Generation API Routes.
+ *
+ * Endpoints:
+ *   POST /api/ai/embroidery/text-to-pattern  — Generate a pattern from a text prompt
+ *   POST /api/ai/embroidery/image-to-pattern — Convert an uploaded image to a pattern
+ */
+
+import { Router, type Request, type Response } from "express";
+import multer from "multer";
+import { TextToPatternSchema, ImageToPatternSchema } from "../../domain/ai/embroideryAI";
+import { generateImageFromText } from "../services/leonardoAIService";
+import { imageUrlToStitchGrid, imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
+import { authenticate } from "../middleware/auth";
+import {
+  FABRIC_COUNTS,
+  DEFAULT_FABRIC_COUNT,
+  AVAILABLE_GRID_SIZES,
+  inchesToStitches,
+  stitchesToInches,
+} from "../../domain/stitch/types";
+import { getMaxColors, calculateFabricPiece } from "../../domain/stitch/fabricCounts";
+import type { FabricCount } from "../../domain/stitch/types";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported file type. Allowed: PNG, JPEG, WebP, GIF"));
+    }
+  },
+});
+
+/** Clamp a raw stitch count to the nearest valid grid size. */
+function clampToGridSize(raw: number): number {
+  const sizes = AVAILABLE_GRID_SIZES as readonly number[];
+  let closest = sizes[0];
+  let minDiff = Math.abs(raw - closest);
+  for (const s of sizes) {
+    const diff = Math.abs(raw - s);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = s;
+    }
+  }
+  return closest;
+}
+
+/**
+ * Creates a router for AI Embroidery pattern generation endpoints.
+ */
+export function createAIEmbroideryRouter(): Router {
+  const router = Router();
+
+  /**
+   * POST /api/ai/embroidery/text-to-pattern
+   *
+   * Generate an embroidery pattern from a text description.
+   * Uses Leonardo AI to generate an image, then converts it to a stitch grid.
+   *
+   * Fabric-aware params (optional):
+   *   fabricCount: 11|14|16|18|20 — stitches per inch
+   *   desiredInches: desired physical size — overrides gridSize
+   *
+   * Response: { success: true, data: { ...PatternResult, fabric: { count, inches } } }
+   */
+  router.post(
+    "/ai/embroidery/text-to-pattern",
+    authenticate,
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = TextToPatternSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            success: false,
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        const { prompt, negativePrompt } = parsed.data;
+        const fabricCount = (parsed.data.fabricCount ?? DEFAULT_FABRIC_COUNT) as FabricCount;
+
+        // Resolve grid size: desiredInches takes priority over explicit gridSize
+        let gridSize: number;
+        if (parsed.data.desiredInches && parsed.data.desiredInches > 0) {
+          const raw = Math.round(inchesToStitches(parsed.data.desiredInches, fabricCount));
+          gridSize = clampToGridSize(raw);
+        } else {
+          gridSize = parsed.data.gridSize;
+        }
+
+        // Use fabric-count-aware maxColors (owner's spec)
+        const maxColors = getMaxColors(fabricCount);
+
+        // Step 1: Generate image from text using Leonardo AI
+        const generation = await generateImageFromText(prompt, negativePrompt);
+
+        if (!generation.url) {
+          res.status(500).json({
+            success: false,
+            error: "AI generation returned no image URL",
+          });
+          return;
+        }
+
+        // Step 2: Download the generated image and convert to stitch grid
+        // Pass fabric-aware maxColors to the converter
+        const pattern = await imageUrlToStitchGrid(generation.url, gridSize, maxColors);
+
+        // Calculate physical fabric dimensions
+        const fabricInches = stitchesToInches(gridSize, fabricCount);
+        const fabricPiece = calculateFabricPiece(gridSize, fabricCount);
+
+        res.json({
+          success: true,
+          data: {
+            ...pattern,
+            previewUrl: generation.url,
+            prompt,
+            fabric: {
+              count: fabricCount,
+              inches: fabricInches,
+            },
+            fabricPiece: {
+              patternInches: fabricPiece.patternInches,
+              fabricInches: fabricPiece.fabricInches,
+              fabricStitches: fabricPiece.fabricStitches,
+              marginInches: fabricPiece.marginInches,
+            },
+          },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error({ event: "text_to_pattern_error", error: message });
+        res.status(500).json({ success: false, error: message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/ai/embroidery/image-to-pattern
+   *
+   * Convert an uploaded image (PNG, JPEG, WebP, GIF) to an embroidery pattern.
+   * Multipart form: file (image) + gridSize (optional)
+   *
+   * Fabric-aware params (optional):
+   *   fabricCount: 11|14|16|18|20
+   *   desiredInches: desired physical size
+   *
+   * Response: { success: true, data: { ...PatternResult, fabric: { count, inches } } }
+   */
+  router.post(
+    "/ai/embroidery/image-to-pattern",
+    authenticate,
+    upload.single("file"),
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = ImageToPatternSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            success: false,
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        if (!req.file) {
+          res.status(400).json({
+            success: false,
+            error: "No image file provided. Upload a file with field name 'file'",
+          });
+          return;
+        }
+
+        const fabricCount = (parsed.data.fabricCount ?? DEFAULT_FABRIC_COUNT) as FabricCount;
+
+        let gridSize: number;
+        if (parsed.data.desiredInches && parsed.data.desiredInches > 0) {
+          const raw = Math.round(inchesToStitches(parsed.data.desiredInches, fabricCount));
+          gridSize = clampToGridSize(raw);
+        } else {
+          gridSize = parsed.data.gridSize;
+        }
+
+        const maxColors = getMaxColors(fabricCount);
+
+        // Convert the uploaded image buffer to stitch grid
+        const pattern = await imageBufferToStitchGrid(req.file.buffer, gridSize, maxColors);
+
+        const fabricInches = stitchesToInches(gridSize, fabricCount);
+        const fabricPiece = calculateFabricPiece(gridSize, fabricCount);
+
+        res.json({
+          success: true,
+          data: {
+            ...pattern,
+            fabric: {
+              count: fabricCount,
+              inches: fabricInches,
+            },
+            fabricPiece: {
+              patternInches: fabricPiece.patternInches,
+              fabricInches: fabricPiece.fabricInches,
+              fabricStitches: fabricPiece.fabricStitches,
+              marginInches: fabricPiece.marginInches,
+            },
+          },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error({ event: "image_to_pattern_error", error: message });
+        res.status(500).json({ success: false, error: message });
+      }
+    },
+  );
+
+  return router;
+}
