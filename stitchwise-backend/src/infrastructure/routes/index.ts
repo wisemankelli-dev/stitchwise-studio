@@ -14,3 +14,4 @@ export { createAIEmbroideryRouter } from "./aiEmbroidery";
 export { createAICollageRouter } from "./aiCollage";
 export { createEstimatorRouter } from "./estimator";
 export { createPatternEditorRouter } from "./patternEditor";
+export { createPatternExportRouter } from "./patternExport";
