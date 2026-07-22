@@ -844,14 +844,21 @@ class ApiClient {
    */
   async generatePatternFromText(
     prompt: string,
-    gridSize?: number
+    gridSize?: number,
+    fabricCount?: number,
+    desiredInches?: number
   ): Promise<AIPatternResponse> {
     if (this.isLiveBackend) {
       try {
+        const body: Record<string, unknown> = { prompt };
+        if (gridSize && gridSize >= 50) body.gridSize = gridSize;
+        if (fabricCount) body.fabricCount = fabricCount;
+        if (desiredInches) body.desiredInches = desiredInches;
+
         const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ prompt, gridSize: gridSize || 16 })
+          body: JSON.stringify(body)
         });
         if (!response.ok) throw new Error('AI pattern generation failed');
         return await response.json();

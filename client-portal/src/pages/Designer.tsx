@@ -319,7 +319,7 @@ export const Designer: React.FC = () => {
       setProgressPhase(p < 20 ? 'Interpreting your design vision...' : p < 45 ? 'Mapping colors to DMC thread palette...' : p < 70 ? 'Plotting stitch coordinates...' : p < 90 ? 'Optimizing stitch density...' : 'Finalizing pattern...');
     }, 100);
     try {
-      const result = await api.generatePatternFromText(promptInput, gridSize);
+      const result = await api.generatePatternFromText(promptInput, selectedGenGridSize, fabricCount, selectedGenGridSize / fabricCount);
       clearInterval(interval); setGeneratorProgress(100); setProgressPhase('Pattern complete!');
       setAiResult(result); setGrid({}); setGridStitchTypes({});
     } catch (err: any) {
