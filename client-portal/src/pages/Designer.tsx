@@ -132,7 +132,7 @@ export const Designer: React.FC = () => {
   // ==================== GENERATE MODULE STATE ====================
   const [genFile, setGenFile] = useState<{ name: string; previewUrl: string } | null>(null);
   const [genImagePreview, setGenImagePreview] = useState<string | null>(null);
-  const [selectedGenGridSize, setSelectedGenGridSize] = useState<number>(100);
+  const [selectedGenGridSize, setSelectedGenGridSize] = useState<number>(50);
   const [genResult, setGenResult] = useState<AIPatternResponse | null>(null);
   const [isGenUploading, setIsGenUploading] = useState(false);
   const [isDraggingGen, setIsDraggingGen] = useState(false);
