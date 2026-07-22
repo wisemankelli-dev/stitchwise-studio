@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import {
   Flower2, Sparkles, Scissors, Grid3X3,
-  Heart, Send, CheckCircle2,
+  Heart, CheckCircle2,
   UploadCloud, Mail, User,
-  Ruler, Image, Plus, Trash2, ArrowLeft, AlertTriangle
+  Ruler, Plus, Trash2, ArrowLeft, AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { FloralDivider, DecorativeFlower } from '../components/DecorativeSVGs';

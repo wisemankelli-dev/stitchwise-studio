@@ -51,14 +51,6 @@ function stitchesToInches(stitches: number, fabricCount: number): number {
   return stitches / fabricCount;
 }
 
-/** Get a human-readable fabric count label */
-function fabricCountLabel(count: number): string {
-  if (count <= 11) return 'Coarse';
-  if (count <= 14) return 'Standard';
-  if (count <= 18) return 'Fine';
-  return 'Extra Fine';
-}
-
 function toGridData(ai: AIPatternResponse): StitchGridData {
   const cells = ai.grid.map((row, r) =>
     row.map((color, c) => ({
@@ -152,7 +144,7 @@ export const Designer: React.FC = () => {
 
   const colorThreadEstimates = React.useMemo(() => {
     const counts: Record<string, { count: number; hex: string }> = {};
-    Object.entries(grid).forEach(([key, hex]) => {
+    Object.entries(grid).forEach(([, hex]) => {
       if (!hex) return;
       if (!counts[hex]) counts[hex] = { count: 0, hex };
       counts[hex].count++;
@@ -207,6 +199,13 @@ export const Designer: React.FC = () => {
       return next;
     });
   }, []);
+
+  const handlePlaceText = useCallback(() => {
+    if (!alphabetText.trim()) return;
+    const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
+    renderTextToGrid(alphabetText, font, placeRow, placeCol, selectedColor, selectedStitch, gridSize, setCell);
+    setAlphabetText('');
+  }, [alphabetText, selectedFontId, placeRow, placeCol, selectedColor, selectedStitch, gridSize, setCell]);
 
   const mirrorCellEdit = useCallback((row: number, col: number, color: string, stitch: string) => {
     if (!mirrorEnabled) return;

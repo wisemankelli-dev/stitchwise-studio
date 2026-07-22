@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   RotateCcw, ZoomIn, ZoomOut, Grid3X3,
-  Palette, Scissors, Download, Save, Trash2, Plus,
+  Palette, Download, Save, Trash2, Plus,
   Flower2, Square, Triangle, Minus,
   Grid, LayoutGrid
 } from 'lucide-react';
