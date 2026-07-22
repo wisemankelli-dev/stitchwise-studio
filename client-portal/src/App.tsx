@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { SubmitProject } from './pages/SubmitProject';
 import { Designer } from './pages/Designer';
@@ -18,7 +18,7 @@ import { FloralDivider, DecorativeFlower } from './components/DecorativeSVGs';
  */
 function App() {
   return (
-    <Router basename="/app">
+    <Router>
       <div className="flex flex-col min-h-screen text-slate-800 bg-gradient-to-b from-white via-blush-50/30 to-white">
         
         {/* ===== GLOBAL FLORAL PATTERN WATERMARK ===== */}
