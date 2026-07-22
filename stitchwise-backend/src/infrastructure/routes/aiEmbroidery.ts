@@ -20,6 +20,8 @@ import {
   type StitchCell,
 } from "../../domain/ai/embroideryAI";
 import { generateImageFromText } from "../services/leonardoAIService";
+import { generateImageFromText as generateStabilityImage } from "../services/stabilityAIService";
+import type { StabilityGenerationResponse } from "../services/stabilityAIService";
 import {
   imageUrlToStitchGrid,
   imageBufferToStitchGrid,
@@ -150,20 +152,45 @@ export function createAIEmbroideryRouter(): Router {
           // No shape match — use AI image generation
           const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
           const enhancedPrompt = `${prompt}, ${styleHints}`;
+          const gs = gridSize || DEFAULT_GRID_SIZE;
 
-          // Step 1: Generate image from text using Stability AI
-          const generation = await generateImageFromText(enhancedPrompt, negativePrompt);
+          // Try Stability AI first (we have the API key), then fall back to Leonardo
+          let generation: { url?: string; buffer?: Buffer } | null = null;
 
-          if (!generation.url) {
+          try {
+            const stabilityResult: StabilityGenerationResponse = await generateStabilityImage(
+              enhancedPrompt,
+              negativePrompt,
+            );
+            if (stabilityResult.buffer && stabilityResult.buffer.length > 0) {
+              // Stability returned raw image data — use buffer directly (no download needed)
+              pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gs);
+              generation = { url: undefined, buffer: stabilityResult.buffer };
+            }
+          } catch (stabilityErr) {
+            console.warn({ event: "stability_failed", error: String(stabilityErr) });
+          }
+
+          if (!pattern) {
+            // Stability unavailable or failed — fall back to Leonardo
+            try {
+              const leoResult = await generateImageFromText(enhancedPrompt, negativePrompt);
+              if (leoResult.url) {
+                pattern = await imageUrlToStitchGrid(leoResult.url, gs);
+                generation = { url: leoResult.url };
+              }
+            } catch (leoErr) {
+              console.warn({ event: "leonardo_failed", error: String(leoErr) });
+            }
+          }
+
+          if (!pattern) {
             res.status(500).json({
               success: false,
-              error: "AI generation returned no image URL",
+              error: "All AI image generators are currently unavailable. Please try again later.",
             });
             return;
           }
-
-          // Step 2: Download the real AI-generated image and convert to stitch grid
-          pattern = await imageUrlToStitchGrid(generation.url, gridSize);
         }
 
         res.json(buildPatternResponse(pattern, { promptUsed: prompt, processingTimeMs: 0 }));
