@@ -725,8 +725,10 @@ export const Designer: React.FC = () => {
                     Colors: <strong className="text-slate-700">{genResult.dmcPalette.length}</strong>
                   </span>
                   <span className="text-xs text-slate-600">
-                    Size on {fabricCount}ct:{' '}
-                    <strong className="text-blush-600">{stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″ × {stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″</strong>
+                    Size on {genResult.fabric?.count || fabricCount}ct:{' '}
+                    <strong className="text-blush-600">
+                      {(genResult.fabric?.inches || stitchesToInches(selectedGenGridSize, fabricCount)).toFixed(1)}″ × {(genResult.fabric?.inches || stitchesToInches(selectedGenGridSize, fabricCount)).toFixed(1)}″
+                    </strong>
                   </span>
                   <DmcLegend palette={genResult.dmcPalette} />
                 </div>
@@ -945,6 +947,59 @@ export const Designer: React.FC = () => {
                 <div className="mt-3 pt-3 border-t border-blush-100 text-[10px] text-slate-500 space-y-0.5">
                   <p>Total stitches: <span className="font-bold text-blush-600">{stitchData.totalStitches}</span></p>
                   <p>Grid: <span className="font-bold text-slate-700">{stitchData.width}×{stitchData.height}</span></p>
+                </div>
+              </div>
+            )}
+
+            {genResult?.fabricPiece && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Scissors className="h-5 w-5 text-blush-500" /> Fabric Piece
+                </h2>
+
+                {/* Pattern vs Fabric Piece box-in-box diagram */}
+                <div className="flex items-center justify-center py-2">
+                  <div className="relative flex items-center justify-center"
+                    style={{ width: 140, height: 140 }}>
+                    {/* Outer box: fabric piece */}
+                    <div className="absolute inset-0 rounded-lg border-2 border-dashed border-blush-300 bg-blush-50/30 flex items-end justify-center pb-1">
+                      <span className="text-[9px] font-bold text-blush-400">
+                        {genResult.fabricPiece.fabricInches}″ × {genResult.fabricPiece.fabricInches}″
+                      </span>
+                    </div>
+                    {/* Inner box: pattern */}
+                    <div className="relative rounded-md border-2 border-blush-500 bg-blush-400/20 flex items-center justify-center"
+                      style={{
+                        width: `${Math.max(30, (genResult.fabricPiece.patternInches / genResult.fabricPiece.fabricInches) * 120)}px`,
+                        height: `${Math.max(30, (genResult.fabricPiece.patternInches / genResult.fabricPiece.fabricInches) * 120)}px`,
+                      }}>
+                      <span className="text-[9px] font-bold text-blush-700 text-center leading-tight">
+                        Pattern<br/>{genResult.fabricPiece.patternInches}″
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dimensions summary */}
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="bg-blush-50/50 rounded-lg p-2 border border-blush-100">
+                    <span className="text-slate-400">Pattern Size</span>
+                    <p className="font-bold text-slate-800">{genResult.fabricPiece.patternInches}″ × {genResult.fabricPiece.patternInches}″</p>
+                    <p className="text-slate-400">{genResult.width}×{genResult.height} stitches</p>
+                  </div>
+                  <div className="bg-blush-50/50 rounded-lg p-2 border border-blush-100">
+                    <span className="text-slate-400">Fabric Needed</span>
+                    <p className="font-bold text-slate-800">{genResult.fabricPiece.fabricInches}″ × {genResult.fabricPiece.fabricInches}″</p>
+                    <p className="text-slate-400">{genResult.fabricPiece.fabricStitches}×{genResult.fabricPiece.fabricStitches} stitches</p>
+                  </div>
+                </div>
+
+                {/* Margin explanation */}
+                <div className="p-2.5 bg-amber-50/50 rounded-lg border border-amber-100">
+                  <p className="text-[10px] text-amber-800">
+                    <strong>{genResult.fabricPiece.marginInches}″ margin</strong> on all sides included.
+                    This gives you room for hooping, framing, or finishing. Total fabric = pattern + {genResult.fabricPiece.marginInches * 2}″.
+                  </p>
                 </div>
               </div>
             )}
