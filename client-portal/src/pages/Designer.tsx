@@ -41,6 +41,24 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
 
 const GRID_SIZES = [50, 75, 100, 150, 200];
 
+/** Standard embroidery hoop diameters (inches) */
+const HOOP_SIZES = [4, 5, 6, 7, 8, 10, 12];
+const LARGE_HOOP_THRESHOLD = 8;   // warn if design exceeds 8"
+const MAX_HOOP_THRESHOLD = 12;    // strongly warn if design exceeds 12"
+
+/** Calculate physical inches from stitch count and fabric count */
+function stitchesToInches(stitches: number, fabricCount: number): number {
+  return stitches / fabricCount;
+}
+
+/** Get a human-readable fabric count label */
+function fabricCountLabel(count: number): string {
+  if (count <= 11) return 'Coarse';
+  if (count <= 14) return 'Standard';
+  if (count <= 18) return 'Fine';
+  return 'Extra Fine';
+}
+
 function toGridData(ai: AIPatternResponse): StitchGridData {
   const cells = ai.grid.map((row, r) =>
     row.map((color, c) => ({
@@ -515,22 +533,81 @@ export const Designer: React.FC = () => {
 
               {/* Grid Size Selector */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-3">Grid Size (each cell = one stitch)</label>
-                <div className="flex flex-wrap gap-2">
-                  {GRID_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => { setSelectedGenGridSize(size); }}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-                        selectedGenGridSize === size
-                          ? 'bg-blush-500 text-white border-blush-500 shadow-md'
-                          : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
-                      }`}
-                    >
-                      {size}×{size}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-bold text-slate-700">Grid Size (each cell = one stitch)</label>
+                  <select
+                    value={fabricCount}
+                    onChange={(e) => setFabricCount(Number(e.target.value))}
+                    className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white focus:border-blush-500 focus:ring-blush-500"
+                  >
+                    {FABRIC_COUNTS.map((count) => (
+                      <option key={count} value={count}>{count}ct fabric</option>
+                    ))}
+                  </select>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {GRID_SIZES.map((size) => {
+                    const physicalInches = stitchesToInches(size, fabricCount);
+                    const isLarge = physicalInches > LARGE_HOOP_THRESHOLD;
+                    const isTooBig = physicalInches > MAX_HOOP_THRESHOLD;
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => { setSelectedGenGridSize(size); }}
+                        className={`relative px-4 py-2.5 rounded-lg text-sm font-bold border transition-all group ${
+                          selectedGenGridSize === size
+                            ? 'bg-blush-500 text-white border-blush-500 shadow-md'
+                            : isTooBig
+                            ? 'bg-amber-50 text-slate-700 border-amber-200 hover:bg-amber-100'
+                            : isLarge
+                            ? 'bg-amber-50/50 text-slate-700 border-amber-100 hover:bg-amber-50'
+                            : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
+                        }`}
+                      >
+                        <div className="flex flex-col items-center leading-tight">
+                          <span>{size}×{size}</span>
+                          <span className={`text-[9px] font-medium ${selectedGenGridSize === size ? 'text-white/80' : isTooBig ? 'text-amber-600' : isLarge ? 'text-amber-500' : 'text-slate-400'}`}>
+                            ~{physicalInches.toFixed(1)}″
+                          </span>
+                        </div>
+                        {isTooBig && (
+                          <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none shadow-sm">
+                            !
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Hoop-size warning */}
+                {(() => {
+                  const selectedInches = stitchesToInches(selectedGenGridSize, fabricCount);
+                  if (selectedInches > MAX_HOOP_THRESHOLD) {
+                    return (
+                      <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50 rounded-lg border border-amber-200">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[11px] font-bold text-amber-800">Too large for standard hoops</p>
+                          <p className="text-[10px] text-amber-700">
+                            {selectedGenGridSize}×{selectedGenGridSize} on {fabricCount}ct = {selectedInches.toFixed(1)}″. 
+                            Largest standard hoop is {MAX_HOOP_THRESHOLD}″. Consider a smaller grid or finer fabric ({'>'}{Math.ceil(selectedGenGridSize / MAX_HOOP_THRESHOLD)}ct).
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (selectedInches > LARGE_HOOP_THRESHOLD) {
+                    return (
+                      <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50/50 rounded-lg border border-amber-100">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-amber-700">
+                          {selectedInches.toFixed(1)}″ design — requires a large ({'>'}{LARGE_HOOP_THRESHOLD}″) hoop.
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Generate Button */}
@@ -637,17 +714,67 @@ export const Designer: React.FC = () => {
 
             {/* Stats row */}
             {genResult && !isGenUploading && (
-              <div className="mt-4 flex flex-wrap items-center gap-4 p-3 bg-blush-50/50 rounded-xl border border-blush-100">
-                <span className="text-xs text-slate-600">
-                  Total stitches: <strong className="text-blush-600">{genResult.totalStitches.toLocaleString()}</strong>
-                </span>
-                <span className="text-xs text-slate-600">
-                  Grid: <strong className="text-slate-700">{genResult.width}×{genResult.height}</strong>
-                </span>
-                <span className="text-xs text-slate-600">
-                  Colors: <strong className="text-slate-700">{genResult.dmcPalette.length}</strong>
-                </span>
-                <DmcLegend palette={genResult.dmcPalette} />
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-4 p-3 bg-blush-50/50 rounded-xl border border-blush-100">
+                  <span className="text-xs text-slate-600">
+                    Total stitches: <strong className="text-blush-600">{genResult.totalStitches.toLocaleString()}</strong>
+                  </span>
+                  <span className="text-xs text-slate-600">
+                    Grid: <strong className="text-slate-700">{genResult.width}×{genResult.height}</strong>
+                  </span>
+                  <span className="text-xs text-slate-600">
+                    Colors: <strong className="text-slate-700">{genResult.dmcPalette.length}</strong>
+                  </span>
+                  <span className="text-xs text-slate-600">
+                    Size on {fabricCount}ct:{' '}
+                    <strong className="text-blush-600">{stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″ × {stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″</strong>
+                  </span>
+                  <DmcLegend palette={genResult.dmcPalette} />
+                </div>
+
+                {/* Scale reference bar */}
+                <div className="p-3 bg-white rounded-xl border border-blush-100">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Ruler className="h-3.5 w-3.5 text-blush-500" /> Scale Reference ({fabricCount}ct fabric)
+                  </p>
+                  <div className="space-y-2">
+                    {/* Hoop sizes comparison */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-slate-400 w-16 shrink-0">Hoop sizes:</span>
+                      <div className="flex-1 relative h-8 bg-slate-100 rounded-md overflow-hidden">
+                        {HOOP_SIZES.map((hoop, i) => {
+                          const pct = (hoop / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100;
+                          return (
+                            <div
+                              key={hoop}
+                              className="absolute top-0 h-full border-r border-white/60 flex items-end justify-center pb-0.5"
+                              style={{ left: `${i === 0 ? 0 : (HOOP_SIZES[i - 1] / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100}%`, width: `${pct - (i === 0 ? 0 : (HOOP_SIZES[i - 1] / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100)}%` }}
+                            >
+                              <span className="text-[8px] text-slate-400 font-medium">{hoop}″</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* Design size bar */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-slate-500 w-16 shrink-0 font-bold">Your design:</span>
+                      <div className="flex-1 relative h-6 bg-slate-100 rounded-md overflow-hidden">
+                        <div
+                          className="absolute top-0 h-full bg-blush-400/60 rounded-md flex items-center justify-center"
+                          style={{ width: `${Math.min(100, (stitchesToInches(selectedGenGridSize, fabricCount) / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100)}%` }}
+                        >
+                          <span className="text-[9px] font-bold text-blush-800">
+                            {stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-2 italic">
+                    Scale bar shows hoop sizes (4″–12″) vs your design on {fabricCount}-count fabric. One stitch = {stitchesToInches(1, fabricCount).toFixed(3)}″.
+                  </p>
+                </div>
               </div>
             )}
           </div>
