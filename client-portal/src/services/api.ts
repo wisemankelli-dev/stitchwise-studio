@@ -863,144 +863,25 @@ class ApiClient {
     fabricCount?: number,
     desiredInches?: number
   ): Promise<AIPatternResponse> {
-    if (this.isLiveBackend) {
-      try {
-        const body: Record<string, unknown> = { prompt };
-        if (gridSize && gridSize >= 50) body.gridSize = gridSize;
-        if (fabricCount) body.fabricCount = fabricCount;
-        if (desiredInches) body.desiredInches = desiredInches;
-
-        const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify(body)
-        });
-        if (!response.ok) throw new Error('AI pattern generation failed');
-        return await response.json();
-      } catch (err) {
-        console.error('AI text-to-pattern backend error, using mock', err);
-      }
+    if (!this.isLiveBackend) {
+      throw new Error('Backend not available. Pattern generation requires a live backend connection.');
     }
 
-    // Mock Implementation
-    await delay(3000);
-    const size = gridSize || 32;
-    const dmcPalette = [
-      { code: '310', name: 'Black', hex: '#1e293b', count: 0 },
-      { code: '321', name: 'Christmas Red', hex: '#e11d48', count: 0 },
-      { code: '743', name: 'Yellow', hex: '#f59e0b', count: 0 },
-      { code: '700', name: 'Green', hex: '#16a34a', count: 0 },
-      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },
-      { code: '554', name: 'Violet', hex: '#7c3aed', count: 0 },
-      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },
-      { code: '961', name: 'Dusty Rose', hex: '#f472b6', count: 0 },
-    ];
+    const body: Record<string, unknown> = { prompt };
+    if (gridSize && gridSize >= 50) body.gridSize = gridSize;
+    if (fabricCount) body.fabricCount = fabricCount;
+    if (desiredInches) body.desiredInches = desiredInches;
 
-    const grid: string[][] = [];
-    const stitchTypes: string[][] = [];
-    const colorCounts: Record<string, number> = {};
-    dmcPalette.forEach(c => colorCounts[c.hex] = 0);
-
-    const isFloral = /flower|floral|rose|blossom|garden|botanical/i.test(prompt);
-    const isAnimal = /bird|cardinal|cat|dog|butterfly|animal/i.test(prompt);
-    const isHeart = /heart|love|romantic/i.test(prompt);
-    const isGeometric = /geometric|mandala|symmetry|pattern/i.test(prompt);
-
-    for (let r = 0; r < size; r++) {
-      const row: string[] = [];
-      const stitchRow: string[] = [];
-      for (let c = 0; c < size; c++) {
-        let color = '#fafaf9';
-        let stitch = 'cross';
-
-        if (isHeart) {
-          const dx = c / size - 0.5;
-          const dy = r / size - 0.5;
-          const inHeart = Math.pow(dx * dx * 4 + dy * dy - 1, 3) - dx * dx * dy * dy * dy < 0;
-          if (inHeart) {
-            color = Math.random() > 0.3 ? '#e11d48' : '#f472b6';
-            stitch = Math.random() > 0.7 ? 'satin' : 'cross';
-          }
-        } else if (isFloral) {
-          const cx = size / 2, cy = size / 2;
-          const dist = Math.hypot(r - cy, c - cx);
-          const ring = Math.floor(dist / 2);
-          if (dist < size * 0.4) {
-            const colors = ['#e11d48', '#f472b6', '#f59e0b', '#16a34a', '#7c3aed'];
-            color = colors[ring % colors.length];
-            stitch = ring % 3 === 0 ? 'satin' : ring % 3 === 1 ? 'french' : 'cross';
-          } else if (dist < size * 0.45) {
-            color = '#16a34a';
-            stitch = 'back';
-          }
-        } else if (isAnimal) {
-          if (r > size * 0.3 && r < size * 0.7 && c > size * 0.2 && c < size * 0.5) {
-            color = '#e11d48';
-            stitch = 'cross';
-          } else if (r > size * 0.4 && r < size * 0.6 && c > size * 0.5 && c < size * 0.8) {
-            color = '#1e293b';
-          }
-        } else if (isGeometric) {
-          const cx = size / 2, cy = size / 2;
-          const angle = Math.atan2(r - cy, c - cx);
-          const dist = Math.hypot(r - cy, c - cx);
-          const band = Math.floor(dist / (size / 8)) % 2;
-          if (band === 1 && dist < size * 0.45) {
-            color = Math.abs(Math.sin(angle * 6)) > 0.5 ? '#0284c7' : '#7c3aed';
-            stitch = 'satin';
-          } else if (dist < size * 0.1) {
-            color = '#f59e0b';
-          }
-        } else {
-          // Generic/default pattern: subtle gradient or geometric
-          const cx = size / 2, cy = size / 2;
-          const dist = Math.hypot(r - cy, c - cx) / (size / 2);
-          if (dist < 0.3) {
-            color = '#e11d48';
-            stitch = Math.random() > 0.7 ? 'satin' : 'cross';
-          } else if (dist < 0.45) {
-            color = '#f472b6';
-            stitch = 'cross';
-          } else if (dist < 0.55) {
-            color = '#f59e0b';
-            stitch = Math.random() > 0.6 ? 'back' : 'cross';
-          } else if (dist < 0.7) {
-            if (c % 4 < 2 && r % 4 < 2) { color = '#16a34a'; stitch = 'cross'; }
-          }
-        }
-
-        row.push(color);
-        stitchRow.push(stitch);
-        if (color !== '#fafaf9') colorCounts[color] = (colorCounts[color] || 0) + 1;
-      }
-      grid.push(row);
-      stitchTypes.push(stitchRow);
+    const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || errData.error || `Pattern generation failed (${response.status})`);
     }
-
-    const total = Object.values(colorCounts).reduce((a, b) => a + b, 0);
-    const activePalette = dmcPalette.map(c => ({
-      ...c,
-      count: colorCounts[c.hex] || 0,
-    })).filter(c => c.count > 0);
-
-    return {
-      success: true,
-      grid,
-      stitchTypes,
-      width: size,
-      height: size,
-      dmcPalette: activePalette,
-      totalStitches: total,
-      promptUsed: prompt,
-      processingTimeMs: 3000,
-      fabric: { count: 14, inches: Math.round(size / 14 * 100) / 100 },
-      fabricPiece: {
-        patternInches: Math.round(size / 14 * 100) / 100,
-        fabricInches: Math.round((size / 14 + 6) * 100) / 100,
-        fabricStitches: size + Math.round(6 * 14),
-        marginInches: 3,
-      },
-    };
+    return await response.json();
   }
 
   /**
