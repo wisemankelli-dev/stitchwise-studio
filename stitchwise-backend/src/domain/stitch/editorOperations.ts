@@ -6,6 +6,7 @@
  */
 
 import type { StitchCell, StitchGrid, DmcUsage } from "./types";
+import { CROSS_STITCH_SYMBOLS } from "./types";
 import { cloneGrid, getColorStats } from "./stitchGrid";
 import { closestDmcColor, rgbToHex } from "./dmcColors";
 import { renderTextToCells } from "./pixelFont";
@@ -234,5 +235,9 @@ function computePalette(grid: StitchGrid): DmcUsage[] {
     }
   }
 
-  return Array.from(dmcMap.values()).sort((a, b) => b.count - a.count);
+  const sorted = Array.from(dmcMap.values()).sort((a, b) => b.count - a.count);
+  return sorted.map((entry, i) => ({
+    ...entry,
+    symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+  }));
 }
