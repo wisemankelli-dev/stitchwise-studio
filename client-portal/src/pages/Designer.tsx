@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { api, AIPatternResponse } from '../services/api';
 import {
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
@@ -69,24 +68,13 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-function toGridData(ai: AIPatternResponse): StitchGridData {
-  const cells = ai.grid.map((row, r) =>
-    row.map((color, c) => ({
-      row: r, col: c,
-      color: color === '#fafaf9' ? '' : color,
-      dmcCode: ai.dmcPalette.find(p => p.hex === color)?.code,
-      stitchType: (ai.stitchTypes[r]?.[c] as any) || 'cross',
-    }))
-  );
-  return { grid: cells, width: ai.width, height: ai.height, dmcPalette: ai.dmcPalette, totalStitches: ai.totalStitches };
-}
-
 /** Build a StitchGridData from the manual grid state (flat key-value records) */
 function buildManualGridData(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
   size: number
 ): StitchGridData {
+  // Note: AIPatternResponse type removed - buildManualGridData is used directly
   const dmcColorCounts: Record<string, number> = {};
   Object.values(grid).forEach(color => {
     if (color) dmcColorCounts[color] = (dmcColorCounts[color] || 0) + 1;
@@ -410,153 +398,12 @@ export const Designer: React.FC = () => {
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
 
   const handleClearGrid = () => {
-    setGrid({}); setGridStitchTypes({}); setAiResult(null); setAiError(null);
+    setGrid({}); setGridStitchTypes({});
     setCloneSource(null);
   };
 
-  const triggerTextGeneration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promptInput.trim()) return;
-    setIsGenerating(true); setGeneratorProgress(5); setProgressPhase('Interpreting your design vision...');
-    setAiResult(null); setAiError(null);
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const p = Math.min(95, Math.round(((Date.now() - startTime) / 3000) * 95));
-      setGeneratorProgress(p);
-      setProgressPhase(p < 20 ? 'Interpreting your design vision...' : p < 45 ? 'Mapping colors to DMC thread palette...' : p < 70 ? 'Plotting stitch coordinates...' : p < 90 ? 'Optimizing stitch density...' : 'Finalizing pattern...');
-    }, 100);
-    try {
-      const result = await api.generatePatternFromText(promptInput, selectedGenGridSize, fabricCount, selectedGenGridSize / fabricCount);
-      clearInterval(interval); setGeneratorProgress(100); setProgressPhase('Pattern complete!');
-      setAiResult(result); setGrid({}); setGridStitchTypes({});
-    } catch (err: any) {
-      clearInterval(interval); setAiError(err.message || 'AI generation failed.');
-    } finally { setTimeout(() => setIsGenerating(false), 500); }
-  };
 
-  const triggerImageGeneration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadedFile) return;
-    setIsGenerating(true); setGeneratorProgress(5); setProgressPhase('Analyzing image...');
-    setAiResult(null); setAiError(null); setPreviewMode('pattern');
-    const resp = await fetch(uploadedFile.previewUrl);
-    const blob = await resp.blob();
-    const file = new File([blob], uploadedFile.name, { type: blob.type });
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const p = Math.min(95, Math.round(((Date.now() - startTime) / 3500) * 95));
-      setGeneratorProgress(p);
-      setProgressPhase(p < 25 ? 'Analyzing image color channels...' : p < 50 ? 'Tracing outlines...' : p < 75 ? 'Mapping to DMC colors...' : 'Generating embroidery grid...');
-    }, 100);
-    try {
-      const result = await api.generatePatternFromImage(file, gridSize, selectedStitch);
-      clearInterval(interval); setGeneratorProgress(100); setProgressPhase('Pattern complete!');
-      setAiResult(result); setGrid({}); setGridStitchTypes({});
-    } catch (err: any) {
-      clearInterval(interval); setAiError(err.message || 'Image digitization failed.');
-    } finally { setTimeout(() => setIsGenerating(false), 500); }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDraggingOver(true); };
-  const handleDragLeave = () => setIsDraggingOver(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDraggingOver(false);
-    if (e.dataTransfer.files?.[0]) {
-      const f = e.dataTransfer.files[0];
-      setUploadedFile({ name: f.name, size: `${(f.size / (1024 * 1024)).toFixed(2)} MB`, previewUrl: URL.createObjectURL(f) });
-    }
-  };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const f = e.target.files[0];
-      setUploadedFile({ name: f.name, size: `${(f.size / (1024 * 1024)).toFixed(2)} MB`, previewUrl: URL.createObjectURL(f) });
-    }
-  };
-  const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
-
-  // ==================== GENERATE MODULE HANDLERS ====================
-
-  const handleGenDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDraggingGen(false);
-    if (e.dataTransfer.files?.[0]) {
-      const f = e.dataTransfer.files[0];
-      const url = URL.createObjectURL(f);
-      setGenFile({ name: f.name, previewUrl: url });
-      setGenImagePreview(url);
-      setGenResult(null);
-      setGenError(null);
-    }
-  };
-
-  const handleGenFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const f = e.target.files[0];
-      const url = URL.createObjectURL(f);
-      setGenFile({ name: f.name, previewUrl: url });
-      setGenImagePreview(url);
-      setGenResult(null);
-      setGenError(null);
-    }
-  };
-
-  const handleGenRemove = () => {
-    if (genFile?.previewUrl) URL.revokeObjectURL(genFile.previewUrl);
-    setGenFile(null);
-    setGenImagePreview(null);
-    setGenResult(null);
-    setGenError(null);
-  };
-
-  const handleGenerate = async () => {
-    if (!genFile) return;
-    setIsGenUploading(true);
-    setGenError(null);
-    setGenResult(null);
-    try {
-      const resp = await fetch(genFile.previewUrl);
-      const blob = await resp.blob();
-      const file = new File([blob], genFile.name, { type: blob.type });
-      const result = await api.uploadImageToPattern(file, selectedGenGridSize);
-      setGenResult(result);
-    } catch (err: any) {
-      setGenError(err.message || 'Generation failed');
-    } finally {
-      setIsGenUploading(false);
-    }
-  };
-
-  const handleResize = async (newSize: number) => {
-    setSelectedGenGridSize(newSize);
-    if (genResult && genFile) {
-      setIsGenUploading(true);
-      setGenError(null);
-      try {
-        const resp = await fetch(genFile.previewUrl);
-        const blob = await resp.blob();
-        const file = new File([blob], genFile.name, { type: blob.type });
-        const result = await api.uploadImageToPattern(file, newSize);
-        setGenResult(result);
-      } catch (err: any) {
-        setGenError(err.message || 'Resize failed');
-      } finally {
-        setIsGenUploading(false);
-      }
-    }
-  };
-
-  const handleSendToCanvas = () => {
-    if (genResult) {
-      setAiResult(genResult);
-      setGrid({});
-      setGridStitchTypes({});
-      // Scroll to canvas
-      canvasRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const stitchData: StitchGridData = aiResult
-    ? toGridData(aiResult)
-    : buildManualGridData(grid, gridStitchTypes, gridSize);
+  const stitchData: StitchGridData = buildManualGridData(grid, gridStitchTypes, gridSize);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -595,7 +442,7 @@ export const Designer: React.FC = () => {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 sm:text-5xl">
             StitchWise <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-400">Pattern Designer</span>
           </h1>
-          <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design perfect patterns stitch by stitch using AI.</p>
+          <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design perfect patterns stitch by stitch.</p>
         </div>
 
         {/* ==================== GENERATE MODULE: Upload + Grid Preview ==================== */}

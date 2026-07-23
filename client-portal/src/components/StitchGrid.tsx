@@ -22,7 +22,7 @@ export interface StitchGridProps {
   zoom: number;
   onCellClick?: (row: number, col: number) => void;
   selectedColor?: string;
-  activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet';
+  activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape';
   isMouseDown?: boolean;
   onCellHover?: (row: number, col: number) => void;
   cloneSource?: { row: number; col: number } | null;
