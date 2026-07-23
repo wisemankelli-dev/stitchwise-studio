@@ -182,7 +182,7 @@ export function createAIEmbroideryRouter(): Router {
         }
         if (!pattern) {
           // No shape match — use AI image generation
-          const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
+          const styleHints = "flat vector art, solid flat colors only, no gradients whatsoever, no shading or shadows, simple clean shapes, bold outlines, clip art style, bright bold colors, easy to trace, minimal detail, high contrast, suitable for embroidery";
           const framingHints = "close-up, centered, filling the frame, on a white background";
           const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
 
