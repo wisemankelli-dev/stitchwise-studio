@@ -123,8 +123,6 @@ export interface FabricPieceInfo {
   marginInches: number;    // margin on each side (default 3)
 }
 
-// Utility function to simulate network delay
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Fallback initial projects if nothing is in localStorage yet
 const INITIAL_PROJECTS: Project[] = [
@@ -275,7 +273,6 @@ class ApiClient {
     }
 
     // Mock/localStorage Implementation
-    await delay(800);
     const usersStr = localStorage.getItem('stitchwise_users');
     let users: any[] = usersStr ? JSON.parse(usersStr) : [];
     
@@ -349,7 +346,6 @@ class ApiClient {
     }
 
     // Mock/localStorage Implementation
-    await delay(1000);
     const usersStr = localStorage.getItem('stitchwise_users');
     let users: any[] = usersStr ? JSON.parse(usersStr) : [];
 
@@ -438,12 +434,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Stitch generation API error');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to mock stitch generation', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    // Mock Implementation
-    await delay(2500); // Simulate AI digitizer thinking time
     const count = Math.floor(Math.random() * 3000) + 1200;
     const skeins = parseFloat((count / 1500 + 0.5).toFixed(1));
     return {
@@ -482,12 +475,9 @@ class ApiClient {
         if (!response.ok) throw new Error('File conversion API error');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to mock conversion', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    // Mock Implementation
-    await delay(2000); // Simulate conversion latency
     const count = Math.floor(Math.random() * 4000) + 1000;
     const skeins = parseFloat((count / 1400 + 0.4).toFixed(1));
     return {
@@ -513,12 +503,11 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch projects');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to cached projects', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
 
     // Mock/localStorage Implementation
-    await delay(600); // Simulate minor database query latency
     const stored = localStorage.getItem('stitchwise_projects');
     if (!stored) {
       localStorage.setItem('stitchwise_projects', JSON.stringify(INITIAL_PROJECTS));
@@ -548,11 +537,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch project');
         return await response.json();
       } catch (err) {
-        console.error(`Failed to fetch project ${id} from backend, using fallback`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    await delay(400);
     const projects = await this.getProjects();
     return projects.find((p) => p.id === id) || null;
   }
@@ -571,12 +558,11 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to register project');
         return await response.json();
       } catch (err) {
-        console.error('Failed to create project on backend, using local persistence fallback', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
 
     // Mock/localStorage Implementation
-    await delay(800);
     const projects = await this.getProjects();
     const newProject: Project = {
       id: data.id || `project-${Date.now()}`,
@@ -613,11 +599,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to update project');
         return await response.json();
       } catch (err) {
-        console.error(`Failed to update project ${id} on backend, using fallback`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    await delay(600);
     const projects = await this.getProjects();
     const idx = projects.findIndex((p) => p.id === id);
     if (idx === -1) return null;
@@ -647,11 +631,9 @@ class ApiClient {
         const result = await response.json();
         return result.shareLink;
       } catch (err) {
-        console.error(`Failed to create share link for ${projectId} on backend, using fallback`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    await delay(500);
     const project = await this.getProject(projectId);
     const sessionId = project?.activeSessionId || `session-${Math.floor(Math.random() * 900000 + 100000)}`;
     return `${window.location.origin}/designer?session=${sessionId}`;
@@ -670,11 +652,9 @@ class ApiClient {
         });
         return response.ok;
       } catch (err) {
-        console.error(`Failed to invite collaborator on backend for project ${projectId}`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    await delay(600);
     const project = await this.getProject(projectId);
     if (!project) return false;
 
@@ -697,12 +677,11 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch user profile');
         return await response.json();
       } catch (err) {
-        console.error('Failed to fetch user from backend, using local fallback', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
 
     // Mock/localStorage Implementation
-    await delay(400);
     const activeUserId = localStorage.getItem('stitchwise_active_user_id');
     const usersStr = localStorage.getItem('stitchwise_users');
     const users = usersStr ? JSON.parse(usersStr) : [];
@@ -746,11 +725,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to update subscription');
         return await response.json();
       } catch (err) {
-        console.error('Failed to update subscription on backend', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    await delay(800);
     localStorage.setItem('stitchwise_tier', tier);
     
     // Persist subscription tier in our user list for completeness
@@ -782,7 +759,7 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch active tier');
         return await response.json();
       } catch (err) {
-        console.error('Failed to fetch tier from backend, using local fallback', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
     
@@ -813,7 +790,6 @@ class ApiClient {
     }
 
     // Mock/localStorage Implementation: Simulate redirect back to /pricing with parameters
-    await delay(1200);
     const redirectUrl = `${window.location.origin}/pricing?checkout-success=true&tier=${encodeURIComponent(tier)}`;
     return {
       success: true,
@@ -843,7 +819,6 @@ class ApiClient {
     }
 
     // Mock/localStorage Implementation: Simulate customer portal by returning a mock URL
-    await delay(1000);
     const redirectUrl = `${window.location.origin}/pricing?portal-success=true`;
     return {
       success: true,
@@ -908,12 +883,9 @@ class ApiClient {
         if (!response.ok) throw new Error('AI image-to-pattern generation failed');
         return await response.json();
       } catch (err) {
-        console.error('AI image-to-pattern backend error, using mock', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    // Mock Implementation
-    await delay(3500);
     const size = gridSize || 16;
     const primaryStitch = stitchType || 'cross';
 
@@ -923,11 +895,7 @@ class ApiClient {
       { code: '742', name: 'Tangerine', hex: '#d97706', count: 0 },
       { code: '444', name: 'Lemon', hex: '#facc15', count: 0 },
       { code: '700', name: 'Green', hex: '#16a34a', count: 0 },
-      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },
-      { code: '554', name: 'Violet', hex: '#7c3aed', count: 0 },
-      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },
-      { code: '961', name: 'Dusty Rose', hex: '#f472b6', count: 0 },
-      { code: '434', name: 'Brown', hex: '#78350f', count: 0 },
+      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },      { code: '434', name: 'Brown', hex: '#78350f', count: 0 },
     ];
 
     const grid: string[][] = [];
@@ -1039,12 +1007,9 @@ class ApiClient {
         if (!response.ok) throw new Error('AI collage generation failed');
         return await response.json();
       } catch (err) {
-        console.error('AI text-to-collage backend error, using mock', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    // Smart Mock Implementation — generates layers based on prompt keywords
-    await delay(3000);
 
     const isFloral = /flower|floral|rose|blossom|garden|botanical|petal|bloom/i.test(prompt);
     const isHeart = /heart|love|romantic|valentine/i.test(prompt);
@@ -1246,12 +1211,9 @@ class ApiClient {
         if (!response.ok) throw new Error('AI image-to-collage generation failed');
         return await response.json();
       } catch (err) {
-        console.error('AI image-to-collage backend error, using mock', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-
-    // Smart Mock Implementation — generates a radial/sunburst layout
-    await delay(3500);
 
     const complexity = options?.complexity || 'moderate';
     const numLayers = complexity === 'simple' ? 4 : complexity === 'complex' ? 8 : 6;
@@ -1332,10 +1294,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch marketplace listings');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to mock marketplace data', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(500);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (stored) return JSON.parse(stored);
     const mockListings: MarketplaceListing[] = [
@@ -1359,10 +1320,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch designer listings');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to mock listings', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(400);
     const allListings = await this.getMarketplaceListings();
     return allListings.filter(l => l.designerId === 'des-1');
   }
@@ -1381,10 +1341,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to create listing');
         return await response.json();
       } catch (err) {
-        console.error('Failed to create listing on backend', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(600);
     const stored = localStorage.getItem('stitchwise_marketplace');
     const listings: MarketplaceListing[] = stored ? JSON.parse(stored) : [];
     const newListing: MarketplaceListing = {
@@ -1421,10 +1380,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to update listing');
         return await response.json();
       } catch (err) {
-        console.error(`Failed to update listing ${id} on backend`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(500);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (!stored) return null;
     const listings: MarketplaceListing[] = JSON.parse(stored);
@@ -1447,10 +1405,9 @@ class ApiClient {
         });
         return response.ok;
       } catch (err) {
-        console.error(`Failed to delete listing ${id} on backend`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(400);
     const stored = localStorage.getItem('stitchwise_marketplace');
     if (!stored) return false;
     const listings: MarketplaceListing[] = JSON.parse(stored);
@@ -1561,10 +1518,9 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to fetch showcase entries');
         return await response.json();
       } catch (err) {
-        console.error('Failed to contact backend, falling back to mocked showcase data', err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(500);
     const stored = localStorage.getItem('stitchwise_showcase');
     if (stored) return JSON.parse(stored);
     localStorage.setItem('stitchwise_showcase', JSON.stringify(this.INITIAL_SHOWCASE));
@@ -1586,10 +1542,9 @@ class ApiClient {
         }
         return await response.json();
       } catch (err) {
-        console.error(`Failed to fetch showcase entry ${id} from backend`, err);
+        throw err instanceof Error ? err : new Error('Request failed');
       }
     }
-    await delay(300);
     const entries = await this.getShowcaseEntries();
     return entries.find(e => e.id === id) || null;
   }
@@ -1632,7 +1587,6 @@ class ApiClient {
     }
 
     // Mock/localStorage Implementation
-    await delay(1000);
 
     // Check tier gating for Hobbyist (max 3/month)
     const user = await this.getUserProfile();
@@ -1698,8 +1652,6 @@ class ApiClient {
         return { success: false, error: err.message || 'Delete failed' };
       }
     }
-
-    await delay(400);
     const entries = await this.getShowcaseEntries();
     const entry = entries.find(e => e.id === id);
     if (!entry) return { success: false, error: 'Entry not found' };
@@ -1740,20 +1692,13 @@ class ApiClient {
       }
       return await response.json();
     }
-
-    // Mock Implementation (fallback when isLiveBackend is false)
-    await delay(2000);
     const size = gridSize;
     const dmcPalette = [
       { code: '310', name: 'Black', hex: '#1e293b', count: 0 },
       { code: '321', name: 'Christmas Red', hex: '#e11d48', count: 0 },
       { code: '743', name: 'Yellow', hex: '#f59e0b', count: 0 },
       { code: '700', name: 'Green', hex: '#16a34a', count: 0 },
-      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },
-      { code: '554', name: 'Violet', hex: '#7c3aed', count: 0 },
-      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },
-      { code: '961', name: 'Dusty Rose', hex: '#f472b6', count: 0 },
-    ];
+      { code: '798', name: 'Delft Blue', hex: '#0284c7', count: 0 },      { code: '3865', name: 'Winter White', hex: '#fef3c7', count: 0 },    ];
     const colorCounts: Record<string, number> = {};
     dmcPalette.forEach(c => colorCounts[c.hex] = 0);
 
