@@ -5,15 +5,17 @@ import {
   Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
-  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
+  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Shapes
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
+import SHAPES, { getShapesByCategory, stampShape, type ClipartShape, SHAPE_CATEGORIES, type ShapeCategory } from '../data/shapes';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
-type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet';
+type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape';
 
 const COLORS = [
   { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
@@ -31,12 +33,18 @@ const STITCH_STYLES: StitchStyle[] = [
 
 const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'select', icon: <MousePointer2 className="h-3.5 w-3.5" />, label: 'Select' },
-  { id: 'mirror', icon: <FlipHorizontal className="h-3.5 w-3.5" />, label: 'Mirror' },
-  { id: 'erase', icon: <Eraser className="h-3.5 w-3.5" />, label: 'Erase' },
-  { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
-  { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
   { id: 'paint', icon: <Paintbrush className="h-3.5 w-3.5" />, label: 'Paint' },
+  { id: 'rectangle', icon: <RectangleHorizontal className="h-3.5 w-3.5" />, label: 'Rect' },
+  { id: 'circle', icon: <Circle className="h-3.5 w-3.5" />, label: 'Circle' },
+  { id: 'line', icon: <Minus className="h-3.5 w-3.5" />, label: 'Line' },
+  { id: 'fill', icon: <PaintBucket className="h-3.5 w-3.5" />, label: 'Fill' },
+  { id: 'erase', icon: <Eraser className="h-3.5 w-3.5" />, label: 'Erase' },
+  { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
+  { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
+  { id: 'mirror', icon: <FlipHorizontal className="h-3.5 w-3.5" />, label: 'Mirror' },
+  { id: 'shape', icon: <Shapes className="h-3.5 w-3.5" />, label: 'Shape' },
   { id: 'alphabet', icon: <Type className="h-3.5 w-3.5" />, label: 'Text' },
+  { id: 'pan', icon: <Hand className="h-3.5 w-3.5" />, label: 'Pan' },
 ];
 
 const GRID_SIZES = [50, 75, 100, 150, 200];
@@ -49,6 +57,16 @@ const MAX_HOOP_THRESHOLD = 12;    // strongly warn if design exceeds 12"
 /** Calculate physical inches from stitch count and fabric count */
 function stitchesToInches(stitches: number, fabricCount: number): number {
   return stitches / fabricCount;
+}
+
+/** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
 function toGridData(ai: AIPatternResponse): StitchGridData {
@@ -125,6 +143,14 @@ export const Designer: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Drawing tools state
+  const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
+
+  // Shape browser state
+  const [showShapePanel, setShowShapePanel] = useState(false);
+  const [shapeCategory, setShapeCategory] = useState<ShapeCategory>('Animals');
+  const [selectedShape, setSelectedShape] = useState<ClipartShape | null>(null);
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
@@ -253,6 +279,87 @@ export const Designer: React.FC = () => {
         }
         break;
       }
+      // ── Drawing Tools ──
+      case 'rectangle':
+      case 'circle':
+      case 'line': {
+        if (!drawStart) {
+          setDrawStart({ row, col });
+        } else {
+          // Draw the shape
+          const r1 = Math.min(drawStart.row, row);
+          const r2 = Math.max(drawStart.row, row);
+          const c1 = Math.min(drawStart.col, col);
+          const c2 = Math.max(drawStart.col, col);
+          const cx = Math.floor((c1 + c2) / 2);
+          const cy = Math.floor((r1 + r2) / 2);
+          const rx = Math.floor((c2 - c1) / 2);
+          const ry = Math.floor((r2 - r1) / 2);
+
+          for (let r = r1; r <= r2; r++) {
+            for (let c = c1; c <= c2; c++) {
+              let inside = false;
+              if (activeTool === 'rectangle') {
+                inside = true;
+              } else if (activeTool === 'circle') {
+                const dx = (c - cx) / Math.max(1, rx);
+                const dy = (r - cy) / Math.max(1, ry);
+                inside = (dx * dx + dy * dy) <= 1;
+              } else if (activeTool === 'line') {
+                // Thick line using distance-to-segment
+                const d = distToSegment(c, r, drawStart.col, drawStart.row, col, row);
+                inside = d < 2;
+              }
+              if (inside) {
+                setCell(r, c, selectedColor, selectedStitch);
+              }
+            }
+          }
+          setDrawStart(null);
+        }
+        break;
+      }
+      case 'fill': {
+        // Flood fill
+        const targetColor = grid[key] || '';
+        const fillColor = selectedColor;
+        if (targetColor === fillColor) break;
+        const newGrid = { ...grid };
+        const newStitchTypes = { ...gridStitchTypes };
+        const stack = [{ row, col }];
+        const visited = new Set<string>();
+        visited.add(key);
+        while (stack.length > 0) {
+          const { row: r, col: c } = stack.pop()!;
+          const k = `${r},${c}`;
+          if ((grid[k] || '') !== targetColor) continue;
+          newGrid[k] = fillColor;
+          newStitchTypes[k] = selectedStitch;
+          for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nr = r + dr, nc = c + dc;
+            if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) continue;
+            const nk = `${nr},${nc}`;
+            if (visited.has(nk)) continue;
+            visited.add(nk);
+            stack.push({ row: nr, col: nc });
+          }
+        }
+        setGrid(newGrid);
+        setGridStitchTypes(newStitchTypes);
+        break;
+      }
+      case 'shape': {
+        if (selectedShape) {
+          const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridSize);
+          setGrid(result.grid);
+          setGridStitchTypes(result.stitchTypes);
+        }
+        break;
+      }
+      case 'pan': {
+        // Pan is handled by scroll — no-op on cell click
+        break;
+      }
       default: {
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
@@ -285,7 +392,7 @@ export const Designer: React.FC = () => {
         break;
       }
     }
-  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridSize, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
+  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridSize, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
@@ -1003,6 +1110,91 @@ export const Designer: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* === SHAPE BROWSER === */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+              <button
+                onClick={() => setShowShapePanel(!showShapePanel)}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Shapes className="h-5 w-5 text-blush-500" /> Clipart Shapes
+                </h2>
+                <span className="text-xs text-slate-400">{showShapePanel ? '▲' : '▼'}</span>
+              </button>
+
+              {showShapePanel && (
+                <>
+                  {/* Category tabs */}
+                  <div className="flex flex-wrap gap-1">
+                    {SHAPE_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setShapeCategory(cat)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                          shapeCategory === cat
+                            ? 'bg-blush-500 text-white border-blush-500'
+                            : 'bg-white text-slate-500 border-blush-100 hover:bg-blush-50'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Shape grid */}
+                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                    {getShapesByCategory()[shapeCategory]?.map((shape) => (
+                      <button
+                        key={shape.id}
+                        onClick={() => {
+                          setSelectedShape(shape);
+                          setActiveTool('shape');
+                        }}
+                        className={`p-2 rounded-lg border transition-all ${
+                          selectedShape?.id === shape.id
+                            ? 'border-blush-500 bg-blush-50 ring-1 ring-blush-500'
+                            : 'border-blush-100 bg-white hover:bg-blush-50'
+                        }`}
+                        title={shape.name}
+                      >
+                        {/* Mini preview */}
+                        <div className="grid gap-0 mx-auto mb-1"
+                          style={{
+                            gridTemplateColumns: `repeat(${Math.min(shape.width, 8)}, 3px)`,
+                            width: Math.min(shape.width, 8) * 3,
+                          }}>
+                          {shape.grid.slice(0, 8).flatMap((row, r) =>
+                            row.slice(0, 8).map((cell, c) => (
+                              <div
+                                key={`${r}-${c}`}
+                                className="rounded-[0.5px]"
+                                style={{
+                                  width: 3, height: 3,
+                                  backgroundColor: cell ? selectedColor : '#fdf2f8',
+                                  border: cell ? 'none' : '0.5px solid #fce7f3',
+                                }}
+                              />
+                            ))
+                          )}
+                        </div>
+                        <span className="text-[9px] font-medium text-slate-600 leading-tight block text-center truncate">
+                          {shape.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedShape && (
+                    <div className="p-2 bg-blush-50 rounded-lg border border-blush-100">
+                      <p className="text-[10px] text-slate-600">
+                        <strong>{selectedShape.name}</strong> selected — click on grid to place.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             {/* === MATERIAL ESTIMATOR === */}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
