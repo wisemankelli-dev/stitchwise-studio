@@ -183,7 +183,14 @@ export function createAIEmbroideryRouter(): Router {
         if (!pattern) {
           // No shape match — use AI image generation
           const styleHints = "simple flat vector illustration, bright bold colors, clip art style, solid color blocks with no gradients, no shading, clean simple shapes, colorful design, easy to trace, minimal detail, high contrast, bold outlines, suitable for embroidery";
-          const enhancedPrompt = `${prompt}, ${styleHints}`;
+          const framingHints = "close-up, centered, filling the frame, on a white background";
+          const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
+
+          console.error(JSON.stringify({
+            event: "ai_prompt_sent",
+            originalPrompt: prompt,
+            finalPrompt: enhancedPrompt,
+          }));
 
           // Step 1: Try Stability AI first (we have an API key)
           const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt);
