@@ -19,6 +19,7 @@ import {
   type PatternResult,
   type StitchCell,
 } from "../../domain/ai/embroideryAI";
+import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageFromText } from "../services/leonardoAIService";
 import { generateImageWithStability } from "../services/stabilityAIService";
 import {
@@ -67,11 +68,12 @@ function buildPatternResponse(pattern: PatternResult, extra: Record<string, unkn
     stitchTypes: flatGrid.map(row => row.map(() => "cross")),
     width: pattern.gridSize,
     height: pattern.gridSize,
-    dmcPalette: pattern.dmcColors.map(c => ({
+    dmcPalette: pattern.dmcColors.map((c, i) => ({
       code: c.code,
       name: c.name,
       hex: c.hex,
       count: c.count,
+      symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
     })),
     totalStitches: pattern.stitchCount,
     gridSizes: [...AVAILABLE_GRID_SIZES],
@@ -165,6 +167,8 @@ export function createAIEmbroideryRouter(): Router {
 
         let pattern: PatternResult | null = null;
 
+        let previewUrl: string | undefined;
+
         if (matchedShape) {
           // Only use Shape Library when the prompt is JUST the shape name
           // (possibly with articles). "monarch butterfly" should go to AI,
@@ -184,7 +188,6 @@ export function createAIEmbroideryRouter(): Router {
           // Step 1: Try Stability AI first (we have an API key)
           const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt);
 
-          let previewUrl: string | undefined;
           if (stabilityResult) {
             // Stability returned a buffer — convert directly and capture preview
             previewUrl = `data:image/png;base64,${stabilityResult.buffer.toString("base64")}`;

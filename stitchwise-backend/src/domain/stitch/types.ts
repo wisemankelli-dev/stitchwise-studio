@@ -42,7 +42,14 @@ export interface DmcUsage {
   hex: string;
   /** Number of stitches using this color */
   count: number;
+  /** Cross-stitch symbol for chart rendering (e.g. "♥", "◆") */
+  symbol?: string;
 }
+
+/** Cross-stitch symbols assigned to palette entries in order of usage. */
+export const CROSS_STITCH_SYMBOLS = [
+  "♥", "◆", "●", "★", "▲", "▼", "◼", "⬟", "✦", "✧", "✿", "❖", "➤", "✚", "⬒",
+] as const;
 
 // ─── Pattern Result ─────────────────────────────────────────────────────────
 
