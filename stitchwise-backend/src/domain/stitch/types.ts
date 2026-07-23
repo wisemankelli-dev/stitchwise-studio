@@ -82,4 +82,4 @@ export const AVAILABLE_GRID_SIZES = [50, 75, 100, 150, 200] as const;
 export type GridSize = (typeof AVAILABLE_GRID_SIZES)[number];
 
 /** Default grid size used when no size is specified. */
-export const DEFAULT_GRID_SIZE = 50;
+export const DEFAULT_GRID_SIZE = 100;
