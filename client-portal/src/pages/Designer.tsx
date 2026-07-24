@@ -123,6 +123,7 @@ export const Designer: React.FC = () => {
   const [selectedStitch, setSelectedStitch] = useState('cross');
   const [grid, setGrid] = useState<Record<string, string>>({});
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
+  const [cellFractions, setCellFractions] = useState<Record<string, number>>({});
   const [previewMode, setPreviewMode] = useState<'pattern' | 'original'>('pattern');
   const lastSaved = useRef<Record<string, string>>({});
 
@@ -280,30 +281,44 @@ export const Designer: React.FC = () => {
           const r2 = Math.max(drawStart.row, row);
           const c1 = Math.min(drawStart.col, col);
           const c2 = Math.max(drawStart.col, col);
-          const cx = Math.floor((c1 + c2) / 2);
-          const cy = Math.floor((r1 + r2) / 2);
-          const rx = Math.floor((c2 - c1) / 2);
-          const ry = Math.floor((r2 - r1) / 2);
+          const cx = (c1 + c2) / 2;
+          const cy = (r1 + r2) / 2;
+          const rx = Math.max(0.5, (c2 - c1) / 2);
+          const ry = Math.max(0.5, (r2 - r1) / 2);
 
-          for (let r = r1; r <= r2; r++) {
-            for (let c = c1; c <= c2; c++) {
-              let inside = false;
+          const newFractions: Record<string, number> = {};
+          for (let r = Math.floor(r1 - 1); r <= Math.ceil(r2 + 1); r++) {
+            for (let c = Math.floor(c1 - 1); c <= Math.ceil(c2 + 1); c++) {
               if (activeTool === 'rectangle') {
-                inside = true;
+                if (r >= r1 && r <= r2 && c >= c1 && c <= c2) {
+                  setCell(r, c, selectedColor, selectedStitch);
+                }
               } else if (activeTool === 'circle') {
-                const dx = (c - cx) / Math.max(1, rx);
-                const dy = (r - cy) / Math.max(1, ry);
-                inside = (dx * dx + dy * dy) <= 1;
+                // Compute fraction: sample 4 sub-pixel points per cell
+                let hits = 0;
+                for (const [sr, sc] of [[0.25,0.25],[0.25,0.75],[0.75,0.25],[0.75,0.75]]) {
+                  const dx = (c + sc - cx) / rx;
+                  const dy = (r + sr - cy) / ry;
+                  if (dx * dx + dy * dy <= 1) hits++;
+                }
+                if (hits === 4) {
+                  setCell(r, c, selectedColor, selectedStitch);
+                } else if (hits > 0) {
+                  newFractions[`${r},${c}`] = hits / 4;
+                  setCell(r, c, selectedColor, selectedStitch);
+                }
               } else if (activeTool === 'line') {
-                // Thick line using distance-to-segment
-                const d = distToSegment(c, r, drawStart.col, drawStart.row, col, row);
-                inside = d < 2;
-              }
-              if (inside) {
-                setCell(r, c, selectedColor, selectedStitch);
+                const d = distToSegment(c + 0.5, r + 0.5, drawStart.col + 0.5, drawStart.row + 0.5, col + 0.5, row + 0.5);
+                if (d < 1) {
+                  setCell(r, c, selectedColor, selectedStitch);
+                } else if (d < 1.5) {
+                  newFractions[`${r},${c}`] = 0.5;
+                  setCell(r, c, selectedColor, selectedStitch);
+                }
               }
             }
           }
+          setCellFractions(prev => ({ ...prev, ...newFractions }));
           setDrawStart(null);
         }
         break;
@@ -1274,6 +1289,7 @@ export const Designer: React.FC = () => {
                       onZoomChange={setZoom}
                       isFullscreen={isFullscreen}
                       onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+                      cellFractions={cellFractions}
                     />
                   </div>
                 )}
