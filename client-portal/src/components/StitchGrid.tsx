@@ -34,6 +34,8 @@ export interface StitchGridProps {
   isFullscreen?: boolean;
   /** Called when user toggles fullscreen */
   onToggleFullscreen?: () => void;
+  /** Fractional cell fills for anti-aliased shapes */
+  cellFractions?: Record<string, number>;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -167,6 +169,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   onZoomChange,
   isFullscreen,
   onToggleFullscreen,
+  cellFractions,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -254,6 +257,56 @@ const StitchGrid: React.FC<StitchGridProps> = ({
           ctx.lineWidth = 0.3;
           ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
         }
+      }
+    }
+
+    // ── Half-fill diagonal rendering ──
+    if (cellFractions && cellSize >= 8) {
+      for (const [key, fraction] of Object.entries(cellFractions)) {
+        const [r, c] = key.split(',').map(Number);
+        const cell = data.grid[r]?.[c];
+        if (!cell?.color) continue;
+        const x = c * cellSize;
+        const y = r * cellSize;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, cellSize, cellSize);
+        ctx.clip();
+        // Draw diagonal half-fill: color on bottom-left triangle, background on top-right
+        if (fraction <= 0.25) {
+          // Small corner fill
+          ctx.fillStyle = cell.color;
+          ctx.beginPath();
+          ctx.moveTo(x, y + cellSize);
+          ctx.lineTo(x, y + cellSize * 0.5);
+          ctx.lineTo(x + cellSize * 0.5, y + cellSize);
+          ctx.fill();
+        } else if (fraction <= 0.5) {
+          // Half fill: bottom-left triangle
+          ctx.fillStyle = cell.color;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + cellSize);
+          ctx.lineTo(x + cellSize, y + cellSize);
+          ctx.fill();
+          ctx.fillStyle = '#fdf2f8';
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + cellSize, y + cellSize);
+          ctx.lineTo(x + cellSize, y);
+          ctx.fill();
+        } else if (fraction <= 0.75) {
+          // Three-quarters: color on 3/4, background on top-right corner
+          ctx.fillStyle = cell.color;
+          ctx.fillRect(x, y, cellSize, cellSize);
+          ctx.fillStyle = '#fdf2f8';
+          ctx.beginPath();
+          ctx.moveTo(x + cellSize, y);
+          ctx.lineTo(x + cellSize * 0.5, y);
+          ctx.lineTo(x + cellSize, y + cellSize * 0.5);
+          ctx.fill();
+        }
+        ctx.restore();
       }
     }
 
