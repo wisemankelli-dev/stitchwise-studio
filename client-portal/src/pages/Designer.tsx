@@ -118,6 +118,7 @@ export const Designer: React.FC = () => {
   const [aiResult, setAiResult] = useState<AIPatternResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLORS[0].hex);
   const [selectedStitch, setSelectedStitch] = useState('cross');
   const [grid, setGrid] = useState<Record<string, string>>({});
@@ -420,8 +421,19 @@ export const Designer: React.FC = () => {
     }
   }, []);
 
+  // Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   return (
-    <div className="bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden">
+    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden'}`}>
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
         <svg className="w-full h-full"><defs><pattern id="des-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
           <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />
@@ -1260,6 +1272,8 @@ export const Designer: React.FC = () => {
                       isMouseDown={isMouseDown}
                       onCellHover={handleCellHover}
                       onZoomChange={setZoom}
+                      isFullscreen={isFullscreen}
+                      onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                     />
                   </div>
                 )}
