@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { ZoomIn, ZoomOut, Maximize, Grid3X3 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, Grid3X3, Minimize } from 'lucide-react';
 
 export interface StitchCell {
   row: number;
@@ -30,6 +30,10 @@ export interface StitchGridProps {
   mirrorAxis?: 'horizontal' | 'vertical' | 'both' | null;
   /** Called when user changes zoom via built-in zoom controls */
   onZoomChange?: (zoom: number) => void;
+  /** Fullscreen mode flag */
+  isFullscreen?: boolean;
+  /** Called when user toggles fullscreen */
+  onToggleFullscreen?: () => void;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -51,7 +55,7 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
 
 // ── Drawing helpers ──────────────────────────────────────────────────────────
 
-const BASE_CELL_SIZE = 4; // pixels per cell at zoom=1 (before devicePixelRatio)
+const BASE_CELL_SIZE = 12; // pixels per cell at zoom=1 (before devicePixelRatio)
 
 /** Determine if a hex color is "light" (luminance > 0.5) */
 function isLightColor(hex: string): boolean {
@@ -161,6 +165,8 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   cloneSelectionEnd,
   mirrorAxis,
   onZoomChange,
+  isFullscreen,
+  onToggleFullscreen,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -505,6 +511,21 @@ const StitchGrid: React.FC<StitchGridProps> = ({
           <Grid3X3 className="h-3.5 w-3.5" />
           Grid
         </button>
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+              isFullscreen
+                ? 'bg-blush-500 text-white border-blush-500'
+                : 'bg-white border-blush-100 text-slate-400 hover:bg-blush-50'
+            }`}
+            type="button"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          >
+            {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+            {isFullscreen ? 'Exit' : 'Full'}
+          </button>
+        )}
       </div>
 
       {/* Canvas container */}
