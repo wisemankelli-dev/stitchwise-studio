@@ -142,6 +142,7 @@ export const Designer: React.FC = () => {
   const [grid, setGrid] = useState<Record<string, string>>({});
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
   const [cellFractions, setCellFractions] = useState<Record<string, number>>({});
+  const [halfStitchMode, setHalfStitchMode] = useState(false);
   const [previewMode, setPreviewMode] = useState<'pattern' | 'original'>('pattern');
   const lastSaved = useRef<Record<string, string>>({});
 
@@ -232,6 +233,66 @@ export const Designer: React.FC = () => {
     });
   }, []);
 
+  /** Cycle through half-stitch levels: empty → 0.25 → 0.5 → 0.75 → full → empty */
+  const cycleHalfStitchLevel = useCallback((row: number, col: number) => {
+    const key = `${row},${col}`;
+    const currentFraction = cellFractions[key];
+    const hasFullCell = !!grid[key];
+
+    if (!hasFullCell && currentFraction === undefined) {
+      // empty → 0.25: set color + fraction
+      setCell(row, col, selectedColor, selectedStitch);
+      setCellFractions(prev => ({ ...prev, [key]: 0.25 }));
+    } else if (!hasFullCell && currentFraction === 0.25) {
+      // 0.25 → 0.5
+      setCell(row, col, selectedColor, selectedStitch);
+      setCellFractions(prev => ({ ...prev, [key]: 0.5 }));
+    } else if (!hasFullCell && currentFraction === 0.5) {
+      // 0.5 → 0.75
+      setCell(row, col, selectedColor, selectedStitch);
+      setCellFractions(prev => ({ ...prev, [key]: 0.75 }));
+    } else if (!hasFullCell && currentFraction === 0.75) {
+      // 0.75 → full: clear fraction, cell already has color
+      setCellFractions(prev => { const next = { ...prev }; delete next[key]; return next; });
+    } else {
+      // full → empty: clear both
+      clearCell(row, col);
+      setCellFractions(prev => { const next = { ...prev }; delete next[key]; return next; });
+    }
+  }, [cellFractions, grid, selectedColor, selectedStitch, setCell, clearCell]);
+
+  /** Apply a half-stitch paint at (row,col) with anti-aliased edges on neighbors */
+  const applyHalfStitchPaint = useCallback((row: number, col: number) => {
+    const key = `${row},${col}`;
+    // Full fill on the target cell
+    setCell(row, col, selectedColor, selectedStitch);
+    // Remove any fractional state for this cell
+    setCellFractions(prev => { const next = { ...prev }; delete next[key]; return next; });
+
+    // Anti-alias neighboring cells
+    const neighbors: [number, number, number][] = [
+      // orthogonal neighbors get 0.5
+      [-1, 0, 0.5], [1, 0, 0.5], [0, -1, 0.5], [0, 1, 0.5],
+      // diagonal neighbors get 0.25
+      [-1, -1, 0.25], [-1, 1, 0.25], [1, -1, 0.25], [1, 1, 0.25],
+    ];
+    const updates: Record<string, number> = {};
+    for (const [dr, dc, fraction] of neighbors) {
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr < 0 || nr >= gridHeight || nc < 0 || nc >= gridWidth) continue;
+      const nk = `${nr},${nc}`;
+      // Don't overwrite fully-filled cells with fractional
+      if (grid[nk]) continue;
+      // Set the cell color so the fraction renders
+      setCell(nr, nc, selectedColor, selectedStitch);
+      updates[nk] = fraction;
+    }
+    if (Object.keys(updates).length > 0) {
+      setCellFractions(prev => ({ ...prev, ...updates }));
+    }
+  }, [selectedColor, selectedStitch, grid, gridHeight, gridWidth, setCell]);
+
   const handlePlaceText = useCallback(() => {
     if (!alphabetText.trim()) return;
     const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
@@ -261,8 +322,19 @@ export const Designer: React.FC = () => {
         break;
       }
       case 'paint': {
-        setCell(row, col, selectedColor, selectedStitch);
-        if (mirrorEnabled) mirrorCellEdit(row, col, selectedColor, selectedStitch);
+        if (halfStitchMode) {
+          cycleHalfStitchLevel(row, col);
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) cycleHalfStitchLevel(mRow, mCol);
+          }
+        } else {
+          setCell(row, col, selectedColor, selectedStitch);
+          if (mirrorEnabled) mirrorCellEdit(row, col, selectedColor, selectedStitch);
+          // Clear any fractional state for this cell
+          setCellFractions(prev => { const next = { ...prev }; delete next[`${row},${col}`]; return next; });
+        }
         break;
       }
       case 'eyedropper': {
@@ -381,56 +453,79 @@ export const Designer: React.FC = () => {
         break;
       }
       default: {
-        const newGrid = { ...grid };
-        const newStitchTypes = { ...gridStitchTypes };
-        if (newGrid[key] === selectedColor) {
-          delete newGrid[key];
-          delete newStitchTypes[key];
+        // Handles select, mirror, alphabet — toggle paint with half-stitch support
+        if (halfStitchMode) {
+          cycleHalfStitchLevel(row, col);
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) cycleHalfStitchLevel(mRow, mCol);
+          }
         } else {
-          newGrid[key] = selectedColor;
-          newStitchTypes[key] = selectedStitch;
-        }
-        setGrid(newGrid);
-        setGridStitchTypes(newStitchTypes);
+          const newGrid = { ...grid };
+          const newStitchTypes = { ...gridStitchTypes };
+          const newFractions = { ...cellFractions };
+          if (newGrid[key] === selectedColor) {
+            delete newGrid[key];
+            delete newStitchTypes[key];
+          } else {
+            newGrid[key] = selectedColor;
+            newStitchTypes[key] = selectedStitch;
+          }
+          // Clear any fractional state for this cell
+          delete newFractions[key];
+          setGrid(newGrid);
+          setGridStitchTypes(newStitchTypes);
+          setCellFractions(newFractions);
 
-        if (mirrorEnabled) {
-          const mRow = gridHeight - 1 - row;
-          const mCol = gridWidth - 1 - col;
-          if (mRow !== row || mCol !== col) {
-            const mKey = `${mRow},${mCol}`;
-            if (newGrid[key] === selectedColor) {
-              newGrid[mKey] = selectedColor;
-              newStitchTypes[mKey] = selectedStitch;
-            } else {
-              delete newGrid[mKey];
-              delete newStitchTypes[mKey];
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) {
+              const mKey = `${mRow},${mCol}`;
+              if (newGrid[key] === selectedColor) {
+                newGrid[mKey] = selectedColor;
+                newStitchTypes[mKey] = selectedStitch;
+              } else {
+                delete newGrid[mKey];
+                delete newStitchTypes[mKey];
+              }
+              delete newFractions[mKey];
+              setGrid({ ...newGrid });
+              setGridStitchTypes({ ...newStitchTypes });
+              setCellFractions({ ...newFractions });
             }
-            setGrid({ ...newGrid });
-            setGridStitchTypes({ ...newStitchTypes });
           }
         }
         break;
       }
     }
-  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape]);
+  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape, halfStitchMode, cycleHalfStitchLevel, cellFractions]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
     if (activeTool === 'paint') {
-      setCell(row, col, selectedColor, selectedStitch);
+      if (halfStitchMode) {
+        applyHalfStitchPaint(row, col);
+      } else {
+        setCell(row, col, selectedColor, selectedStitch);
+      }
       if (mirrorEnabled) mirrorCellEdit(row, col, selectedColor, selectedStitch);
     } else if (activeTool === 'erase') {
       clearCell(row, col);
+      if (halfStitchMode) {
+        setCellFractions(prev => { const next = { ...prev }; delete next[`${row},${col}`]; return next; });
+      }
       if (mirrorEnabled) {
         const mRow = gridHeight - 1 - row;
         const mCol = gridWidth - 1 - col;
         if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
       }
     }
-  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
+  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, halfStitchMode, applyHalfStitchPaint]);
 
   const handleClearGrid = () => {
-    setGrid({}); setGridStitchTypes({});
+    setGrid({}); setGridStitchTypes({}); setCellFractions({});
     setCloneSource(null);
   };
 
@@ -1301,8 +1396,21 @@ export const Designer: React.FC = () => {
                   {activeTool === 'eyedropper' && (
                     <span className="text-[10px] text-slate-500 italic">Click a cell to pick its color</span>
                   )}
-                  {activeTool === 'paint' && (
-                    <span className="text-[10px] text-slate-500 italic">Click & drag to paint</span>
+                  {(activeTool === 'paint' || activeTool === 'select') && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 italic">{halfStitchMode ? 'Click to cycle: ¼→½→¾→full' : 'Click to paint'}</span>
+                      <button
+                        onClick={() => setHalfStitchMode(!halfStitchMode)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
+                          halfStitchMode
+                            ? 'bg-blush-500 text-white border-blush-500 shadow-sm'
+                            : 'bg-blush-50 text-slate-500 border-blush-100 hover:bg-blush-100'
+                        }`}
+                        title="Toggle half-stitch mode: click to cycle through fractional fills"
+                      >
+                        ½ Stitch {halfStitchMode ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
                   )}
                   {activeTool === 'erase' && (
                     <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
