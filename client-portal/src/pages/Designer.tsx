@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
+import type { AIPatternResponse } from '../services/api';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
@@ -212,6 +213,67 @@ export const Designer: React.FC = () => {
   const [selectedFontId, setSelectedFontId] = useState('block');
   const [placeRow, setPlaceRow] = useState(4);
   const [placeCol, setPlaceCol] = useState(2);
+
+  // ==================== GENERATE MODULE STUB HANDLERS ====================
+  // These handlers were removed during AI UI cleanup (PR #68) but still referenced in JSX.
+  // TODO: Re-integrate with live AI generation backend when that module is rebuilt.
+  const handleGenFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setGenFile({ name: file.name, previewUrl: URL.createObjectURL(file) });
+    setGenImagePreview(URL.createObjectURL(file));
+    setGenError(null);
+  }, []);
+  const handleGenRemove = useCallback(() => {
+    setGenFile(null);
+    setGenImagePreview(null);
+    setGenResult(null);
+    setGenError(null);
+  }, []);
+  const handleGenerate = useCallback(async () => {
+    if (!genFile) return;
+    setGenError(null);
+    setIsGenUploading(true);
+    try {
+      const { generatePatternFromImage } = await import('../services/api');
+      const result = await generatePatternFromImage(genFile.previewUrl, selectedGenGridSize);
+      setGenResult(result);
+    } catch (err: any) {
+      setGenError(err?.message || 'Generation failed. Please try again.');
+    } finally {
+      setIsGenUploading(false);
+    }
+  }, [genFile, selectedGenGridSize]);
+  const triggerTextGeneration = useCallback(async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!promptInput.trim()) return;
+    setAiError(null);
+    setIsGenerating(true);
+    try {
+      const { generatePatternFromText } = await import('../services/api');
+      const result = await generatePatternFromText(promptInput);
+      setAiResult(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Generation failed. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [promptInput]);
+  const triggerImageGeneration = useCallback(async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!uploadedFile) return;
+    setAiError(null);
+    setIsGenerating(true);
+    try {
+      const { generatePatternFromImage } = await import('../services/api');
+      const result = await generatePatternFromImage(uploadedFile.previewUrl, 50);
+      setAiResult(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Generation failed. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [uploadedFile]);
 
   const setCell = useCallback((row: number, col: number, color: string, stitch: string) => {
     const key = `${row},${col}`;
