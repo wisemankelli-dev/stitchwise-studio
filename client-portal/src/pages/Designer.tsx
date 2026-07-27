@@ -439,6 +439,14 @@ export const Designer: React.FC = () => {
         }
         break;
       }
+      case 'alphabet': {
+        // Click to place text at click position
+        if (alphabetText.trim()) {
+          const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
+          renderTextToGrid(alphabetText, font, row, col, selectedColor, selectedStitch, gridWidth, gridHeight, setCell);
+        }
+        break;
+      }
       default: {
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
@@ -471,7 +479,7 @@ export const Designer: React.FC = () => {
         break;
       }
     }
-  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape, cellFractions]);
+  }, [activeTool, alphabetText, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedFontId, selectedStitch, setCell, drawStart, selectedShape, cellFractions]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
