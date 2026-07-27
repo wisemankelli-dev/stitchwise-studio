@@ -49,6 +49,18 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
 
 const GRID_SIZES = [50, 75, 100, 150, 200];
 
+/** Canvas size presets for common project types */
+const CANVAS_PRESETS: { name: string; width: number; height: number }[] = [
+  { name: 'Bag Charm', width: 6, height: 6 },
+  { name: 'Ornament', width: 8, height: 8 },
+  { name: '5×7 Frame', width: 10, height: 14 },
+  { name: '8×10 Frame', width: 16, height: 20 },
+  { name: 'Pillow', width: 14, height: 14 },
+  { name: 'Stocking', width: 12, height: 18 },
+  { name: 'Large Pillow', width: 18, height: 18 },
+  { name: 'Wall Hanging', width: 18, height: 36 },
+];
+
 /** Standard embroidery hoop diameters (inches) */
 const HOOP_SIZES = [4, 5, 6, 7, 8, 10, 12];
 const LARGE_HOOP_THRESHOLD = 8;   // warn if design exceeds 8"
@@ -73,7 +85,8 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 function buildManualGridData(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
-  size: number
+  width: number,
+  height: number,
 ): StitchGridData {
   // Note: AIPatternResponse type removed - buildManualGridData is used directly
   const dmcColorCounts: Record<string, number> = {};
@@ -88,9 +101,9 @@ function buildManualGridData(
   }));
 
   const cells: StitchCell[][] = [];
-  for (let r = 0; r < size; r++) {
+  for (let r = 0; r < height; r++) {
     const row: StitchCell[] = [];
-    for (let c = 0; c < size; c++) {
+    for (let c = 0; c < width; c++) {
       const key = `${r},${c}`;
       const color = grid[key] || '';
       row.push({
@@ -104,11 +117,15 @@ function buildManualGridData(
   }
 
   const totalStitches = Object.values(grid).filter(Boolean).length;
-  return { grid: cells, width: size, height: size, dmcPalette, totalStitches };
+  return { grid: cells, width, height, dmcPalette, totalStitches };
 }
 
 export const Designer: React.FC = () => {
-  const gridSize = 32;
+  const [gridWidth, setGridWidth] = useState(32);
+  const [gridHeight, setGridHeight] = useState(32);
+  const [showResizeWarning, setShowResizeWarning] = useState(false);
+  const [pendingGridWidth, setPendingGridWidth] = useState(32);
+  const [pendingGridHeight, setPendingGridHeight] = useState(32);
   const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
   const [promptInput, setPromptInput] = useState('');
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; previewUrl: string } | null>(null);
@@ -172,8 +189,8 @@ export const Designer: React.FC = () => {
   }, [grid, fabricCount]);
 
   const fabricEstimates = React.useMemo(() => {
-    const widthInches = gridSize / fabricCount;
-    const heightInches = gridSize / fabricCount;
+    const widthInches = gridWidth / fabricCount;
+    const heightInches = gridHeight / fabricCount;
     const fabricWidthInches = widthInches + 4;
     const fabricHeightInches = heightInches + 4;
     return {
@@ -185,7 +202,7 @@ export const Designer: React.FC = () => {
       fabricHeightInches: Math.round(fabricHeightInches * 100) / 100,
       totalSkeins: Math.max(1, Math.ceil(colorThreadEstimates.reduce((sum, c) => sum + c.meters, 0) / 8.7)),
     };
-  }, [gridSize, fabricCount, colorThreadEstimates]);
+  }, [gridWidth, gridHeight, fabricCount, colorThreadEstimates]);
 
   const FABRIC_COUNTS = [11, 14, 18, 22, 25, 28, 32, 36];
 
@@ -218,17 +235,17 @@ export const Designer: React.FC = () => {
   const handlePlaceText = useCallback(() => {
     if (!alphabetText.trim()) return;
     const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
-    renderTextToGrid(alphabetText, font, placeRow, placeCol, selectedColor, selectedStitch, gridSize, setCell);
+    renderTextToGrid(alphabetText, font, placeRow, placeCol, selectedColor, selectedStitch, gridWidth, gridHeight, setCell);
     setAlphabetText('');
-  }, [alphabetText, selectedFontId, placeRow, placeCol, selectedColor, selectedStitch, gridSize, setCell]);
+  }, [alphabetText, selectedFontId, placeRow, placeCol, selectedColor, selectedStitch, gridWidth, gridHeight, setCell]);
 
   const mirrorCellEdit = useCallback((row: number, col: number, color: string, stitch: string) => {
     if (!mirrorEnabled) return;
-    const mirroredRow = gridSize - 1 - row;
-    const mirroredCol = gridSize - 1 - col;
+    const mirroredRow = gridHeight - 1 - row;
+    const mirroredCol = gridWidth - 1 - col;
     if (mirroredRow === row && mirroredCol === col) return;
     setCell(mirroredRow, mirroredCol, color, stitch);
-  }, [mirrorEnabled, gridSize, setCell]);
+  }, [mirrorEnabled, gridWidth, gridHeight, setCell]);
 
   const handleCellAction = useCallback((row: number, col: number) => {
     const key = `${row},${col}`;
@@ -237,8 +254,8 @@ export const Designer: React.FC = () => {
       case 'erase': {
         clearCell(row, col);
         if (mirrorEnabled) {
-          const mRow = gridSize - 1 - row;
-          const mCol = gridSize - 1 - col;
+          const mRow = gridHeight - 1 - row;
+          const mCol = gridWidth - 1 - col;
           if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
         }
         break;
@@ -340,7 +357,7 @@ export const Designer: React.FC = () => {
           newStitchTypes[k] = selectedStitch;
           for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
             const nr = r + dr, nc = c + dc;
-            if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) continue;
+            if (nr < 0 || nr >= gridHeight || nc < 0 || nc >= gridWidth) continue;
             const nk = `${nr},${nc}`;
             if (visited.has(nk)) continue;
             visited.add(nk);
@@ -353,7 +370,7 @@ export const Designer: React.FC = () => {
       }
       case 'shape': {
         if (selectedShape) {
-          const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridSize);
+          const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridWidth, gridHeight);
           setGrid(result.grid);
           setGridStitchTypes(result.stitchTypes);
         }
@@ -377,8 +394,8 @@ export const Designer: React.FC = () => {
         setGridStitchTypes(newStitchTypes);
 
         if (mirrorEnabled) {
-          const mRow = gridSize - 1 - row;
-          const mCol = gridSize - 1 - col;
+          const mRow = gridHeight - 1 - row;
+          const mCol = gridWidth - 1 - col;
           if (mRow !== row || mCol !== col) {
             const mKey = `${mRow},${mCol}`;
             if (newGrid[key] === selectedColor) {
@@ -395,7 +412,7 @@ export const Designer: React.FC = () => {
         break;
       }
     }
-  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridSize, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape]);
+  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
@@ -405,8 +422,8 @@ export const Designer: React.FC = () => {
     } else if (activeTool === 'erase') {
       clearCell(row, col);
       if (mirrorEnabled) {
-        const mRow = gridSize - 1 - row;
-        const mCol = gridSize - 1 - col;
+        const mRow = gridHeight - 1 - row;
+        const mCol = gridWidth - 1 - col;
         if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
       }
     }
@@ -417,8 +434,47 @@ export const Designer: React.FC = () => {
     setCloneSource(null);
   };
 
+  // Canvas resize logic
+  const hasStitchesOutside = (newW: number, newH: number): boolean => {
+    for (const key of Object.keys(grid)) {
+      if (!grid[key]) continue;
+      const [r, c] = key.split(',').map(Number);
+      if (r >= newH || c >= newW) return true;
+    }
+    return false;
+  };
 
-  const stitchData: StitchGridData = buildManualGridData(grid, gridStitchTypes, gridSize);
+  const applyResize = (newW: number, newH: number) => {
+    // Clip any stitches outside the new bounds
+    const newGrid: Record<string, string> = {};
+    const newStitchTypes: Record<string, string> = {};
+    for (const key of Object.keys(grid)) {
+      if (!grid[key]) continue;
+      const [r, c] = key.split(',').map(Number);
+      if (r < newH && c < newW) {
+        newGrid[key] = grid[key];
+        if (gridStitchTypes[key]) newStitchTypes[key] = gridStitchTypes[key];
+      }
+    }
+    setGrid(newGrid);
+    setGridStitchTypes(newStitchTypes);
+    setGridWidth(newW);
+    setGridHeight(newH);
+    setShowResizeWarning(false);
+  };
+
+  const requestResize = (newW: number, newH: number) => {
+    setPendingGridWidth(newW);
+    setPendingGridHeight(newH);
+    if (hasStitchesOutside(newW, newH)) {
+      setShowResizeWarning(true);
+    } else {
+      applyResize(newW, newH);
+    }
+  };
+
+
+  const stitchData: StitchGridData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -921,6 +977,108 @@ export const Designer: React.FC = () => {
               </div>
             </div>
 
+            {/* === CANVAS SIZE CONTROLS === */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Ruler className="h-5 w-5 text-blush-500" /> Canvas Size
+              </h2>
+
+              {/* Resize warning */}
+              {showResizeWarning && (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[11px] font-bold text-amber-800">Stitches will be lost</p>
+                      <p className="text-[10px] text-amber-700">
+                        Resizing to {pendingGridWidth}×{pendingGridHeight} will remove stitches outside the new bounds.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => applyResize(pendingGridWidth, pendingGridHeight)}
+                      className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold py-1.5 transition-all"
+                    >
+                      Resize & Clip
+                    </button>
+                    <button
+                      onClick={() => setShowResizeWarning(false)}
+                      className="flex-1 rounded-lg bg-white border border-amber-200 text-amber-700 text-[10px] font-bold py-1.5 hover:bg-amber-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Preset sizes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Preset Sizes</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {CANVAS_PRESETS.map((preset) => {
+                    const isActive = gridWidth === preset.width && gridHeight === preset.height;
+                    const physW = stitchesToInches(preset.width, fabricCount);
+                    const physH = stitchesToInches(preset.height, fabricCount);
+                    return (
+                      <button
+                        key={preset.name}
+                        onClick={() => requestResize(preset.width, preset.height)}
+                        className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
+                          isActive
+                            ? 'bg-blush-500 text-white border-blush-500 shadow-sm'
+                            : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold leading-tight">{preset.name}</div>
+                        <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                          {preset.width}×{preset.height} · {physW.toFixed(1)}″×{physH.toFixed(1)}″ on {fabricCount}ct
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Manual size inputs */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Custom Size</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-500">W:</span>
+                    <input
+                      type="number"
+                      value={gridWidth}
+                      onChange={(e) => {
+                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        requestResize(v, gridHeight);
+                      }}
+                      className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
+                      min={6} max={200}
+                    />
+                  </div>
+                  <span className="text-slate-300 font-bold">×</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-500">H:</span>
+                    <input
+                      type="number"
+                      value={gridHeight}
+                      onChange={(e) => {
+                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        requestResize(gridWidth, v);
+                      }}
+                      className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
+                      min={6} max={200}
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  Physical size on {fabricCount}ct: {stitchesToInches(gridWidth, fabricCount).toFixed(1)}″ × {stitchesToInches(gridHeight, fabricCount).toFixed(1)}″
+                  {gridWidth !== gridHeight && <span className="text-amber-500 ml-1">(non-square)</span>}
+                </p>
+              </div>
+            </div>
+
             {stitchData && stitchData.dmcPalette.length > 0 && (
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
                 <DmcLegend palette={stitchData.dmcPalette} />
@@ -1166,12 +1324,12 @@ export const Designer: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-400">R:</span>
                         <input type="number" value={placeRow}
-                          onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridSize - 1} />
+                          onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridHeight - 1, Number(e.target.value))))}
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridHeight - 1} />
                         <span className="text-[10px] text-slate-400">C:</span>
                         <input type="number" value={placeCol}
-                          onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridSize - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridSize - 1} />
+                          onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridWidth - 1, Number(e.target.value))))}
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridWidth - 1} />
                       </div>
                       <button onClick={handlePlaceText} disabled={!alphabetText.trim()}
                         className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all">
@@ -1222,7 +1380,7 @@ export const Designer: React.FC = () => {
               <div className="w-full mt-4 flex items-center justify-between p-3 bg-blush-50/50 border border-blush-100 rounded-xl">
                 <div className="flex items-center gap-2">
                   <Square className="h-4 w-4 text-blush-500" />
-                  <span className="text-xs font-bold text-slate-700">{gridSize}x{gridSize} Grid</span>
+                  <span className="text-xs font-bold text-slate-700">{gridWidth}×{gridHeight} Grid</span>
                 </div>
                 <span className="text-xs text-slate-500">
                   {stitchData.totalStitches} stitches

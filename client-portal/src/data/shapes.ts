@@ -727,7 +727,8 @@ export function stampShape(
   targetCol: number,
   color: string,
   stitchType: string,
-  gridSize: number,
+  gridWidth: number,
+  gridHeight: number,
 ): { grid: Record<string, string>; stitchTypes: Record<string, string> } {
   const newGrid = { ...grid };
   const newStitchTypes = { ...stitchTypes };
@@ -736,7 +737,7 @@ export function stampShape(
       if (!shape.grid[r][c]) continue;
       const gr = targetRow + r;
       const gc = targetCol + c;
-      if (gr < 0 || gr >= gridSize || gc < 0 || gc >= gridSize) continue;
+      if (gr < 0 || gr >= gridHeight || gc < 0 || gc >= gridWidth) continue;
       const key = `${gr},${gc}`;
       newGrid[key] = color;
       newStitchTypes[key] = stitchType;
