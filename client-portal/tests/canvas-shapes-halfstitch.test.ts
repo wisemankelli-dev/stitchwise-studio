@@ -11,32 +11,48 @@ describe('Canvas Size Control', () => {
   describe('CANVAS_PRESETS', () => {
     // Import CANVAS_PRESETS from the source — we replicate for test independence
     const CANVAS_PRESETS = [
-      { name: 'Bag Charm', width: 6, height: 6 },
-      { name: 'Ornament', width: 8, height: 8 },
-      { name: '5×7 Frame', width: 10, height: 14 },
-      { name: '8×10 Frame', width: 16, height: 20 },
-      { name: 'Pillow', width: 14, height: 14 },
-      { name: 'Stocking', width: 12, height: 18 },
-      { name: 'Large Pillow', width: 18, height: 18 },
-      { name: 'Wall Hanging', width: 18, height: 36 },
+      { name: 'Bag Charm', inchW: 2, inchH: 2 },
+      { name: 'Ornament', inchW: 3, inchH: 3 },
+      { name: '5×7 Frame', inchW: 5, inchH: 7 },
+      { name: '8×10 Frame', inchW: 8, inchH: 10 },
+      { name: 'Pillow', inchW: 6, inchH: 6 },
+      { name: 'Stocking', inchW: 5, inchH: 8 },
+      { name: 'Large Pillow', inchW: 8, inchH: 8 },
+      { name: 'Wall Hanging', inchW: 8, inchH: 16 },
     ];
 
     it('should have 8 preset sizes', () => {
       expect(CANVAS_PRESETS).toHaveLength(8);
     });
 
-    it('should include non-square presets (Stocking 12×18, Wall Hanging 18×36)', () => {
-      const nonSquare = CANVAS_PRESETS.filter(p => p.width !== p.height);
+    it('should include non-square presets (Stocking 5″×8″, Wall Hanging 8″×16″)', () => {
+      const nonSquare = CANVAS_PRESETS.filter(p => p.inchW !== p.inchH);
       expect(nonSquare.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('should have all widths between 6 and 200', () => {
+    it('should have all physical dimensions between 2″ and 16″', () => {
       for (const preset of CANVAS_PRESETS) {
-        expect(preset.width).toBeGreaterThanOrEqual(6);
-        expect(preset.width).toBeLessThanOrEqual(200);
-        expect(preset.height).toBeGreaterThanOrEqual(6);
-        expect(preset.height).toBeLessThanOrEqual(200);
+        expect(preset.inchW).toBeGreaterThanOrEqual(2);
+        expect(preset.inchW).toBeLessThanOrEqual(16);
+        expect(preset.inchH).toBeGreaterThanOrEqual(2);
+        expect(preset.inchH).toBeLessThanOrEqual(16);
       }
+    });
+
+    it('should compute stitch counts from physical inches and fabric count', () => {
+      // inchesToStitches = clamp(Math.round(inches * fabricCount), 6, 200)
+      const inchesToStitches = (inches: number, fabricCount: number) =>
+        Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
+      // 3″ on 14ct = 42 stitches
+      expect(inchesToStitches(3, 14)).toBe(42);
+      // 5″ on 14ct = 70 stitches
+      expect(inchesToStitches(5, 14)).toBe(70);
+      // 8″ on 14ct = 112 stitches
+      expect(inchesToStitches(8, 14)).toBe(112);
+      // 2″ on 18ct = 36 stitches
+      expect(inchesToStitches(2, 18)).toBe(36);
+      // 16″ on 14ct = 224, clamped to 200
+      expect(inchesToStitches(16, 14)).toBe(200);
     });
 
     it('should have Fabric Count physics helper', () => {
@@ -48,13 +64,12 @@ describe('Canvas Size Control', () => {
     });
 
     it('should compute physical sizes for presets on 14ct fabric', () => {
-      const stitchesToInches = (stitches: number, fabricCount: number) => stitches / fabricCount;
+      const inchesToStitches = (inches: number, fabricCount: number) =>
+        Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
       const bagCharm = CANVAS_PRESETS[0];
-      const w = stitchesToInches(bagCharm.width, 14);
-      const h = stitchesToInches(bagCharm.height, 14);
-      // 6/14 ≈ 0.43"
-      expect(w).toBeCloseTo(0.43, 1);
-      expect(h).toBeCloseTo(0.43, 1);
+      // 2″ × 14ct = 28 stitches
+      expect(inchesToStitches(bagCharm.inchW, 14)).toBe(28);
+      expect(inchesToStitches(bagCharm.inchH, 14)).toBe(28);
     });
   });
 

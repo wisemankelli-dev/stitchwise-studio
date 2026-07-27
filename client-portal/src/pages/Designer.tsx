@@ -49,17 +49,24 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
 ];
 
-/** Canvas size presets for common project types */
-const CANVAS_PRESETS: { name: string; width: number; height: number }[] = [
-  { name: 'Bag Charm', width: 6, height: 6 },
-  { name: 'Ornament', width: 8, height: 8 },
-  { name: '5×7 Frame', width: 10, height: 14 },
-  { name: '8×10 Frame', width: 16, height: 20 },
-  { name: 'Pillow', width: 14, height: 14 },
-  { name: 'Stocking', width: 12, height: 18 },
-  { name: 'Large Pillow', width: 18, height: 18 },
-  { name: 'Wall Hanging', width: 18, height: 36 },
+/** Canvas size presets defined as physical dimensions (inches).
+ *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches). */
+interface CanvasPreset { name: string; inchW: number; inchH: number; }
+const CANVAS_PRESETS: CanvasPreset[] = [
+  { name: 'Bag Charm', inchW: 2, inchH: 2 },
+  { name: 'Ornament', inchW: 3, inchH: 3 },
+  { name: '5×7 Frame', inchW: 5, inchH: 7 },
+  { name: '8×10 Frame', inchW: 8, inchH: 10 },
+  { name: 'Pillow', inchW: 6, inchH: 6 },
+  { name: 'Stocking', inchW: 5, inchH: 8 },
+  { name: 'Large Pillow', inchW: 8, inchH: 8 },
+  { name: 'Wall Hanging', inchW: 8, inchH: 16 },
 ];
+
+/** Compute stitch count from physical inches and fabric count, clamped to [6, 200] */
+function inchesToStitches(inches: number, fabricCount: number): number {
+  return Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
+}
 
 /** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
 function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
@@ -140,6 +147,9 @@ export const Designer: React.FC = () => {
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
+  
+  // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
+  const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
 
 
   // Utility: stitches to inches based on fabric count
@@ -673,13 +683,16 @@ export const Designer: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Preset Sizes</label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {CANVAS_PRESETS.map((preset) => {
-                    const isActive = gridWidth === preset.width && gridHeight === preset.height;
-                    const physW = stitchesToInches(preset.width, fabricCount);
-                    const physH = stitchesToInches(preset.height, fabricCount);
+                    const stitchW = inchesToStitches(preset.inchW, fabricCount);
+                    const stitchH = inchesToStitches(preset.inchH, fabricCount);
+                    const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
                     return (
                       <button
                         key={preset.name}
-                        onClick={() => requestResize(preset.width, preset.height)}
+                        onClick={() => {
+                          setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+                          requestResize(stitchW, stitchH);
+                        }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
                           isActive
                             ? 'bg-blush-500 text-white border-blush-500 shadow-sm'
@@ -688,7 +701,7 @@ export const Designer: React.FC = () => {
                       >
                         <div className="text-[10px] font-bold leading-tight">{preset.name}</div>
                         <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
-                          {preset.width}×{preset.height} · {physW.toFixed(1)}″×{physH.toFixed(1)}″ on {fabricCount}ct
+                          {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
                         </div>
                       </button>
                     );
@@ -707,6 +720,7 @@ export const Designer: React.FC = () => {
                       value={gridWidth}
                       onChange={(e) => {
                         const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        setActivePreset(null);
                         requestResize(v, gridHeight);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
@@ -721,6 +735,7 @@ export const Designer: React.FC = () => {
                       value={gridHeight}
                       onChange={(e) => {
                         const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        setActivePreset(null);
                         requestResize(gridWidth, v);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
@@ -766,7 +781,16 @@ export const Designer: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Fabric Count (stitches/inch)</label>
                 <select
                   value={fabricCount}
-                  onChange={(e) => setFabricCount(Number(e.target.value))}
+                  onChange={(e) => {
+                    const newCount = Number(e.target.value);
+                    setFabricCount(newCount);
+                    // If a preset is active, recalculate grid from physical dimensions
+                    if (activePreset) {
+                      const newW = inchesToStitches(activePreset.inchW, newCount);
+                      const newH = inchesToStitches(activePreset.inchH, newCount);
+                      requestResize(newW, newH);
+                    }
+                  }}
                   className="w-full rounded-xl border-blush-100 text-sm text-slate-700 font-semibold px-3 py-2 bg-white shadow-sm focus:border-blush-500 focus:ring-blush-500"
                 >
                   {FABRIC_COUNTS.map((count) => (
