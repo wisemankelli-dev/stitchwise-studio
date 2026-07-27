@@ -261,7 +261,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     }
 
     // ── Half-fill diagonal rendering ──
-    if (cellFractions && cellSize >= 8) {
+    if (cellFractions && cellSize >= 5) {
       for (const [key, fraction] of Object.entries(cellFractions)) {
         const [r, c] = key.split(',').map(Number);
         const cell = data.grid[r]?.[c];
@@ -272,8 +272,14 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         ctx.beginPath();
         ctx.rect(x, y, cellSize, cellSize);
         ctx.clip();
-        // Draw diagonal half-fill: color on bottom-left triangle, background on top-right
-        if (fraction <= 0.25) {
+        if (cellSize < 8) {
+          // Small cells: show indicator dot in center proportional to fraction
+          const indicatorSize = Math.max(1, cellSize * fraction * 0.6);
+          ctx.fillStyle = '#334155'; // dark slate indicator
+          ctx.beginPath();
+          ctx.arc(x + cellSize / 2, y + cellSize / 2, indicatorSize, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (fraction <= 0.25) {
           // Small corner fill
           ctx.fillStyle = cell.color;
           ctx.beginPath();
