@@ -10,6 +10,7 @@ import {
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
+import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
 
@@ -515,6 +516,20 @@ export const Designer: React.FC = () => {
     setGrid({}); setGridStitchTypes({});
     setCloneSource(null);
   };
+
+  const handleExportPdf = useCallback(() => {
+    const colorNames: Record<string, string> = {};
+    for (const c of COLORS) colorNames[c.hex] = c.name;
+    exportPatternToPdf({
+      patternName: 'StitchWise Pattern',
+      grid,
+      gridWidth,
+      gridHeight,
+      fabricCount,
+      colorNames,
+      cellFractions,
+    });
+  }, [grid, gridWidth, gridHeight, fabricCount, cellFractions]);
 
   // Canvas resize logic
   const hasStitchesOutside = (newW: number, newH: number): boolean => {
@@ -1334,8 +1349,8 @@ export const Designer: React.FC = () => {
                   <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
                     <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
-                  <button className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
-                    <Download className="h-3.5 w-3.5" /> Export
+                  <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
+                    <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
                 </div>
               </div>
