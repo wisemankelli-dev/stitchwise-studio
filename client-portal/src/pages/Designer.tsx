@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
-  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Shapes, Triangle
+  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -16,7 +16,7 @@ import ShapePicker from '../components/ShapePicker';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
-type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape' | 'half';
+type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'half';
 
 const COLORS = [
   { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
@@ -43,7 +43,6 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'eyedropper', icon: <Pipette className="h-3.5 w-3.5" />, label: 'Pick' },
   { id: 'clone', icon: <Copy className="h-3.5 w-3.5" />, label: 'Clone' },
   { id: 'mirror', icon: <FlipHorizontal className="h-3.5 w-3.5" />, label: 'Mirror' },
-  { id: 'shape', icon: <Shapes className="h-3.5 w-3.5" />, label: 'Shape' },
   { id: 'alphabet', icon: <Type className="h-3.5 w-3.5" />, label: 'Text' },
   { id: 'pan', icon: <Hand className="h-3.5 w-3.5" />, label: 'Pan' },
   { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
@@ -235,6 +234,15 @@ export const Designer: React.FC = () => {
   const handleCellAction = useCallback((row: number, col: number) => {
     const key = `${row},${col}`;
 
+    // Shape stamping: independent of active tool
+    // If a shape is selected from the ShapePicker, clicking stamps it
+    if (selectedShape) {
+      const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridWidth, gridHeight);
+      setGrid(result.grid);
+      setGridStitchTypes(result.stitchTypes);
+      return; // shape stays selected for multiple stamps
+    }
+
     switch (activeTool) {
       case 'erase': {
         clearCell(row, col);
@@ -369,14 +377,6 @@ export const Designer: React.FC = () => {
         }
         setGrid(newGrid);
         setGridStitchTypes(newStitchTypes);
-        break;
-      }
-      case 'shape': {
-        if (selectedShape) {
-          const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridWidth, gridHeight);
-          setGrid(result.grid);
-          setGridStitchTypes(result.stitchTypes);
-        }
         break;
       }
       case 'pan': {
@@ -767,7 +767,6 @@ export const Designer: React.FC = () => {
               selectedColor={selectedColor}
               onSelectShape={(shape) => {
                 setSelectedShape(shape);
-                setActiveTool('shape');
               }}
             />
 

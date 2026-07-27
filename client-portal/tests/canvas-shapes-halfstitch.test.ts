@@ -581,18 +581,18 @@ describe('Designer Toolbar Consistency', () => {
   it('should have all editing tools in the correct order', () => {
     const TOOLS = [
       'select', 'paint', 'rectangle', 'circle', 'line', 'fill',
-      'erase', 'eyedropper', 'clone', 'mirror', 'shape', 'alphabet', 'pan', 'half',
+      'erase', 'eyedropper', 'clone', 'mirror', 'alphabet', 'pan', 'half',
     ];
-    expect(TOOLS.length).toBeGreaterThanOrEqual(13);
+    expect(TOOLS.length).toBeGreaterThanOrEqual(12);
     expect(TOOLS).toContain('half');
-    expect(TOOLS).toContain('shape');
     expect(TOOLS).toContain('paint');
     expect(TOOLS).toContain('rectangle');
+    expect(TOOLS).not.toContain('shape');
   });
 
   it('should include half-stitch tool after Pan tool', () => {
     const tools = ['select', 'paint', 'rectangle', 'circle', 'line', 'fill',
-      'erase', 'eyedropper', 'clone', 'mirror', 'shape', 'alphabet', 'pan', 'half'];
+      'erase', 'eyedropper', 'clone', 'mirror', 'alphabet', 'pan', 'half'];
     const panIdx = tools.indexOf('pan');
     const halfIdx = tools.indexOf('half');
     expect(halfIdx).toBe(panIdx + 1);
