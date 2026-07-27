@@ -982,7 +982,8 @@ export function renderTextToGrid(
   startCol: number,
   color: string,
   stitchType: string,
-  gridSize: number,
+  gridWidth: number,
+  gridHeight: number,
   setCell: (row: number, col: number, color: string, stitch: string) => void,
 ): void {
   const { glyphs, charWidth, charHeight, spacing } = font;
@@ -1005,7 +1006,7 @@ export function renderTextToGrid(
         if (glyph[r]?.[c]) {
           const gridRow = startRow + r;
           const gridCol = cursorCol + c;
-          if (gridRow >= 0 && gridRow < gridSize && gridCol >= 0 && gridCol < gridSize) {
+          if (gridRow >= 0 && gridRow < gridHeight && gridCol >= 0 && gridCol < gridWidth) {
             setCell(gridRow, gridCol, color, stitchType);
           }
         }
