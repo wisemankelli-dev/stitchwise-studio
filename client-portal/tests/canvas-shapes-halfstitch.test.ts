@@ -268,32 +268,110 @@ describe('ShapePicker & Shapes Library', () => {
   });
 
   describe('Shape data integrity', () => {
-    it('should require all shapes to have matching width/height with grid dimensions', () => {
-      // Validate that a shape's width matches grid[0].length and height matches grid.length
-      const validateShape = (shape: { grid: boolean[][]; width: number; height: number }) => {
-        expect(shape.grid.length).toBe(shape.height);
-        if (shape.height > 0) {
-          for (const row of shape.grid) {
-            expect(row.length).toBe(shape.width);
+    // Dynamically import real shapes
+    let SHAPES: Array<{ id: string; name: string; category: string; grid: boolean[][]; width: number; height: number }>;
+    let stampShape: Function;
+
+    beforeAll(async () => {
+      const mod = await import('../src/data/shapes');
+      SHAPES = mod.default;
+      stampShape = mod.stampShape;
+    });
+
+    it('should have at least 34 shapes', () => {
+      expect(SHAPES.length).toBeGreaterThanOrEqual(34);
+    });
+
+    it('should have every shape pass width/height validation', () => {
+      for (const shape of SHAPES) {
+        // Height must match grid.length
+        expect(shape.grid.length, `${shape.id}: height mismatch`).toBe(shape.height);
+        // Every row must have width columns
+        for (let r = 0; r < shape.grid.length; r++) {
+          expect(shape.grid[r].length, `${shape.id}: row ${r} width mismatch (expected ${shape.width}, got ${shape.grid[r].length})`).toBe(shape.width);
+        }
+      }
+    });
+
+    it('should have every shape contain at least one filled cell', () => {
+      for (const shape of SHAPES) {
+        const filledCount = shape.grid.flat().filter(Boolean).length;
+        expect(filledCount, `${shape.id}: has no filled cells`).toBeGreaterThan(0);
+      }
+    });
+
+    it('should have unique shape IDs', () => {
+      const ids = SHAPES.map(s => s.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('should stamp shape within bounds using real shape (rabbit)', () => {
+      const rabbit = SHAPES.find(s => s.id === 'rabbit')!;
+      expect(rabbit).toBeDefined();
+      const result = stampShape({}, {}, rabbit, 0, 0, '#ff0000', 'cross', 32, 32);
+      // Count how many cells were stamped
+      const rabbitFilled = rabbit.grid.flat().filter(Boolean).length;
+      const stampedCount = Object.keys(result.grid).length;
+      expect(stampedCount).toBe(rabbitFilled);
+      // Verify shape's top-left corner
+      // Rabbit first row has '#' at column 5 and 6 (0-indexed)
+      expect(result.grid['0,5']).toBe('#ff0000');
+    });
+
+    it('should stamp shape and clip at grid boundaries', () => {
+      const heart = SHAPES.find(s => s.id === 'heart')!;
+      // Stamp at edge — it should clip
+      const result = stampShape({}, {}, heart, 0, 30, '#ff0000', 'cross', 32, 32);
+      // Should not crash; some cells may be outside
+      const stampedKeys = Object.keys(result.grid);
+      for (const key of stampedKeys) {
+        const [r, c] = key.split(',').map(Number);
+        expect(r).toBeLessThan(32);
+        expect(c).toBeLessThan(32);
+      }
+    });
+  });
+
+  describe('Shape category stamping', () => {
+    let SHAPES: Array<{ id: string; name: string; category: string; grid: boolean[][]; width: number; height: number }>;
+    let stampShape: Function;
+
+    beforeAll(async () => {
+      const mod = await import('../src/data/shapes');
+      SHAPES = mod.default;
+      stampShape = mod.stampShape;
+    });
+
+    const CATEGORIES = ['Animals', 'Nature', 'Flowers', 'Holiday', 'Food', 'Symbols', 'Borders', 'Geometric'];
+
+    for (const category of CATEGORIES) {
+      it(`should have shapes in ${category} category`, () => {
+        const catShapes = SHAPES.filter(s => s.category === category);
+        expect(catShapes.length).toBeGreaterThan(0);
+      });
+
+      it(`should stamp first shape from ${category} category correctly`, () => {
+        const shapes = SHAPES.filter(s => s.category === category);
+        const shape = shapes[0];
+        expect(shape).toBeDefined();
+        
+        const result = stampShape({}, {}, shape, 2, 2, '#ff0000', 'cross', 32, 32);
+        const expectedFilled = shape.grid.flat().filter(Boolean).length;
+        const actualStamped = Object.keys(result.grid).length;
+        
+        // All filled cells should be stamped (none clipped since 2,2 offset + max shape size << 32)
+        expect(actualStamped).toBe(expectedFilled);
+        
+        // Verify first filled cell is stamped at correct offset
+        let firstFilledR = -1, firstFilledC = -1;
+        for (let r = 0; r < shape.height && firstFilledR === -1; r++) {
+          for (let c = 0; c < shape.width && firstFilledR === -1; c++) {
+            if (shape.grid[r][c]) { firstFilledR = r; firstFilledC = c; }
           }
         }
-      };
-
-      // Test with a sample shape
-      const sample = {
-        grid: [[true, false], [false, true]],
-        width: 2,
-        height: 2,
-      };
-      expect(() => validateShape(sample)).not.toThrow();
-
-      const bad = {
-        grid: [[true, false, true]],
-        width: 2, // wrong — should be 3
-        height: 1,
-      };
-      expect(bad.grid[0].length).not.toBe(bad.width);
-    });
+        expect(result.grid[`${2 + firstFilledR},${2 + firstFilledC}`]).toBe('#ff0000');
+      });
+    }
   });
 });
 
