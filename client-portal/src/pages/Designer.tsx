@@ -10,7 +10,8 @@ import {
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
-import SHAPES, { getShapesByCategory, stampShape, type ClipartShape, SHAPE_CATEGORIES, type ShapeCategory } from '../data/shapes';
+import { stampShape, type ClipartShape } from '../data/shapes';
+import ShapePicker from '../components/ShapePicker';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -138,8 +139,6 @@ export const Designer: React.FC = () => {
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
 
   // Shape browser state
-  const [showShapePanel, setShowShapePanel] = useState(false);
-  const [shapeCategory, setShapeCategory] = useState<ShapeCategory>('Animals');
   const [selectedShape, setSelectedShape] = useState<ClipartShape | null>(null);
 
   // Material Estimator state
@@ -986,89 +985,14 @@ export const Designer: React.FC = () => {
             )}
 
             {/* === SHAPE BROWSER === */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
-              <button
-                onClick={() => setShowShapePanel(!showShapePanel)}
-                className="w-full flex items-center justify-between text-left"
-              >
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Shapes className="h-5 w-5 text-blush-500" /> Clipart Shapes
-                </h2>
-                <span className="text-xs text-slate-400">{showShapePanel ? '▲' : '▼'}</span>
-              </button>
-
-              {showShapePanel && (
-                <>
-                  {/* Category tabs */}
-                  <div className="flex flex-wrap gap-1">
-                    {SHAPE_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat}
-                        onClick={() => setShapeCategory(cat)}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
-                          shapeCategory === cat
-                            ? 'bg-blush-500 text-white border-blush-500'
-                            : 'bg-white text-slate-500 border-blush-100 hover:bg-blush-50'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Shape grid */}
-                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                    {getShapesByCategory()[shapeCategory]?.map((shape) => (
-                      <button
-                        key={shape.id}
-                        onClick={() => {
-                          setSelectedShape(shape);
-                          setActiveTool('shape');
-                        }}
-                        className={`p-2 rounded-lg border transition-all ${
-                          selectedShape?.id === shape.id
-                            ? 'border-blush-500 bg-blush-50 ring-1 ring-blush-500'
-                            : 'border-blush-100 bg-white hover:bg-blush-50'
-                        }`}
-                        title={shape.name}
-                      >
-                        {/* Mini preview */}
-                        <div className="grid gap-0 mx-auto mb-1"
-                          style={{
-                            gridTemplateColumns: `repeat(${Math.min(shape.width, 8)}, 3px)`,
-                            width: Math.min(shape.width, 8) * 3,
-                          }}>
-                          {shape.grid.slice(0, 8).flatMap((row, r) =>
-                            row.slice(0, 8).map((cell, c) => (
-                              <div
-                                key={`${r}-${c}`}
-                                className="rounded-[0.5px]"
-                                style={{
-                                  width: 3, height: 3,
-                                  backgroundColor: cell ? selectedColor : '#fdf2f8',
-                                  border: cell ? 'none' : '0.5px solid #fce7f3',
-                                }}
-                              />
-                            ))
-                          )}
-                        </div>
-                        <span className="text-[9px] font-medium text-slate-600 leading-tight block text-center truncate">
-                          {shape.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {selectedShape && (
-                    <div className="p-2 bg-blush-50 rounded-lg border border-blush-100">
-                      <p className="text-[10px] text-slate-600">
-                        <strong>{selectedShape.name}</strong> selected — click on grid to place.
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <ShapePicker
+              selectedShape={selectedShape}
+              selectedColor={selectedColor}
+              onSelectShape={(shape) => {
+                setSelectedShape(shape);
+                setActiveTool('shape');
+              }}
+            />
 
             {/* === MATERIAL ESTIMATOR === */}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
