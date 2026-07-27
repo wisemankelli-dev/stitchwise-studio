@@ -622,7 +622,7 @@ export const Designer: React.FC = () => {
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDraggingGen(true); }}
               onDragLeave={() => setIsDraggingGen(false)}
-              onDrop={handleGenDrop}
+              onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (file) handleGenFileChange({ target: { files: [file] } } as any); }}
               className={`border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer ${isDraggingGen ? 'border-blush-500 bg-blush-50/50' : 'border-blush-200 hover:bg-blush-50/50'}`}
             >
               <input type="file" id="gen-file-upload" className="hidden" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleGenFileChange} />
