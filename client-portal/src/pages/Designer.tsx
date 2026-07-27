@@ -1,15 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Download, Layers, Palette, Play, CheckCircle2, RotateCcw,
-  UploadCloud, Image, Eye, Trash2, ArrowLeft,
-  Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
+  Download, Layers, Palette, RotateCcw,
+  ArrowLeft,
+  Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Shapes, Triangle
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
-import type { AIPatternResponse } from '../services/api';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
@@ -49,7 +48,6 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
 ];
 
-const GRID_SIZES = [50, 75, 100, 150, 200];
 
 /** Canvas size presets for common project types */
 const CANVAS_PRESETS: { name: string; width: number; height: number }[] = [
@@ -64,9 +62,6 @@ const CANVAS_PRESETS: { name: string; width: number; height: number }[] = [
 ];
 
 /** Standard embroidery hoop diameters (inches) */
-const HOOP_SIZES = [4, 5, 6, 7, 8, 10, 12];
-const LARGE_HOOP_THRESHOLD = 8;   // warn if design exceeds 8"
-const MAX_HOOP_THRESHOLD = 12;    // strongly warn if design exceeds 12"
 
 /** Calculate physical inches from stitch count and fabric count */
 function stitchesToInches(stitches: number, fabricCount: number): number {
@@ -128,15 +123,6 @@ export const Designer: React.FC = () => {
   const [showResizeWarning, setShowResizeWarning] = useState(false);
   const [pendingGridWidth, setPendingGridWidth] = useState(32);
   const [pendingGridHeight, setPendingGridHeight] = useState(32);
-  const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
-  const [promptInput, setPromptInput] = useState('');
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; previewUrl: string } | null>(null);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatorProgress, setGeneratorProgress] = useState(0);
-  const [progressPhase, setProgressPhase] = useState('');
-  const [aiResult, setAiResult] = useState<AIPatternResponse | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLORS[0].hex);
@@ -144,7 +130,6 @@ export const Designer: React.FC = () => {
   const [grid, setGrid] = useState<Record<string, string>>({});
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
   const [cellFractions, setCellFractions] = useState<Record<string, number>>({});
-  const [previewMode, setPreviewMode] = useState<'pattern' | 'original'>('pattern');
   const lastSaved = useRef<Record<string, string>>({});
 
   // Editing Tools state
@@ -163,14 +148,6 @@ export const Designer: React.FC = () => {
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
 
-  // ==================== GENERATE MODULE STATE ====================
-  const [genFile, setGenFile] = useState<{ name: string; previewUrl: string } | null>(null);
-  const [genImagePreview, setGenImagePreview] = useState<string | null>(null);
-  const [selectedGenGridSize, setSelectedGenGridSize] = useState<number>(50);
-  const [genResult, setGenResult] = useState<AIPatternResponse | null>(null);
-  const [isGenUploading, setIsGenUploading] = useState(false);
-  const [isDraggingGen, setIsDraggingGen] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
 
   // --- Material Estimation Calculations ---
   const threadPerStitchCm = 0.5;
@@ -214,66 +191,6 @@ export const Designer: React.FC = () => {
   const [placeRow, setPlaceRow] = useState(4);
   const [placeCol, setPlaceCol] = useState(2);
 
-  // ==================== GENERATE MODULE STUB HANDLERS ====================
-  // These handlers were removed during AI UI cleanup (PR #68) but still referenced in JSX.
-  // TODO: Re-integrate with live AI generation backend when that module is rebuilt.
-  const handleGenFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setGenFile({ name: file.name, previewUrl: URL.createObjectURL(file) });
-    setGenImagePreview(URL.createObjectURL(file));
-    setGenError(null);
-  }, []);
-  const handleGenRemove = useCallback(() => {
-    setGenFile(null);
-    setGenImagePreview(null);
-    setGenResult(null);
-    setGenError(null);
-  }, []);
-  const handleGenerate = useCallback(async () => {
-    if (!genFile) return;
-    setGenError(null);
-    setIsGenUploading(true);
-    try {
-      const { generatePatternFromImage } = await import('../services/api');
-      const result = await generatePatternFromImage(genFile.previewUrl, selectedGenGridSize);
-      setGenResult(result);
-    } catch (err: any) {
-      setGenError(err?.message || 'Generation failed. Please try again.');
-    } finally {
-      setIsGenUploading(false);
-    }
-  }, [genFile, selectedGenGridSize]);
-  const triggerTextGeneration = useCallback(async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!promptInput.trim()) return;
-    setAiError(null);
-    setIsGenerating(true);
-    try {
-      const { generatePatternFromText } = await import('../services/api');
-      const result = await generatePatternFromText(promptInput);
-      setAiResult(result);
-    } catch (err: any) {
-      setAiError(err?.message || 'Generation failed. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [promptInput]);
-  const triggerImageGeneration = useCallback(async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!uploadedFile) return;
-    setAiError(null);
-    setIsGenerating(true);
-    try {
-      const { generatePatternFromImage } = await import('../services/api');
-      const result = await generatePatternFromImage(uploadedFile.previewUrl, 50);
-      setAiResult(result);
-    } catch (err: any) {
-      setAiError(err?.message || 'Generation failed. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [uploadedFile]);
 
   const setCell = useCallback((row: number, col: number, color: string, stitch: string) => {
     const key = `${row},${col}`;
@@ -671,425 +588,11 @@ export const Designer: React.FC = () => {
           <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design perfect patterns stitch by stitch.</p>
         </div>
 
-        {/* ==================== GENERATE MODULE: Upload + Grid Preview ==================== */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <UploadCloud className="h-5 w-5 text-blush-500" />
-            <h2 className="text-lg font-bold text-slate-800">Generate from Image</h2>
-          </div>
-          <p className="text-xs text-slate-500 mb-4">Upload clean artwork, then convert to a stitch grid. Each pixel = one stitch.</p>
-
-          {/* Upload Drop Zone */}
-          {!genFile ? (
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDraggingGen(true); }}
-              onDragLeave={() => setIsDraggingGen(false)}
-              onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (file) handleGenFileChange({ target: { files: [file] } } as any); }}
-              className={`border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer ${isDraggingGen ? 'border-blush-500 bg-blush-50/50' : 'border-blush-200 hover:bg-blush-50/50'}`}
-            >
-              <input type="file" id="gen-file-upload" className="hidden" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleGenFileChange} />
-              <label htmlFor="gen-file-upload" className="cursor-pointer block space-y-3">
-                <UploadCloud className="h-10 w-10 mx-auto text-blush-400" />
-                <span className="block text-sm font-bold text-slate-700">Drag & drop your artwork here</span>
-                <span className="block text-xs text-slate-400">or click to browse (PNG, JPEG, WebP, GIF)</span>
-              </label>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {/* File info + remove */}
-              <div className="flex items-center justify-between p-3 bg-blush-50/50 rounded-xl border border-blush-100">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded bg-blush-100 flex items-center justify-center text-blush-600 shrink-0 font-bold text-xs uppercase">IMG</div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{genFile.name}</p>
-                  </div>
-                </div>
-                <button onClick={handleGenRemove} disabled={isGenUploading}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Grid Size Selector */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-bold text-slate-700">Grid Size (each cell = one stitch)</label>
-                  <select
-                    value={fabricCount}
-                    onChange={(e) => setFabricCount(Number(e.target.value))}
-                    className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white focus:border-blush-500 focus:ring-blush-500"
-                  >
-                    {FABRIC_COUNTS.map((count) => (
-                      <option key={count} value={count}>{count}ct fabric</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {GRID_SIZES.map((size) => {
-                    const physicalInches = stitchesToInches(size, fabricCount);
-                    const isLarge = physicalInches > LARGE_HOOP_THRESHOLD;
-                    const isTooBig = physicalInches > MAX_HOOP_THRESHOLD;
-                    return (
-                      <button
-                        key={size}
-                        onClick={() => { setSelectedGenGridSize(size); }}
-                        className={`relative px-4 py-2.5 rounded-lg text-sm font-bold border transition-all group ${
-                          selectedGenGridSize === size
-                            ? 'bg-blush-500 text-white border-blush-500 shadow-md'
-                            : isTooBig
-                            ? 'bg-amber-50 text-slate-700 border-amber-200 hover:bg-amber-100'
-                            : isLarge
-                            ? 'bg-amber-50/50 text-slate-700 border-amber-100 hover:bg-amber-50'
-                            : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
-                        }`}
-                      >
-                        <div className="flex flex-col items-center leading-tight">
-                          <span>{size}×{size}</span>
-                          <span className={`text-[9px] font-medium ${selectedGenGridSize === size ? 'text-white/80' : isTooBig ? 'text-amber-600' : isLarge ? 'text-amber-500' : 'text-slate-400'}`}>
-                            ~{physicalInches.toFixed(1)}″
-                          </span>
-                        </div>
-                        {isTooBig && (
-                          <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none shadow-sm">
-                            !
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Hoop-size warning */}
-                {(() => {
-                  const selectedInches = stitchesToInches(selectedGenGridSize, fabricCount);
-                  if (selectedInches > MAX_HOOP_THRESHOLD) {
-                    return (
-                      <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50 rounded-lg border border-amber-200">
-                        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[11px] font-bold text-amber-800">Too large for standard hoops</p>
-                          <p className="text-[10px] text-amber-700">
-                            {selectedGenGridSize}×{selectedGenGridSize} on {fabricCount}ct = {selectedInches.toFixed(1)}″. 
-                            Largest standard hoop is {MAX_HOOP_THRESHOLD}″. Consider a smaller grid or finer fabric ({'>'}{Math.ceil(selectedGenGridSize / MAX_HOOP_THRESHOLD)}ct).
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (selectedInches > LARGE_HOOP_THRESHOLD) {
-                    return (
-                      <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50/50 rounded-lg border border-amber-100">
-                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-amber-700">
-                          {selectedInches.toFixed(1)}″ design ��� requires a large ({'>'}{LARGE_HOOP_THRESHOLD}″) hoop.
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-
-              {/* Generate Button */}
-              <button
-                onClick={handleGenerate}
-                disabled={isGenUploading}
-                className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 text-white font-semibold text-sm px-6 py-3 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isGenUploading ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" /> Generating...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" /> Generate Stitch Grid
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* Error */}
-          {genError && (
-            <div className="mt-4 p-3 bg-rose-50 rounded-xl border border-rose-100 flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
-              <p className="text-xs text-rose-800">{genError}</p>
-            </div>
-          )}
-        </div>
-
-        {/* ==================== SPLIT VIEW: Artwork + Stitch Grid ==================== */}
-        {genResult && genImagePreview && (
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <Layers className="h-5 w-5 text-blush-500" /> Preview
-              </h3>
-              <div className="flex items-center gap-3">
-                {/* Re-size buttons */}
-                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
-                  {GRID_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => handleResize(size)}
-                      disabled={isGenUploading}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                        selectedGenGridSize === size
-                          ? 'bg-white text-slate-800 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={handleSendToCanvas}
-                  className="rounded-xl bg-blush-500 hover:bg-blush-600 text-white text-xs font-bold px-4 py-2 shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  <Paintbrush className="h-3.5 w-3.5" /> Edit in Canvas
-                </button>
-              </div>
-            </div>
-
-            {isGenUploading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center gap-3">
-                  <RefreshCw className="h-8 w-8 text-blush-400 animate-spin" />
-                  <p className="text-sm text-slate-500 font-semibold">Generating stitch grid...</p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* LEFT: Clean Artwork */}
-                <div className="bg-blush-50/30 rounded-xl border border-blush-100 p-4">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Eye className="h-3.5 w-3.5 text-blush-500" /> Clean Artwork
-                  </h4>
-                  <div className="flex items-center justify-center bg-white rounded-lg border border-blush-100 p-4 min-h-[200px]">
-                    <img
-                      src={genImagePreview}
-                      alt="Uploaded artwork"
-                      className="max-w-full max-h-[300px] object-contain rounded-lg shadow-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* RIGHT: Stitch Grid */}
-                <div className="bg-blush-50/30 rounded-xl border border-blush-100 p-4">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5 text-blush-500" /> Stitch Grid ({selectedGenGridSize}×{selectedGenGridSize})
-                  </h4>
-                  <div className="flex items-center justify-center bg-white rounded-lg border border-blush-100 p-4 min-h-[200px]">
-                    {genResult && (
-                      <StitchGrid
-                        data={toGridData(genResult)}
-                        zoom={Math.max(1, Math.min(4, Math.round(500 / (selectedGenGridSize * 4) * 10) / 10))}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Stats row */}
-            {genResult && !isGenUploading && (
-              <div className="mt-4 space-y-3">
-                <div className="flex flex-wrap items-center gap-4 p-3 bg-blush-50/50 rounded-xl border border-blush-100">
-                  <span className="text-xs text-slate-600">
-                    Total stitches: <strong className="text-blush-600">{genResult.totalStitches.toLocaleString()}</strong>
-                  </span>
-                  <span className="text-xs text-slate-600">
-                    Grid: <strong className="text-slate-700">{genResult.width}×{genResult.height}</strong>
-                  </span>
-                  <span className="text-xs text-slate-600">
-                    Colors: <strong className="text-slate-700">{genResult.dmcPalette.length}</strong>
-                  </span>
-                  <span className="text-xs text-slate-600">
-                    Size on {genResult.fabric?.count || fabricCount}ct:{' '}
-                    <strong className="text-blush-600">
-                      {(genResult.fabric?.inches || stitchesToInches(selectedGenGridSize, fabricCount)).toFixed(1)}″ × {(genResult.fabric?.inches || stitchesToInches(selectedGenGridSize, fabricCount)).toFixed(1)}″
-                    </strong>
-                  </span>
-                  <DmcLegend palette={genResult.dmcPalette} />
-                </div>
-
-                {/* Scale reference bar */}
-                <div className="p-3 bg-white rounded-xl border border-blush-100">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Ruler className="h-3.5 w-3.5 text-blush-500" /> Scale Reference ({fabricCount}ct fabric)
-                  </p>
-                  <div className="space-y-2">
-                    {/* Hoop sizes comparison */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] text-slate-400 w-16 shrink-0">Hoop sizes:</span>
-                      <div className="flex-1 relative h-8 bg-slate-100 rounded-md overflow-hidden">
-                        {HOOP_SIZES.map((hoop, i) => {
-                          const pct = (hoop / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100;
-                          return (
-                            <div
-                              key={hoop}
-                              className="absolute top-0 h-full border-r border-white/60 flex items-end justify-center pb-0.5"
-                              style={{ left: `${i === 0 ? 0 : (HOOP_SIZES[i - 1] / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100}%`, width: `${pct - (i === 0 ? 0 : (HOOP_SIZES[i - 1] / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100)}%` }}
-                            >
-                              <span className="text-[8px] text-slate-400 font-medium">{hoop}″</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {/* Design size bar */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] text-slate-500 w-16 shrink-0 font-bold">Your design:</span>
-                      <div className="flex-1 relative h-6 bg-slate-100 rounded-md overflow-hidden">
-                        <div
-                          className="absolute top-0 h-full bg-blush-400/60 rounded-md flex items-center justify-center"
-                          style={{ width: `${Math.min(100, (stitchesToInches(selectedGenGridSize, fabricCount) / Math.max(MAX_HOOP_THRESHOLD, stitchesToInches(selectedGenGridSize, fabricCount))) * 100)}%` }}
-                        >
-                          <span className="text-[9px] font-bold text-blush-800">
-                            {stitchesToInches(selectedGenGridSize, fabricCount).toFixed(1)}″
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-[9px] text-slate-400 mt-2 italic">
-                    Scale bar shows hoop sizes (4″–12″) vs your design on {fabricCount}-count fabric. One stitch = {stitchesToInches(1, fabricCount).toFixed(3)}″.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ==================== EXISTING GRID EDITOR ==================== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* LEFT PANEL */}
           <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100">
-              <div className="flex border-b border-blush-100 mb-6">
-                <button onClick={() => setActiveTab('prompt')} disabled={isGenerating}
-                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'prompt' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'}`}>
-                  <div className="flex items-center justify-center gap-1.5"><Sparkles className="h-4 w-4" /> AI Vision Prompt</div>
-                </button>
-                <button onClick={() => setActiveTab('image')} disabled={isGenerating}
-                  className={`flex-1 pb-3 text-xs font-bold text-center border-b-2 transition-all ${activeTab === 'image' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'}`}>
-                  <div className="flex items-center justify-center gap-1.5"><Image className="h-4 w-4" /> Digitize Image</div>
-                </button>
-              </div>
-
-              {activeTab === 'prompt' ? (
-                <div>
-                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-2">
-                    <Sparkles className="h-5 w-5 text-blush-500" /> Describe Your Vision
-                  </h2>
-                  <p className="text-xs text-slate-500 mb-4">Enter a text description and AI will generate a stitch pattern.</p>
-                  <form onSubmit={triggerTextGeneration} className="space-y-4">
-                    <textarea rows={3} disabled={isGenerating} value={promptInput}
-                      onChange={(e) => setPromptInput(e.target.value)}
-                      placeholder="e.g., A red rose with green leaves on a white background"
-                      className="w-full rounded-xl border-blush-100 text-sm text-slate-800 shadow-sm focus:border-blush-500 focus:ring-blush-500 disabled:opacity-50 placeholder:text-blush-300" />
-                    {isGenerating ? (
-                      <div className="space-y-2 p-4 bg-blush-50 rounded-xl border border-blush-100">
-                        <div className="flex items-center gap-2 text-xs text-blush-700 font-semibold">
-                          <div className="h-2 w-2 rounded-full bg-blush-500 animate-pulse" />
-                          <span className="flex-1">{progressPhase}</span>
-                          <span>{Math.min(generatorProgress, 100)}%</span>
-                        </div>
-                        <div className="w-full bg-blush-100 h-2.5 rounded-full overflow-hidden">
-                          <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="submit" disabled={!promptInput.trim()}
-                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
-                        <Play className="h-4 w-4" /> Generate Pattern
-                      </button>
-                    )}
-                  </form>
-                  {aiResult && !isGenerating && (
-                    <button onClick={triggerTextGeneration as any}
-                      className="w-full mt-3 rounded-xl border border-blush-200 px-4 py-2 text-xs font-semibold text-blush-600 hover:bg-blush-50 flex items-center justify-center gap-2 transition-all">
-                      <RefreshCw className="h-3.5 w-3.5" /> Regenerate
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <UploadCloud className="h-5 w-5 text-blush-500" /> Upload Craft Sketch
-                  </h2>
-                  <p className="text-xs text-slate-500">Transform images into optimized stitch grids.</p>
-                  {!uploadedFile ? (
-                    <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
-                      className={`border-2 border-dashed rounded-xl p-6 text-center transition-all ${isDraggingOver ? 'border-blush-500 bg-blush-50/50' : 'border-blush-200 hover:bg-blush-50/50'}`}>
-                      <input type="file" id="file-upload" className="hidden" accept="image/*" onChange={handleFileChange} />
-                      <label htmlFor="file-upload" className="cursor-pointer block space-y-2">
-                        <UploadCloud className="h-8 w-8 mx-auto text-blush-400" />
-                        <span className="block text-xs font-bold text-slate-700">Drag & drop here</span>
-                        <span className="block text-[10px] text-slate-400">or click to browse (PNG, JPG)</span>
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-blush-50/50 rounded-xl border border-blush-100 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded bg-blush-100 flex items-center justify-center text-blush-600 shrink-0 font-bold text-xs uppercase">IMG</div>
-                        <div className="overflow-hidden">
-                          <p className="text-xs font-bold text-slate-800 truncate">{uploadedFile.name}</p>
-                          <p className="text-[10px] text-slate-500">{uploadedFile.size}</p>
-                        </div>
-                      </div>
-                      <button onClick={handleRemoveFile} disabled={isGenerating}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                  <form onSubmit={triggerImageGeneration} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">Stitch Type</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {['cross', 'back', 'satin'].map((type) => (
-                          <button key={type} type="button" disabled={isGenerating} onClick={() => setSelectedStitch(type)}
-                            className={`py-1.5 rounded-lg text-[10px] font-bold text-center border capitalize transition-all ${selectedStitch === type ? 'bg-blush-50 border-blush-500 text-blush-700' : 'bg-white border-blush-100 text-slate-500 hover:bg-blush-50'}`}>
-                            {type === 'cross' ? 'Cross' : type === 'back' ? 'Back' : 'Satin'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {isGenerating ? (
-                      <div className="space-y-2 p-4 bg-blush-50 rounded-xl border border-blush-100">
-                        <div className="flex items-center gap-2 text-xs text-blush-700 font-semibold">
-                          <div className="h-2 w-2 rounded-full bg-blush-500 animate-pulse" />
-                          <span className="flex-1">{progressPhase}</span>
-                          <span>{Math.min(generatorProgress, 100)}%</span>
-                        </div>
-                        <div className="w-full bg-blush-100 h-2.5 rounded-full overflow-hidden">
-                          <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="submit" disabled={!uploadedFile}
-                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
-                        <Play className="h-4 w-4" /> Digitize & Generate
-                      </button>
-                    )}
-                  </form>
-                </div>
-              )}
-
-              {aiResult && !isGenerating && (
-                <div className="mt-4 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                  <p className="text-xs text-emerald-800"><strong>Success!</strong> {aiResult.totalStitches} stitches, {aiResult.dmcPalette.length} DMC colors.</p>
-                </div>
-              )}
-              {aiError && (
-                <div className="mt-4 p-3 bg-rose-50 rounded-xl border border-rose-100 flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
-                  <p className="text-xs text-rose-800">{aiError}</p>
-                </div>
-              )}
-            </div>
 
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-5">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -1233,58 +736,6 @@ export const Designer: React.FC = () => {
               </div>
             )}
 
-            {genResult?.fabricPiece && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Scissors className="h-5 w-5 text-blush-500" /> Fabric Piece
-                </h2>
-
-                {/* Pattern vs Fabric Piece box-in-box diagram */}
-                <div className="flex items-center justify-center py-2">
-                  <div className="relative flex items-center justify-center"
-                    style={{ width: 140, height: 140 }}>
-                    {/* Outer box: fabric piece */}
-                    <div className="absolute inset-0 rounded-lg border-2 border-dashed border-blush-300 bg-blush-50/30 flex items-end justify-center pb-1">
-                      <span className="text-[9px] font-bold text-blush-400">
-                        {genResult.fabricPiece.fabricInches}″ × {genResult.fabricPiece.fabricInches}″
-                      </span>
-                    </div>
-                    {/* Inner box: pattern */}
-                    <div className="relative rounded-md border-2 border-blush-500 bg-blush-400/20 flex items-center justify-center"
-                      style={{
-                        width: `${Math.max(30, (genResult.fabricPiece.patternInches / genResult.fabricPiece.fabricInches) * 120)}px`,
-                        height: `${Math.max(30, (genResult.fabricPiece.patternInches / genResult.fabricPiece.fabricInches) * 120)}px`,
-                      }}>
-                      <span className="text-[9px] font-bold text-blush-700 text-center leading-tight">
-                        Pattern<br/>{genResult.fabricPiece.patternInches}″
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dimensions summary */}
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div className="bg-blush-50/50 rounded-lg p-2 border border-blush-100">
-                    <span className="text-slate-400">Pattern Size</span>
-                    <p className="font-bold text-slate-800">{genResult.fabricPiece.patternInches}″ × {genResult.fabricPiece.patternInches}″</p>
-                    <p className="text-slate-400">{genResult.width}×{genResult.height} stitches</p>
-                  </div>
-                  <div className="bg-blush-50/50 rounded-lg p-2 border border-blush-100">
-                    <span className="text-slate-400">Fabric Needed</span>
-                    <p className="font-bold text-slate-800">{genResult.fabricPiece.fabricInches}″ × {genResult.fabricPiece.fabricInches}″</p>
-                    <p className="text-slate-400">{genResult.fabricPiece.fabricStitches}×{genResult.fabricPiece.fabricStitches} stitches</p>
-                  </div>
-                </div>
-
-                {/* Margin explanation */}
-                <div className="p-2.5 bg-amber-50/50 rounded-lg border border-amber-100">
-                  <p className="text-[10px] text-amber-800">
-                    <strong>{genResult.fabricPiece.marginInches}″ margin</strong> on all sides included.
-                    This gives you room for hooping, framing, or finishing. Total fabric = pattern + {genResult.fabricPiece.marginInches * 2}″.
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* === SHAPE BROWSER === */}
             <ShapePicker
@@ -1381,18 +832,6 @@ export const Designer: React.FC = () => {
                     <span className="text-[10px] font-bold text-slate-600 w-8 text-center">{Math.round(zoom * 100)}%</span>
                     <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomIn className="h-4 w-4" /></button>
                   </div>
-                  {(aiResult || uploadedFile) && (
-                    <div className="flex bg-blush-50 p-1 rounded-xl border border-blush-100">
-                      <button onClick={() => setPreviewMode('pattern')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${previewMode === 'pattern' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
-                        <Layers className="h-3.5 w-3.5 inline text-blush-500" /> Pattern
-                      </button>
-                      <button onClick={() => setPreviewMode('original')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${previewMode === 'original' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
-                        <Eye className="h-3.5 w-3.5 inline text-blush-500" /> Original
-                      </button>
-                    </div>
-                  )}
                   <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
                     <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
@@ -1494,19 +933,6 @@ export const Designer: React.FC = () => {
                 onMouseUp={() => { setIsMouseDown(false); }}
                 onMouseLeave={() => { setIsMouseDown(false); }}
               >
-                {previewMode === 'original' && aiResult ? (
-                  <div className="flex flex-col items-center p-4 bg-white/90 rounded-2xl shadow-sm border border-blush-100 max-w-lg mx-auto text-center">
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-blush-600 mb-3">AI Generated Artwork</span>
-                    {aiResult.previewUrl ? (
-                      <img src={aiResult.previewUrl} alt={aiResult.promptUsed || 'AI generated'} className="max-w-full max-h-[300px] object-contain rounded-xl shadow-sm border border-blush-100" />
-                    ) : (
-                      <div className="p-6 bg-blush-50/50 rounded-2xl border border-blush-100">
-                        <p className="text-xs text-blush-400">Preview not available for this generation</p>
-                      </div>
-                    )}
-                    <span className="text-xs font-bold text-slate-800 mt-3 truncate max-w-full">{aiResult.promptUsed || 'AI Generated'}</span>
-                  </div>
-                ) : (
                   <div className="w-full">
                     <StitchGrid
                       data={stitchData}
@@ -1521,7 +947,6 @@ export const Designer: React.FC = () => {
                       cellFractions={cellFractions}
                     />
                   </div>
-                )}
               </div>
 
               <div className="w-full mt-4 flex items-center justify-between p-3 bg-blush-50/50 border border-blush-100 rounded-xl">
