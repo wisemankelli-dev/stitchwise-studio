@@ -5,7 +5,7 @@ import {
   UploadCloud, Image, Eye, Trash2, ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, RefreshCw, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
-  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Shapes
+  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Shapes, Triangle
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -15,7 +15,7 @@ import ShapePicker from '../components/ShapePicker';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
-type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape';
+type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape' | 'half';
 
 const COLORS = [
   { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
@@ -45,6 +45,7 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'shape', icon: <Shapes className="h-3.5 w-3.5" />, label: 'Shape' },
   { id: 'alphabet', icon: <Type className="h-3.5 w-3.5" />, label: 'Text' },
   { id: 'pan', icon: <Hand className="h-3.5 w-3.5" />, label: 'Pan' },
+  { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
 ];
 
 const GRID_SIZES = [50, 75, 100, 150, 200];
@@ -306,8 +307,26 @@ export const Designer: React.FC = () => {
           for (let r = Math.floor(r1 - 1); r <= Math.ceil(r2 + 1); r++) {
             for (let c = Math.floor(c1 - 1); c <= Math.ceil(c2 + 1); c++) {
               if (activeTool === 'rectangle') {
-                if (r >= r1 && r <= r2 && c >= c1 && c <= c2) {
+                // Anti-aliased rectangle: sample 4 subpixel corners
+                const onTop = r === r1, onBot = r === r2, onLeft = c === c1, onRight = c === c2;
+                const isEdge = onTop || onBot || onLeft || onRight;
+                if (!isEdge) {
+                  // Interior cell: full fill
                   setCell(r, c, selectedColor, selectedStitch);
+                } else {
+                  // Edge cell: sample subpixel coverage
+                  let hits = 0;
+                  for (const [sr, sc] of [[0.25,0.25],[0.25,0.75],[0.75,0.25],[0.75,0.75]]) {
+                    const pr = r + sr, pc = c + sc;
+                    if (pr >= r1 && pr <= r2 && pc >= c1 && pc <= c2) hits++;
+                  }
+                  if (hits === 4) {
+                    setCell(r, c, selectedColor, selectedStitch);
+                  } else if (hits > 0) {
+                    const frac = hits / 4;
+                    newFractions[`${r},${c}`] = frac;
+                    setCell(r, c, selectedColor, selectedStitch);
+                  }
                 }
               } else if (activeTool === 'circle') {
                 // Compute fraction: sample 4 sub-pixel points per cell
@@ -380,6 +399,62 @@ export const Designer: React.FC = () => {
         // Pan is handled by scroll — no-op on cell click
         break;
       }
+      case 'half': {
+        // Half-stitch: cycle empty → 0.5 fraction → full → empty
+        const currentFrac = cellFractions[key];
+        if (!grid[key]) {
+          // Empty → half-fill
+          setCell(row, col, selectedColor, selectedStitch);
+          setCellFractions(prev => ({ ...prev, [key]: 0.5 }));
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) {
+              setCell(mRow, mCol, selectedColor, selectedStitch);
+              setCellFractions(prev => ({ ...prev, [`${mRow},${mCol}`]: 0.5 }));
+            }
+          }
+        } else if (currentFrac === 0.5) {
+          // Half → full (remove fraction)
+          setCellFractions(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) {
+              setCellFractions(prev => {
+                const next = { ...prev };
+                delete next[`${mRow},${mCol}`];
+                return next;
+              });
+            }
+          }
+        } else {
+          // Full → empty
+          clearCell(row, col);
+          setCellFractions(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          if (mirrorEnabled) {
+            const mRow = gridHeight - 1 - row;
+            const mCol = gridWidth - 1 - col;
+            if (mRow !== row || mCol !== col) {
+              clearCell(mRow, mCol);
+              setCellFractions(prev => {
+                const next = { ...prev };
+                delete next[`${mRow},${mCol}`];
+                return next;
+              });
+            }
+          }
+        }
+        break;
+      }
       default: {
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
@@ -412,7 +487,7 @@ export const Designer: React.FC = () => {
         break;
       }
     }
-  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape]);
+  }, [activeTool, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, drawStart, selectedShape, cellFractions]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
@@ -426,8 +501,15 @@ export const Designer: React.FC = () => {
         const mCol = gridWidth - 1 - col;
         if (mRow !== row || mCol !== col) clearCell(mRow, mCol);
       }
+    } else if (activeTool === 'half') {
+      // On drag: set half-fill if cell is empty
+      const key = `${row},${col}`;
+      if (!grid[key]) {
+        setCell(row, col, selectedColor, selectedStitch);
+        setCellFractions(prev => ({ ...prev, [key]: 0.5 }));
+      }
     }
-  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell]);
+  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight]);
 
   const handleClearGrid = () => {
     setGrid({}); setGridStitchTypes({});
@@ -636,7 +718,7 @@ export const Designer: React.FC = () => {
                       <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50/50 rounded-lg border border-amber-100">
                         <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-amber-700">
-                          {selectedInches.toFixed(1)}″ design — requires a large ({'>'}{LARGE_HOOP_THRESHOLD}″) hoop.
+                          {selectedInches.toFixed(1)}″ design ��� requires a large ({'>'}{LARGE_HOOP_THRESHOLD}″) hoop.
                         </p>
                       </div>
                     );
@@ -1306,6 +1388,9 @@ export const Designer: React.FC = () => {
                   )}
                   {activeTool === 'erase' && (
                     <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
+                  )}
+                  {activeTool === 'half' && (
+                    <span className="text-[10px] text-slate-500 italic">Click to cycle: empty → ½ → full</span>
                   )}
                   {activeTool === 'alphabet' && (
                     <div className="flex items-center gap-3">
