@@ -15,7 +15,11 @@ export const SHAPE_CATEGORIES = [
 export type ShapeCategory = typeof SHAPE_CATEGORIES[number];
 
 function s(rows: string[]): boolean[][] {
-  return rows.map(row => [...row].map(ch => ch === '#'));
+  const maxLen = Math.max(...rows.map(r => r.length));
+  return rows.map(row => {
+    const padded = row.padEnd(maxLen, '.');
+    return [...padded].map(ch => ch === '#');
+  });
 }
 
 const SHAPES: ClipartShape[] = [
@@ -57,7 +61,7 @@ const SHAPES: ClipartShape[] = [
       '...##########...',
       '....########....',
       '.....######.....',
-    ]), width: 14, height: 12,
+    ]), width: 16, height: 12,
   },
 
   // DOG: floppy ears hanging at sides → round face → broad muzzle
@@ -75,7 +79,7 @@ const SHAPES: ClipartShape[] = [
       '...##########...',
       '....########....',
       '.....######.....',
-    ]), width: 14, height: 12,
+    ]), width: 16, height: 12,
   },
 
   // BUTTERFLY: 4 symmetrical wings (upper larger) → narrow central body
@@ -94,7 +98,7 @@ const SHAPES: ClipartShape[] = [
       '####........####',
       '###..........###',
       '.#............#.',
-    ]), width: 14, height: 13,
+    ]), width: 16, height: 13,
   },
 
   // BIRD: pointed beak → compact body → wing → tail feathers
@@ -135,18 +139,18 @@ const SHAPES: ClipartShape[] = [
   // OWL: two massive round eyes dominate → tiny beak → compact body
   {
     id: 'owl', name: 'Owl', category: 'Animals', grid: s([
-      '...######.....',
-      '..########....',
-      '.##......##...',
-      '##...##...##..',
-      '##...##...##..',
-      '##...##...##..',
+      '...######......',
+      '..########.....',
+      '.##......##....',
+      '##...##...##...',
+      '##...##...##...',
+      '##...##...##...',
       '##..........##..',
       '.##........##...',
       '..##########...',
       '...########....',
       '....######.....',
-    ]), width: 14, height: 11,
+    ]), width: 16, height: 11,
   },
 
   // PAW PRINT: 4 toe pads above → large main pad below
@@ -227,7 +231,7 @@ const SHAPES: ClipartShape[] = [
       '.##############.',
       '..############..',
       '....########....',
-    ]), width: 14, height: 9,
+    ]), width: 16, height: 9,
   },
 
   // RAINBOW: semi-circular arc with even bands
@@ -451,7 +455,7 @@ const SHAPES: ClipartShape[] = [
       '.##.....##.',
       '..#######..',
       '...#####...',
-    ]), width: 10, height: 10,
+    ]), width: 11, height: 10,
   },
 
   // ═══════════ FOOD (5) ═══════════
@@ -557,7 +561,7 @@ const SHAPES: ClipartShape[] = [
       '##....##...',
       '##.........',
       '##.........',
-    ]), width: 12, height: 11,
+    ]), width: 11, height: 11,
   },
 
   // DIAMOND: pointed top → faceted body → pointed bottom
