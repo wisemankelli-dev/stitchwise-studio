@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image
+  Upload, Image, Eye
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -420,6 +420,8 @@ export const Designer: React.FC = () => {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [generatedPalette, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
   const [numColors, setNumColors] = useState(15); // color count for quantization
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [showReference, setShowReference] = useState(true);
 
   // Image upload → grid conversion handler
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -431,6 +433,9 @@ export const Designer: React.FC = () => {
     reader.onload = (ev) => {
       const img = new window.Image();
       img.onload = () => {
+        // Save the original image for reference overlay
+        setReferenceImage(ev.target?.result as string);
+        setShowReference(true);
         // Maintain aspect ratio: fit image into grid dimensions
         const scale = Math.min(gridWidth / img.width, gridHeight / img.height);
         const drawW = Math.round(img.width * scale);
@@ -842,6 +847,8 @@ export const Designer: React.FC = () => {
     setSelectedShape(null);
     setDrawStart(null);
     setGeneratedPalette([]);
+    setReferenceImage(null);
+    setShowReference(false);
   };
 
   const handleExportPdf = useCallback(() => {
@@ -1250,6 +1257,20 @@ export const Designer: React.FC = () => {
                   <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
+                  {referenceImage && (
+                    <button
+                      onClick={() => setShowReference(!showReference)}
+                      className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        showReference
+                          ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
+                          : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title={showReference ? 'Hide reference image' : 'Show reference image'}
+                    >
+                      <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
+                      Ref
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1365,6 +1386,8 @@ export const Designer: React.FC = () => {
                       isFullscreen={isFullscreen}
                       onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                       cellFractions={cellFractions}
+                      referenceImage={referenceImage}
+                      showReference={showReference}
                     />
                 </div>
               </div>

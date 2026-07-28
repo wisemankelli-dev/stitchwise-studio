@@ -36,6 +36,10 @@ export interface StitchGridProps {
   onToggleFullscreen?: () => void;
   /** Fractional cell fills for anti-aliased shapes */
   cellFractions?: Record<string, number>;
+  /** Reference image URL to show as a faded overlay behind the grid */
+  referenceImage?: string | null;
+  /** Whether the reference image overlay is visible */
+  showReference?: boolean;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -170,12 +174,27 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   isFullscreen,
   onToggleFullscreen,
   cellFractions,
+  referenceImage,
+  showReference = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
   const [showGridLines, setShowGridLines] = useState(true);
   const lastHoveredCell = useRef<{ row: number; col: number } | null>(null);
+  const referenceImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Load reference image into a reusable Image element
+  useEffect(() => {
+    if (!referenceImage) {
+      referenceImgRef.current = null;
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => { referenceImgRef.current = img; };
+    img.src = referenceImage;
+    return () => { referenceImgRef.current = null; };
+  }, [referenceImage]);
 
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 4;
@@ -209,6 +228,14 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     // Background
     ctx.fillStyle = '#fdf2f8';
     ctx.fillRect(0, 0, cw, ch);
+
+    // ── Reference image overlay (faded behind grid) ──
+    if (showReference && referenceImgRef.current) {
+      ctx.save();
+      ctx.globalAlpha = 0.20;
+      ctx.drawImage(referenceImgRef.current, 0, 0, cw, ch);
+      ctx.restore();
+    }
 
     // ── Compute clone selection rectangle ──
     let selRMin = -1, selRMax = -1, selCMin = -1, selCMax = -1;
