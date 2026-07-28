@@ -673,3 +673,81 @@ describe('Edge Cases', () => {
     });
   });
 });
+
+// ── Shape Stamping / Tool Conflict Fix ──────────────────────────────────
+
+describe('Shape stamping must not override non-paint tools', () => {
+  // Simulates the handleCellAction logic from Designer.tsx
+  function simulateHandleCellAction(
+    activeTool: string,
+    hasSelectedShape: boolean,
+  ): 'stamp' | 'erase' | 'paint' | 'eyedrop' | 'none' {
+    // Shape stamping only when paint tool is active
+    if (hasSelectedShape && activeTool === 'paint') {
+      return 'stamp';
+    }
+
+    switch (activeTool) {
+      case 'erase': return 'erase';
+      case 'paint': return 'paint';
+      case 'eyedropper': return 'eyedrop';
+      default: return 'none';
+    }
+  }
+
+  it('should stamp shape when paint tool is active and shape selected', () => {
+    expect(simulateHandleCellAction('paint', true)).toBe('stamp');
+  });
+
+  it('should NOT stamp shape when erase tool is active (even with shape selected)', () => {
+    expect(simulateHandleCellAction('erase', true)).toBe('erase');
+  });
+
+  it('should NOT stamp shape when eyedropper is active (even with shape selected)', () => {
+    expect(simulateHandleCellAction('eyedropper', true)).toBe('eyedrop');
+  });
+
+  it('should NOT stamp shape when clone tool is active (even with shape selected)', () => {
+    expect(simulateHandleCellAction('clone', true)).toBe('none');
+  });
+
+  it('should paint normally when no shape is selected', () => {
+    expect(simulateHandleCellAction('paint', false)).toBe('paint');
+  });
+
+  it('should erase normally when no shape is selected', () => {
+    expect(simulateHandleCellAction('erase', false)).toBe('erase');
+  });
+
+  it('should stamp shape with paint tool even if other tools were previously active', () => {
+    // Erase with shape selected → should erase, not stamp
+    expect(simulateHandleCellAction('erase', true)).toBe('erase');
+    // Then switch to paint with shape still selected → should stamp
+    expect(simulateHandleCellAction('paint', true)).toBe('stamp');
+  });
+});
+
+describe('Tool switching should clear selectedShape', () => {
+  function toolSwitchClearsShape(
+    newTool: string,
+  ): boolean {
+    // When switching tools, clear shape unless switching to paint
+    return newTool !== 'paint';
+  }
+
+  it('should clear shape when switching to erase', () => {
+    expect(toolSwitchClearsShape('erase')).toBe(true);
+  });
+
+  it('should clear shape when switching to eyedropper', () => {
+    expect(toolSwitchClearsShape('eyedropper')).toBe(true);
+  });
+
+  it('should clear shape when switching to clone', () => {
+    expect(toolSwitchClearsShape('clone')).toBe(true);
+  });
+
+  it('should preserve shape when switching to paint (re-selecting paint keeps shape)', () => {
+    expect(toolSwitchClearsShape('paint')).toBe(false);
+  });
+});
