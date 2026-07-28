@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
-  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle
+  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -504,8 +504,12 @@ export const Designer: React.FC = () => {
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight]);
 
   const handleClearGrid = () => {
-    setGrid({}); setGridStitchTypes({});
+    setGrid({});
+    setGridStitchTypes({});
+    setCellFractions({});
     setCloneSource(null);
+    setSelectedShape(null);
+    setDrawStart(null);
   };
 
   const handleExportPdf = useCallback(() => {
@@ -775,6 +779,7 @@ export const Designer: React.FC = () => {
               selectedColor={selectedColor}
               onSelectShape={(shape) => {
                 setSelectedShape(shape);
+                setActiveTool('paint');
               }}
             />
 
@@ -906,6 +911,13 @@ export const Designer: React.FC = () => {
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleClearGrid}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1"
+                    title="Clear entire grid and start over"
+                  >
+                    <Trash2 className="h-3 w-3" /> Clear Grid
+                  </button>
                   {activeTool === 'mirror' && (
                     <button
                       onClick={() => setMirrorEnabled(!mirrorEnabled)}

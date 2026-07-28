@@ -144,10 +144,10 @@ export function mouseToGrid(
   height: number,
 ): { row: number; col: number } | null {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const x = (clientX - rect.left) * scaleX;
-  const y = (clientY - rect.top) * scaleY;
+  // Use CSS coordinates directly — cellSize is in CSS pixels (BASE_CELL_SIZE * zoom),
+  // not canvas buffer pixels (which are scaled by devicePixelRatio).
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
   const col = Math.floor(x / cellSize);
   const row = Math.floor(y / cellSize);
   if (col < 0 || col >= width || row < 0 || row >= height) return null;
