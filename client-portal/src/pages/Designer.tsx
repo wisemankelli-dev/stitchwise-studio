@@ -234,9 +234,9 @@ export const Designer: React.FC = () => {
   const handleCellAction = useCallback((row: number, col: number) => {
     const key = `${row},${col}`;
 
-    // Shape stamping: independent of active tool
-    // If a shape is selected from the ShapePicker, clicking stamps it
-    if (selectedShape) {
+    // Shape stamping: only when paint tool is active
+    // If a shape is selected from the ShapePicker, clicking with paint stamps it
+    if (selectedShape && activeTool === 'paint') {
       const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridWidth, gridHeight);
       setGrid(result.grid);
       setGridStitchTypes(result.stitchTypes);
@@ -891,6 +891,7 @@ export const Designer: React.FC = () => {
                         setActiveTool(tool.id);
                         if (tool.id !== 'clone') setCloneSource(null);
                         if (tool.id !== 'mirror') setMirrorEnabled(false);
+                        if (tool.id !== 'paint') setSelectedShape(null);
                       }}
                       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
                         activeTool === tool.id
