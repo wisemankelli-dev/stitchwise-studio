@@ -5,7 +5,8 @@ import {
   ArrowLeft,
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
-  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2
+  RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
+  Upload, Image
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -24,6 +25,193 @@ const COLORS = [
   { name: 'Royal Violet', hex: '#7c3aed' }, { name: 'Warm Cream', hex: '#fef3c7' },
   { name: 'Pitch Black', hex: '#1e293b' },
 ];
+
+// DMC thread color palette for image-to-grid conversion (~80 colors)
+const DMC_PALETTE: { code: string; name: string; r: number; g: number; b: number }[] = [
+  // Reds
+  { code: 'DMC 321', name: 'Christmas Red', r: 201, g: 38, b: 45 },
+  { code: 'DMC 304', name: 'Red - Medium', r: 183, g: 44, b: 49 },
+  { code: 'DMC 309', name: 'Rose - Dark', r: 215, g: 82, b: 95 },
+  { code: 'DMC 3326', name: 'Rose - Light', r: 236, g: 141, b: 148 },
+  { code: 'DMC 3713', name: 'Salmon - Very Light', r: 249, g: 206, b: 196 },
+  { code: 'DMC 347', name: 'Salmon - Dark', r: 191, g: 45, b: 45 },
+  { code: 'DMC 351', name: 'Coral', r: 233, g: 99, b: 94 },
+  { code: 'DMC 353', name: 'Peach', r: 249, g: 175, b: 161 },
+  { code: 'DMC 666', name: 'Red - Bright', r: 213, g: 36, b: 43 },
+  { code: 'DMC 817', name: 'Red - Very Dark', r: 187, g: 5, b: 31 },
+  // Pinks
+  { code: 'DMC 3687', name: 'Mauve - Light', r: 206, g: 127, b: 146 },
+  { code: 'DMC 3688', name: 'Mauve - Medium', r: 188, g: 110, b: 127 },
+  { code: 'DMC 3689', name: 'Mauve - Dark', r: 167, g: 97, b: 113 },
+  { code: 'DMC 3705', name: 'Watermelon - Dark', r: 255, g: 83, b: 87 },
+  { code: 'DMC 3706', name: 'Watermelon - Medium', r: 255, g: 103, b: 106 },
+  { code: 'DMC 3801', name: 'Watermelon - Light', r: 255, g: 118, b: 121 },
+  { code: 'DMC 3833', name: 'Raspberry', r: 211, g: 94, b: 116 },
+  { code: 'DMC 3823', name: 'Yellow - Ultra Pale', r: 254, g: 243, b: 205 },
+  // Oranges
+  { code: 'DMC 334', name: 'Blue - Medium Baby', r: 112, g: 162, b: 190 },
+  { code: 'DMC 606', name: 'Orange - Bright', r: 243, g: 58, b: 11 },
+  { code: 'DMC 608', name: 'Orange - Bright', r: 255, g: 91, b: 0 },
+  { code: 'DMC 740', name: 'Tangerine', r: 222, g: 106, b: 27 },
+  { code: 'DMC 741', name: 'Tangerine - Medium', r: 255, g: 126, b: 0 },
+  { code: 'DMC 742', name: 'Tangerine - Light', r: 255, g: 161, b: 51 },
+  { code: 'DMC 946', name: 'Burnt Orange - Medium', r: 244, g: 98, b: 0 },
+  { code: 'DMC 947', name: 'Burnt Orange', r: 255, g: 118, b: 51 },
+  // Yellows
+  { code: 'DMC 307', name: 'Lemon', r: 253, g: 236, b: 15 },
+  { code: 'DMC 444', name: 'Yellow - Dark', r: 255, g: 211, b: 0 },
+  { code: 'DMC 445', name: 'Yellow - Light', r: 255, g: 251, b: 139 },
+  { code: 'DMC 725', name: 'Topaz - Medium Light', r: 255, g: 200, b: 90 },
+  { code: 'DMC 726', name: 'Topaz - Light', r: 253, g: 215, b: 100 },
+  { code: 'DMC 727', name: 'Topaz - Very Light', r: 255, g: 240, b: 152 },
+  { code: 'DMC 728', name: 'Topaz', r: 233, g: 175, b: 50 },
+  { code: 'DMC 743', name: 'Yellow - Medium', r: 254, g: 220, b: 148 },
+  { code: 'DMC 744', name: 'Yellow - Pale', r: 255, g: 229, b: 135 },
+  { code: 'DMC 745', name: 'Yellow - Light Pale', r: 255, g: 235, b: 169 },
+  { code: 'DMC 3820', name: 'Straw - Dark', r: 188, g: 143, b: 77 },
+  { code: 'DMC 3821', name: 'Straw', r: 220, g: 167, b: 62 },
+  { code: 'DMC 3827', name: 'Golden Brown - Pale', r: 244, g: 192, b: 118 },
+  // Greens
+  { code: 'DMC 334', name: 'Blue - Medium Baby', r: 112, g: 162, b: 190 },
+  { code: 'DMC 3345', name: 'Hunter Green - Dark', r: 63, g: 87, b: 70 },
+  { code: 'DMC 3346', name: 'Hunter Green', r: 85, g: 111, b: 63 },
+  { code: 'DMC 3347', name: 'Yellow Green - Medium', r: 113, g: 138, b: 60 },
+  { code: 'DMC 3348', name: 'Yellow Green - Light', r: 201, g: 217, b: 137 },
+  { code: 'DMC 469', name: 'Avocado Green', r: 108, g: 124, b: 58 },
+  { code: 'DMC 470', name: 'Avocado Green - Light', r: 137, g: 153, b: 78 },
+  { code: 'DMC 471', name: 'Avocado Green - Very Light', r: 164, g: 181, b: 98 },
+  { code: 'DMC 472', name: 'Avocado Green - Ultra Light', r: 208, g: 225, b: 137 },
+  { code: 'DMC 699', name: 'Green', r: 5, g: 108, b: 60 },
+  { code: 'DMC 700', name: 'Green - Bright', r: 47, g: 122, b: 62 },
+  { code: 'DMC 701', name: 'Green - Light', r: 89, g: 146, b: 77 },
+  { code: 'DMC 702', name: 'Kelly Green', r: 64, g: 152, b: 64 },
+  { code: 'DMC 703', name: 'Chartreuse', r: 129, g: 172, b: 64 },
+  { code: 'DMC 704', name: 'Chartreuse - Bright', r: 160, g: 198, b: 68 },
+  { code: 'DMC 909', name: 'Emerald Green - Very Dark', r: 31, g: 83, b: 70 },
+  { code: 'DMC 910', name: 'Emerald Green - Dark', r: 41, g: 104, b: 75 },
+  { code: 'DMC 911', name: 'Emerald Green - Medium', r: 24, g: 126, b: 80 },
+  { code: 'DMC 912', name: 'Emerald Green - Light', r: 61, g: 153, b: 107 },
+  { code: 'DMC 913', name: 'Nile Green - Medium', r: 116, g: 179, b: 140 },
+  // Blues
+  { code: 'DMC 311', name: 'Blue - Medium Navy', r: 28, g: 56, b: 97 },
+  { code: 'DMC 312', name: 'Blue - Very Dark Navy', r: 30, g: 51, b: 102 },
+  { code: 'DMC 322', name: 'Blue - Dark', r: 63, g: 96, b: 149 },
+  { code: 'DMC 333', name: 'Blue Violet - Dark', r: 87, g: 62, b: 144 },
+  { code: 'DMC 336', name: 'Blue - Navy', r: 34, g: 55, b: 103 },
+  { code: 'DMC 340', name: 'Blue Violet - Medium', r: 138, g: 108, b: 189 },
+  { code: 'DMC 341', name: 'Blue Violet - Light', r: 164, g: 140, b: 211 },
+  { code: 'DMC 3743', name: 'Blue Violet - Very Light', r: 212, g: 203, b: 218 },
+  { code: 'DMC 517', name: 'Wedgewood - Dark', r: 46, g: 135, b: 175 },
+  { code: 'DMC 518', name: 'Wedgewood - Light', r: 77, g: 150, b: 183 },
+  { code: 'DMC 519', name: 'Sky Blue', r: 118, g: 182, b: 208 },
+  { code: 'DMC 775', name: 'Blue - Very Light Baby', r: 205, g: 229, b: 239 },
+  { code: 'DMC 798', name: 'Delft Blue - Dark', r: 64, g: 100, b: 163 },
+  { code: 'DMC 799', name: 'Delft Blue - Medium', r: 98, g: 137, b: 190 },
+  { code: 'DMC 800', name: 'Delft Blue - Pale', r: 170, g: 196, b: 223 },
+  { code: 'DMC 820', name: 'Royal Blue - Very Dark', r: 17, g: 51, b: 118 },
+  { code: 'DMC 823', name: 'Navy Blue - Dark', r: 17, g: 34, b: 83 },
+  { code: 'DMC 824', name: 'Blue - Very Dark', r: 41, g: 67, b: 135 },
+  { code: 'DMC 825', name: 'Blue - Dark', r: 66, g: 98, b: 159 },
+  { code: 'DMC 826', name: 'Blue - Medium', r: 96, g: 134, b: 189 },
+  { code: 'DMC 827', name: 'Blue - Very Light', r: 185, g: 212, b: 234 },
+  { code: 'DMC 939', name: 'Navy Blue - Very Dark', r: 15, g: 24, b: 52 },
+  { code: 'DMC 995', name: 'Electric Blue - Dark', r: 40, g: 112, b: 179 },
+  { code: 'DMC 996', name: 'Electric Blue - Medium', r: 56, g: 146, b: 211 },
+  // Purples
+  { code: 'DMC 208', name: 'Lavender - Very Dark', r: 141, g: 104, b: 175 },
+  { code: 'DMC 209', name: 'Lavender - Dark', r: 163, g: 126, b: 192 },
+  { code: 'DMC 210', name: 'Lavender - Medium', r: 185, g: 154, b: 211 },
+  { code: 'DMC 211', name: 'Lavender - Light', r: 215, g: 193, b: 229 },
+  { code: 'DMC 550', name: 'Violet - Very Dark', r: 88, g: 54, b: 109 },
+  { code: 'DMC 552', name: 'Violet - Medium', r: 124, g: 82, b: 148 },
+  { code: 'DMC 553', name: 'Violet', r: 151, g: 101, b: 174 },
+  { code: 'DMC 554', name: 'Violet - Light', r: 195, g: 158, b: 208 },
+  // Browns
+  { code: 'DMC 300', name: 'Mahogany - Very Dark', r: 111, g: 47, b: 0 },
+  { code: 'DMC 301', name: 'Mahogany - Medium', r: 179, g: 97, b: 46 },
+  { code: 'DMC 400', name: 'Mahogany - Dark', r: 143, g: 67, b: 22 },
+  { code: 'DMC 402', name: 'Mahogany - Very Light', r: 247, g: 167, b: 119 },
+  { code: 'DMC 433', name: 'Brown - Medium', r: 122, g: 62, b: 34 },
+  { code: 'DMC 434', name: 'Brown - Light', r: 153, g: 83, b: 52 },
+  { code: 'DMC 435', name: 'Brown - Very Light', r: 181, g: 106, b: 55 },
+  { code: 'DMC 436', name: 'Tan', r: 197, g: 126, b: 69 },
+  { code: 'DMC 437', name: 'Tan - Light', r: 222, g: 168, b: 117 },
+  { code: 'DMC 838', name: 'Beige Brown - Very Dark', r: 88, g: 59, b: 46 },
+  { code: 'DMC 839', name: 'Beige Brown - Dark', r: 102, g: 58, b: 41 },
+  { code: 'DMC 840', name: 'Beige Brown - Medium', r: 128, g: 96, b: 74 },
+  { code: 'DMC 841', name: 'Beige Brown - Light', r: 159, g: 128, b: 105 },
+  { code: 'DMC 842', name: 'Beige Brown - Very Light', r: 212, g: 191, b: 170 },
+  { code: 'DMC 898', name: 'Coffee Brown - Very Dark', r: 74, g: 42, b: 27 },
+  { code: 'DMC 938', name: 'Coffee Brown - Ultra Dark', r: 54, g: 25, b: 14 },
+  { code: 'DMC 975', name: 'Golden Brown - Dark', r: 141, g: 77, b: 20 },
+  { code: 'DMC 976', name: 'Golden Brown - Medium', r: 210, g: 138, b: 58 },
+  // Neutrals
+  { code: 'DMC 310', name: 'Black', r: 0, g: 0, b: 0 },
+  { code: 'DMC 762', name: 'Pearl Gray - Very Light', r: 219, g: 219, b: 219 },
+  { code: 'DMC 3865', name: 'Winter White', r: 249, g: 247, b: 241 },
+  { code: 'DMC 822', name: 'Beige Gray - Light', r: 231, g: 226, b: 213 },
+  { code: 'DMC 644', name: 'Beige Gray - Medium', r: 221, g: 210, b: 196 },
+  { code: 'DMC 642', name: 'Beige Gray - Dark', r: 169, g: 156, b: 140 },
+  { code: 'DMC 640', name: 'Beige Gray - Very Dark', r: 133, g: 124, b: 111 },
+  { code: 'BLANC', name: 'White', r: 255, g: 255, b: 255 },
+];
+
+// Find the nearest DMC color using Euclidean distance in RGB space
+function nearestDmc(r: number, g: number, b: number): { hex: string; code: string; name: string } {
+  let best = DMC_PALETTE[0];
+  let bestDist = Infinity;
+  for (const dmc of DMC_PALETTE) {
+    const dr = r - dmc.r, dg = g - dmc.g, db = b - dmc.b;
+    const dist = dr * dr + dg * dg + db * db;
+    if (dist < bestDist) { bestDist = dist; best = dmc; }
+  }
+  const hex = '#' + [best.r, best.g, best.b].map(c => c.toString(16).padStart(2, '0')).join('');
+  return { hex, code: best.code, name: best.name };
+}
+
+// Convert an uploaded image to a DMC-colored grid
+function imageToGrid(
+  img: CanvasImageSource,
+  gridW: number,
+  gridH: number,
+): { grid: Record<string, string>; palette: Array<{ code: string; name: string; hex: string; count: number }> } {
+  const canvas = document.createElement('canvas');
+  canvas.width = gridW;
+  canvas.height = gridH;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0, gridW, gridH);
+  const imageData = ctx.getImageData(0, 0, gridW, gridH);
+  
+  const grid: Record<string, string> = {};
+  const colorCounts: Record<string, { code: string; name: string; count: number }> = {};
+  
+  for (let y = 0; y < gridH; y++) {
+    for (let x = 0; x < gridW; x++) {
+      const idx = (y * gridW + x) * 4;
+      const r = imageData.data[idx];
+      const g = imageData.data[idx + 1];
+      const b = imageData.data[idx + 2];
+      const a = imageData.data[idx + 3];
+      
+      if (a < 128) continue; // skip transparent pixels
+      
+      const dmc = nearestDmc(r, g, b);
+      const key = `${y},${x}`;
+      grid[key] = dmc.hex;
+      
+      if (!colorCounts[dmc.hex]) {
+        colorCounts[dmc.hex] = { code: dmc.code, name: dmc.name, count: 0 };
+      }
+      colorCounts[dmc.hex].count++;
+    }
+  }
+  
+  const palette = Object.entries(colorCounts)
+    .map(([hex, info]) => ({ ...info, hex }))
+    .sort((a, b) => b.count - a.count);
+  
+  return { grid, palette };
+}
 
 const STITCH_STYLES: StitchStyle[] = [
   { id: 'cross', name: 'Cross Stitch', description: 'Traditional X-shaped intersection' },
@@ -137,6 +325,57 @@ export const Designer: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [generatedPalette, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
+
+  // Image upload → grid conversion handler
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsProcessingImage(true);
+    
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        // Maintain aspect ratio: fit image into grid dimensions
+        const scale = Math.min(gridWidth / img.width, gridHeight / img.height);
+        const drawW = Math.round(img.width * scale);
+        const drawH = Math.round(img.height * scale);
+        
+        // Convert to grid at the aspect-preserving dimensions
+        const result = imageToGrid(img, drawW, drawH);
+        
+        // Center the design on the grid
+        const offsetX = Math.floor((gridWidth - drawW) / 2);
+        const offsetY = Math.floor((gridHeight - drawH) / 2);
+        
+        const centeredGrid: Record<string, string> = {};
+        const centeredStitchTypes: Record<string, string> = {};
+        for (const [key, color] of Object.entries(result.grid)) {
+          const [y, x] = key.split(',').map(Number);
+          const cy = y + offsetY;
+          const cx = x + offsetX;
+          if (cy >= 0 && cy < gridHeight && cx >= 0 && cx < gridWidth) {
+            centeredGrid[`${cy},${cx}`] = color;
+            centeredStitchTypes[`${cy},${cx}`] = 'cross';
+          }
+        }
+        
+        setGrid(centeredGrid);
+        setGridStitchTypes(centeredStitchTypes);
+        setCellFractions({});
+        setGeneratedPalette(result.palette);
+        setIsProcessingImage(false);
+        
+        // Reset file input so user can re-upload the same file
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  }, [gridWidth, gridHeight]);
 
   // Drawing tools state
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
@@ -510,6 +749,7 @@ export const Designer: React.FC = () => {
     setCloneSource(null);
     setSelectedShape(null);
     setDrawStart(null);
+    setGeneratedPalette([]);
   };
 
   const handleExportPdf = useCallback(() => {
@@ -869,7 +1109,7 @@ export const Designer: React.FC = () => {
                   <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                     <Layers className="h-5 w-5 text-blush-500" /> Embroidery Canvas
                   </h3>
-                  <p className="text-xs text-slate-500">Click cells to stitch or preview AI-generated patterns.</p>
+                  <p className="text-xs text-slate-500">Upload an image or click cells to paint your pattern.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
@@ -880,6 +1120,29 @@ export const Designer: React.FC = () => {
                   <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
                     <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      isProcessingImage
+                        ? 'bg-blush-100 text-blush-400 cursor-wait'
+                        : 'bg-blush-500 hover:bg-blush-600 text-white'
+                    }`}
+                  >
+                    {isProcessingImage ? (
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    {isProcessingImage ? 'Processing...' : 'Upload Image'}
+                  </label>
                   <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
