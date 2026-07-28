@@ -40,6 +40,8 @@ export interface StitchGridProps {
   referenceImage?: string | null;
   /** Whether the reference image overlay is visible */
   showReference?: boolean;
+  /** Opacity of the reference image overlay (0.0 - 1.0, default: 0.20) */
+  referenceOpacity?: number;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -176,6 +178,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   cellFractions,
   referenceImage,
   showReference = false,
+  referenceOpacity = 0.20,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -232,7 +235,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     // ── Reference image overlay (faded behind grid) ──
     if (showReference && referenceImgRef.current) {
       ctx.save();
-      ctx.globalAlpha = 0.20;
+      ctx.globalAlpha = referenceOpacity;
       ctx.drawImage(referenceImgRef.current, 0, 0, cw, ch);
       ctx.restore();
     }
@@ -464,7 +467,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         }
       }
     }
-  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines]);
+  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity]);
 
   // ── Redraw on changes ──
 

@@ -422,6 +422,7 @@ export const Designer: React.FC = () => {
   const [numColors, setNumColors] = useState(15); // color count for quantization
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [showReference, setShowReference] = useState(true);
+  const [referenceOpacity, setReferenceOpacity] = useState(0.20);
 
   // Image upload → grid conversion handler
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -849,6 +850,7 @@ export const Designer: React.FC = () => {
     setGeneratedPalette([]);
     setReferenceImage(null);
     setShowReference(false);
+    setReferenceOpacity(0.20);
   };
 
   const handleExportPdf = useCallback(() => {
@@ -1258,18 +1260,29 @@ export const Designer: React.FC = () => {
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
                   {referenceImage && (
-                    <button
-                      onClick={() => setShowReference(!showReference)}
-                      className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                        showReference
-                          ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
-                          : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
-                      }`}
-                      title={showReference ? 'Hide reference image' : 'Show reference image'}
-                    >
-                      <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
-                      Ref
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setShowReference(!showReference)}
+                        className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          showReference
+                            ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title={showReference ? 'Hide reference image' : 'Show reference image'}
+                      >
+                        <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
+                        Ref
+                      </button>
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        value={Math.round(referenceOpacity * 100)}
+                        onChange={(e) => setReferenceOpacity(Number(e.target.value) / 100)}
+                        className="w-14 h-1.5 accent-pink-500 cursor-pointer"
+                        title={`Reference opacity: ${Math.round(referenceOpacity * 100)}%`}
+                      />
+                    </div>
                   )}
                 </div>
               </div>
@@ -1388,6 +1401,7 @@ export const Designer: React.FC = () => {
                       cellFractions={cellFractions}
                       referenceImage={referenceImage}
                       showReference={showReference}
+                      referenceOpacity={referenceOpacity}
                     />
                 </div>
               </div>
