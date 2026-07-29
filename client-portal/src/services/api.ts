@@ -109,6 +109,19 @@ export interface AIPatternResponse {
   fabricPiece?: FabricPieceInfo;
 }
 
+/** Cell format returned by the text-to-line-art-pattern endpoint */
+export interface LineArtCell {
+  color: string;
+  dmcCode?: string;
+  dmcName?: string;
+  stitchType?: 'cross' | 'satin' | 'back' | 'french';
+}
+
+/** Response format from POST /api/ai/text-to-line-art-pattern */
+export interface LineArtPatternResponse {
+  grid: LineArtCell[][];
+}
+
 /** Fabric count and resulting physical dimensions */
 export interface FabricInfo {
   count: number;    // stitches per inch (e.g. 14)
@@ -829,25 +842,21 @@ class ApiClient {
   // ==================== AI EMBROIDERY PATTERN GENERATION ====================
 
   /**
-   * Generates an embroidery pattern from a text prompt using AI.
-   * POST /api/ai/embroidery/text-to-pattern
+   * Generates an embroidery pattern from a text prompt using AI (line art pipeline).
+   * POST /api/ai/text-to-line-art-pattern
    */
   async generatePatternFromText(
     prompt: string,
     gridSize?: number,
-    fabricCount?: number,
-    desiredInches?: number
-  ): Promise<AIPatternResponse> {
+  ): Promise<LineArtPatternResponse> {
     if (!this.isLiveBackend) {
       throw new Error('Backend not available. Pattern generation requires a live backend connection.');
     }
 
     const body: Record<string, unknown> = { prompt };
-    if (gridSize && gridSize >= 50) body.gridSize = gridSize;
-    if (fabricCount) body.fabricCount = fabricCount;
-    if (desiredInches) body.desiredInches = desiredInches;
+    if (gridSize && gridSize >= 16) body.gridSize = gridSize;
 
-    const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
+    const response = await fetch(`${this.apiBaseUrl}/ai/text-to-line-art-pattern`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body)

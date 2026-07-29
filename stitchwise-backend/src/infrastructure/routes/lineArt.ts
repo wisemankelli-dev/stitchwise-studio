@@ -120,8 +120,8 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, edgeThreshold, outlineDmcCode } = parsed.data;
 
-        // Line art prompt engineering
-        const lineArtPrompt = `${prompt}, simple line art, coloring book style, black outlines only, white background, no shading, no gradients, flat vector art, suitable for embroidery`;
+        // Line art prompt engineering — heavily emphasize pure black & white
+        const lineArtPrompt = `${prompt}, black and white line art only, pure black outlines on pure white background, coloring book page, no gray, no color, no shading, no gradients, clean vector style, embroidery pattern template`;
         const negativePrompt = "photorealistic, shading, gradients, color fills, complex backgrounds, 3D, rendered";
 
         console.error(JSON.stringify({

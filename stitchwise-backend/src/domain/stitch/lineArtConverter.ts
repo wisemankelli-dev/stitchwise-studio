@@ -92,6 +92,42 @@ function sobelEdgeDetection(
   return magnitude;
 }
 
+// ─── Image Binarization ─────────────────────────────────────────────────────
+
+/**
+ * Binarize raw RGBA pixel data to pure black and white.
+ * Every pixel with luminance >= 200 becomes pure white (#FFFFFF).
+ * Every pixel with luminance < 200 becomes pure black (#000000).
+ *
+ * This eliminates the subtle off-white/gray anti-aliased pixels
+ * that AI models produce, which otherwise scatter into dozens of
+ * unwanted DMC colors.
+ */
+function binarizeImage(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  whiteThreshold: number = 200,
+): void {
+  for (let i = 0; i < width * height; i++) {
+    const idx = i * 4;
+    const r = pixels[idx];
+    const g = pixels[idx + 1];
+    const b = pixels[idx + 2];
+    // Standard luminance
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum >= whiteThreshold) {
+      pixels[idx] = 255;
+      pixels[idx + 1] = 255;
+      pixels[idx + 2] = 255;
+    } else {
+      pixels[idx] = 0;
+      pixels[idx + 1] = 0;
+      pixels[idx + 2] = 0;
+    }
+  }
+}
+
 // ─── Thresholding ───────────────────────────────────────────────────────────
 
 /**
@@ -145,14 +181,18 @@ export async function lineArtToStitchGrid(
 
   const rawPixels = new Uint8ClampedArray(data);
 
-  // Step 2: Convert to grayscale and apply Sobel edge detection
+  // Step 2: Binarize to pure black & white — eliminates AI-generated
+  // off-white/gray artifacts that become unwanted DMC color scatter.
+  binarizeImage(rawPixels, size, size);
+
+  // Step 3: Convert to grayscale and apply Sobel edge detection
   const gray = toGrayscale(rawPixels, size, size);
   const magnitude = sobelEdgeDetection(gray, size, size);
 
-  // Step 3: Threshold the edge map to produce an outline mask
+  // Step 4: Threshold the edge map to produce an outline mask
   const edgeMask = thresholdEdges(magnitude, edgeThreshold);
 
-  // Step 4: Build the stitch grid.
+  // Step 5: Build the stitch grid.
   // Outline pixels (edgeMask=1) → backstitch with outline DMC color.
   // Region pixels (edgeMask=0) → cross stitch with the pixel's actual color
   //   mapped to nearest DMC. White/very-light region pixels are also mapped
