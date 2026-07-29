@@ -118,21 +118,20 @@ const SHAPES: ClipartShape[] = [
     ]), width: 12, height: 13,
   },
 
-  // FISH: tail fin on left, curved body, eye dot
+  // FISH: forked tail → oval body → eye (facing right)
   {
     id: 'fish', name: 'Fish', category: 'Animals', grid: s([
-      '.....##.....',
-      '....####....',  // tail fin
+      '......##....',
+      '....#..#....',
       '...######...',
-      '..#######...',
-      '.#########..',  // body
-      '##########..',
-      '####.####...',
-      '########....',
-      '.######.....',  // tapering
-      '..####......',
-      '...###......',
-    ]), width: 12, height: 11,
+      '..########..',
+      '.#########..',
+      '#####.#####.',
+      '.##########.',
+      '..#####.##..',
+      '...###...#..',
+      '....##......',
+    ]), width: 12, height: 10,
   },
 
   // OWL: two huge round eyes, small beak, compact body
@@ -152,18 +151,18 @@ const SHAPES: ClipartShape[] = [
     ]), width: 10, height: 11,
   },
 
-  // PAW PRINT: 4 toe pads + 1 main pad
+  // PAW PRINT: 4 distinct toe pads above, large main pad below
   {
     id: 'paw', name: 'Paw Print', category: 'Animals', grid: s([
-      '..#......#..',  // toe pads (4)
-      '.##......##.',
-      '..#......#..',
-      '...######...',
-      '..########..',  // main pad
-      '..########..',
-      '...######...',
-      '....####....',
-    ]), width: 12, height: 8,
+      '..#........#..',
+      '.##........##.',
+      '..#........#..',
+      '...########...',
+      '..##########..',
+      '..##########..',
+      '...########...',
+      '....######....',
+    ]), width: 14, height: 8,
   },
 
   // ═══════════ FLOWERS (5) ═══════════
