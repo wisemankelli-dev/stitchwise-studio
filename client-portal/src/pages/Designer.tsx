@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image, Eye
+  Upload, Image, Eye, Sparkles, Loader2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -481,6 +481,12 @@ export const Designer: React.FC = () => {
   // Shape browser state
   const [selectedShape, setSelectedShape] = useState<ClipartShape | null>(null);
 
+  // AI pattern generation state
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
+
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
   
@@ -851,7 +857,76 @@ export const Designer: React.FC = () => {
     setReferenceImage(null);
     setShowReference(false);
     setReferenceOpacity(0.20);
+    setAiError('');
+    setAiStats(null);
   };
+
+  const handleGenerateAi = useCallback(async () => {
+    if (!aiPrompt.trim() || isGenerating) return;
+    setIsGenerating(true);
+    setAiError('');
+    setAiStats(null);
+    try {
+      const gridSize = Math.max(gridWidth, gridHeight);
+      const response = await fetch('/api/ai/text-to-line-art-pattern', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPrompt.trim(), gridSize }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `Server error (${response.status})`);
+      }
+      const data = await response.json();
+      // Response: { grid: [[{color, dmcCode, dmcName, stitchType}]] }
+      const newGrid: Record<string, string> = {};
+      const newStitchTypes: Record<string, string> = {};
+      let backstitch = 0;
+      let crossStitch = 0;
+      const dmcSet = new Set<string>();
+
+      for (let r = 0; r < data.grid.length; r++) {
+        for (let c = 0; c < data.grid[r].length; c++) {
+          const cell = data.grid[r][c];
+          if (cell && cell.color) {
+            const key = `${r},${c}`;
+            newGrid[key] = cell.color;
+            const st = cell.stitchType || 'cross';
+            newStitchTypes[key] = st;
+            if (st === 'back') backstitch++;
+            else crossStitch++;
+            if (cell.dmcCode) dmcSet.add(cell.dmcCode);
+          }
+        }
+      }
+
+      // Update grid dimensions to match generated pattern
+      const newH = data.grid.length;
+      const newW = data.grid[0]?.length || 0;
+      if (newW > 0 && newH > 0) {
+        setGridWidth(newW);
+        setGridHeight(newH);
+      }
+
+      setGrid(newGrid);
+      setGridStitchTypes(newStitchTypes);
+      setCellFractions({});
+      setGeneratedPalette([]);
+      setReferenceImage(null);
+      setShowReference(false);
+      setAiStats({
+        stitches: Object.keys(newGrid).length,
+        colors: dmcSet.size,
+        backstitch,
+        crossStitch,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to generate pattern';
+      setAiError(message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -1285,6 +1360,50 @@ export const Designer: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* AI Prompt Bar */}
+              <div className="w-full mb-4 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+                  <input
+                    type="text"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleGenerateAi(); }}
+                    placeholder="Describe a pattern (e.g., 'a sunflower with green leaves')"
+                    className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
+                    disabled={isGenerating}
+                  />
+                  <button
+                    onClick={handleGenerateAi}
+                    disabled={!aiPrompt.trim() || isGenerating}
+                    className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0"
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {isGenerating ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
+                {aiError && (
+                  <p className="mt-2 text-[10px] text-red-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> {aiError}
+                  </p>
+                )}
+                {aiStats && (
+                  <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
+                    <span className="font-bold text-slate-700">{aiStats.stitches} stitches</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.colors} DMC colors</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.crossStitch} cross</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.backstitch} backstitch</span>
+                  </div>
+                )}
               </div>
 
               {/* Toolbar */}
