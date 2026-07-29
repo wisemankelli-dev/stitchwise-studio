@@ -22,6 +22,8 @@ export interface StitchCell {
   dmcCode?: string;
   /** DMC color name (e.g. "Christmas Red") */
   dmcName?: string;
+  /** Stitch type: "cross" (full X), "back" (outline), "satin", "frenchKnot" */
+  stitchType?: "cross" | "back" | "satin" | "frenchKnot";
 }
 
 /**

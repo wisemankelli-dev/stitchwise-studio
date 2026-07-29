@@ -15,3 +15,4 @@ export { createAICollageRouter } from "./aiCollage";
 export { createEstimatorRouter } from "./estimator";
 export { createPatternEditorRouter } from "./patternEditor";
 export { createPatternExportRouter } from "./patternExport";
+export { createLineArtRouter } from "./lineArt";
