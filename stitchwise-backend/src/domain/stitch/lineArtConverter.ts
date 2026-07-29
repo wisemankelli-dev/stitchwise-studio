@@ -95,6 +95,34 @@ function sobelEdgeDetection(
 // ─── Image Binarization ─────────────────────────────────────────────────────
 
 /**
+ * Invert the image if it's predominantly dark.
+ * Stability AI often generates images that are mostly dark with light elements.
+ * Sobel expects the opposite: light background with dark outlines.
+ * If >50% of pixels have luminance < 128, flip R, G, B to (255 - value).
+ */
+function invertIfDark(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): void {
+  let darkCount = 0;
+  const total = width * height;
+  for (let i = 0; i < total; i++) {
+    const idx = i * 4;
+    const lum = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
+    if (lum < 128) darkCount++;
+  }
+  if (darkCount > total / 2) {
+    for (let i = 0; i < total; i++) {
+      const idx = i * 4;
+      pixels[idx] = 255 - pixels[idx];
+      pixels[idx + 1] = 255 - pixels[idx + 1];
+      pixels[idx + 2] = 255 - pixels[idx + 2];
+    }
+  }
+}
+
+/**
  * Binarize raw RGBA pixel data to pure black and white.
  * Luminance >= 200 → #FFFFFF (white/background).
  * Luminance < 200  → #000000 (black/outline).
@@ -177,20 +205,23 @@ export async function lineArtToStitchGrid(
 
   const rawPixels = new Uint8ClampedArray(data);
 
-  // Step 2: Binarize to pure black & white.
-  // The AI generates line art; we extract pure outlines. Color fills
-  // come later via the color-fill module (user picks colors for
-  // closed regions — like a coloring book).
+  // Step 2: Auto-invert if the image is predominantly dark.
+  // Stability AI models often produce dark images with light elements.
+  // If >50% of pixels have luminance < 128, invert to make it
+  // light-background with dark outlines — what Sobel expects.
+  invertIfDark(rawPixels, size, size);
+
+  // Step 3: Binarize to pure black & white for clean edge detection.
   binarizeImage(rawPixels, size, size);
 
-  // Step 3: Convert to grayscale and apply Sobel edge detection
+  // Step 4: Convert to grayscale and apply Sobel edge detection
   const gray = toGrayscale(rawPixels, size, size);
   const magnitude = sobelEdgeDetection(gray, size, size);
 
-  // Step 4: Threshold the edge map to produce an outline mask
+  // Step 5: Threshold the edge map to produce an outline mask
   const edgeMask = thresholdEdges(magnitude, edgeThreshold);
 
-  // Step 5: Build the stitch grid — pure B&W line art.
+  // Step 6: Build the stitch grid — pure B&W line art.
   // Outline pixels (edgeMask=1) → backstitch with DMC 310 Black.
   // Region pixels (edgeMask=0) → white (fabric). Color fills are
   // applied later by the user via the coloring-book fill tool.

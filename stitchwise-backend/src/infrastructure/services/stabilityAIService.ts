@@ -13,8 +13,8 @@ import type { LeonardoGenerationResponse } from "../../domain/ai/embroideryAI";
 const STABILITY_API_BASE = "https://api.stability.ai/v2beta/stable-image/generate";
 
 /**
- * Generate a line-art image from a text prompt using Stability AI SD3.5.
- * Uses style_preset="line-art" for clean black-and-white outlines.
+ * Generate a line-art image from a text prompt using Stability AI Core.
+ * Uses strong prompt engineering for clean black outlines on pure white.
  * Color fills are applied later by the user — the AI only draws the lines.
  */
 export async function generateImageWithStability(
@@ -28,10 +28,9 @@ export async function generateImageWithStability(
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("output_format", "png");
-    formData.append("style_preset", "line-art");
     if (negativePrompt) formData.append("negative_prompt", negativePrompt);
 
-    const response = await axios.post(`${STABILITY_API_BASE}/sd3`, formData, {
+    const response = await axios.post(`${STABILITY_API_BASE}/core`, formData, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "image/*",

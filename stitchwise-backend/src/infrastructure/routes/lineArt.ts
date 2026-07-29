@@ -120,9 +120,10 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, edgeThreshold, outlineDmcCode } = parsed.data;
 
-        // Prompt — SD3.5 handles the line-art style via style_preset
-        const lineArtPrompt = `${prompt}, black and white, simple clean outlines, white background, embroidery pattern`;
-        const negativePrompt = "color, shading, gradients, complex backgrounds, photorealistic, 3D";
+        // Strong prompt engineering: the AI must draw ONLY thin black outlines
+        // on a pure white background. No fills, no shading, no dark areas.
+        const lineArtPrompt = `${prompt}, coloring book page, thin black outlines only, pure white background, no shading, no color, no filled areas, simple clean line drawing`;
+        const negativePrompt = "dark background, shading, shadows, filled areas, color, grayscale, photorealistic, complex, busy";
 
         console.error(JSON.stringify({
           event: "text_to_line_art_request",
