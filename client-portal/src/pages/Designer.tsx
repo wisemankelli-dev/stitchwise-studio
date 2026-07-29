@@ -14,6 +14,7 @@ import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
+import { api } from '../services/api';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -868,16 +869,7 @@ export const Designer: React.FC = () => {
     setAiStats(null);
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      const response = await fetch('/api/ai/text-to-line-art-pattern', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt.trim(), gridSize }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error || `Server error (${response.status})`);
-      }
-      const data = await response.json();
+      const data = await api.generatePatternFromText(aiPrompt.trim(), gridSize);
       // Response: { grid: [[{color, dmcCode, dmcName, stitchType}]] }
       const newGrid: Record<string, string> = {};
       const newStitchTypes: Record<string, string> = {};
