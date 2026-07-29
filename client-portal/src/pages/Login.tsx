@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, Scissors, Sparkles, AlertCircle } from 'lucide-react';
-import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useAuth();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -25,12 +26,9 @@ export const Login: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const res = await api.login(email, password);
+      const res = await login(email, password);
       if (res.success) {
-        // Redirect to protected dashboard or requested page
         navigate(from, { replace: true });
-        // Force header update
-        window.dispatchEvent(new Event('auth-change'));
       } else {
         setError(res.error || 'Invalid credentials. Hint: use elena@stitchwise.studio and password123');
       }

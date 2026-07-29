@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { User, Mail, Lock, ArrowRight, Scissors, AlertCircle, ShieldCheck } from 'lucide-react';
-import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Signup: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { signup } = useAuth();
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -37,12 +38,9 @@ export const Signup: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const res = await api.signup(name, email, password);
+      const res = await signup(name, email, password);
       if (res.success) {
-        // Redirect to dashboard or requested page
         navigate(from, { replace: true });
-        // Force header update
-        window.dispatchEvent(new Event('auth-change'));
       } else {
         setError(res.error || 'Registration failed. Email may already exist.');
       }
@@ -59,8 +57,8 @@ export const Signup: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <div className="flex items-center gap-2 p-3 bg-slate-900 rounded-2xl shadow-lg border border-slate-800">
-            <Scissors className="h-8 w-8 text-brand-500 -rotate-45" />
-            <span className="font-extrabold tracking-tight text-white text-xl">StitchWise <span className="text-brand-500">Studio</span></span>
+            <Scissors className="h-8 w-8 text-blush-500 -rotate-45" />
+            <span className="font-extrabold tracking-tight text-white text-xl">StitchWise <span className="text-blush-500">Studio</span></span>
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -68,7 +66,7 @@ export const Signup: React.FC = () => {
         </h2>
         <p className="mt-2 text-center text-sm text-slate-500">
           Or{' '}
-          <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-500 transition-colors">
+          <Link to="/login" className="font-semibold text-blush-600 hover:text-blush-500 transition-colors">
             sign in to your existing workspace
           </Link>
         </p>
@@ -103,7 +101,7 @@ export const Signup: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="e.g. Elena Crafter"
                 />
               </div>
@@ -125,7 +123,7 @@ export const Signup: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="e.g. elena@stitchwise.studio"
                 />
               </div>
@@ -146,7 +144,7 @@ export const Signup: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="At least 6 characters"
                 />
               </div>
@@ -167,7 +165,7 @@ export const Signup: React.FC = () => {
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-sm transition-all bg-slate-50/50"
+                  className="pl-10 block w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blush-500 focus:border-blush-500 outline-none text-sm transition-all bg-slate-50/50"
                   placeholder="Re-enter your password"
                 />
               </div>
@@ -180,7 +178,7 @@ export const Signup: React.FC = () => {
                   name="terms"
                   type="checkbox"
                   required
-                  className="h-4 w-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
+                  className="h-4 w-4 text-blush-600 focus:ring-blush-500 border-slate-300 rounded"
                   defaultChecked
                 />
               </div>
@@ -196,7 +194,7 @@ export const Signup: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center items-center gap-2 px-5 py-3 border border-transparent rounded-xl text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 shadow-md hover:shadow-lg transition-all focus:outline-none disabled:bg-slate-300 disabled:shadow-none"
+                className="w-full flex justify-center items-center gap-2 px-5 py-3 border border-transparent rounded-xl text-sm font-bold text-white bg-blush-600 hover:bg-blush-500 shadow-md hover:shadow-lg transition-all focus:outline-none disabled:bg-slate-300 disabled:shadow-none"
               >
                 {isLoading ? (
                   <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
