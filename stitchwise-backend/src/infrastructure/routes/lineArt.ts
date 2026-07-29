@@ -11,9 +11,11 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import axios from "axios";
+import { z } from "zod";
 import { lineArtToStitchGrid } from "../../domain/stitch/lineArtConverter";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
+import { generateImageWithStability } from "../services/stabilityAIService";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -78,6 +80,104 @@ export function createLineArtRouter(): Router {
         console.error("Line art conversion error:", err);
         res.status(500).json({
           error: err.message || "Line art conversion failed",
+        });
+      }
+    },
+  );
+
+  /**
+   * POST /api/ai/text-to-line-art-pattern
+   *
+   * Generate a line art embroidery pattern from a text prompt.
+   * Uses Stability AI to first generate the line art image, then runs
+   * it through the Sobel edge detection + stitch mapping pipeline.
+   *
+   * Request body: { prompt: string, gridSize?: number, edgeThreshold?: number, outlineDmcCode?: string }
+   * Response: PatternResult with mixed backstitch (outlines) and cross-stitch (regions) cells
+   *
+   * Prompt engineering appends: "simple line art, coloring book style, black outlines only,
+   *   white background, no shading, no gradients, flat vector art"
+   */
+  router.post(
+    "/ai/text-to-line-art-pattern",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        // Validate input
+        const schema = z.object({
+          prompt: z.string().min(1).max(500),
+          gridSize: z.number().int().optional(),
+          edgeThreshold: z.number().int().min(10).max(150).optional(),
+          outlineDmcCode: z.string().optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        const { prompt, gridSize, edgeThreshold, outlineDmcCode } = parsed.data;
+
+        // Line art prompt engineering
+        const lineArtPrompt = `${prompt}, simple line art, coloring book style, black outlines only, white background, no shading, no gradients, flat vector art, suitable for embroidery`;
+        const negativePrompt = "photorealistic, shading, gradients, color fills, complex backgrounds, 3D, rendered";
+
+        console.error(JSON.stringify({
+          event: "text_to_line_art_request",
+          originalPrompt: prompt,
+          finalPrompt: lineArtPrompt,
+        }));
+
+        // Step 1: Generate line art image via Stability AI
+        const generation = await generateImageWithStability(lineArtPrompt, negativePrompt);
+
+        if (!generation || !generation.buffer) {
+          res.status(500).json({
+            error: "AI image generation failed. No image returned from Stability AI.",
+          });
+          return;
+        }
+
+        // Step 2: Run the line art → stitch grid pipeline
+        const result = await lineArtToStitchGrid(
+          generation.buffer,
+          gridSize ?? DEFAULT_GRID_SIZE,
+          edgeThreshold ?? 50,
+          outlineDmcCode ?? "310",
+        );
+
+        // Assign cross-stitch symbols to palette entries
+        const dmcColorsWithSymbols = result.dmcColors.map((c, i) => ({
+          ...c,
+          symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+        }));
+
+        // Count stitch types for diagnostics
+        let backCount = 0;
+        let crossCount = 0;
+        for (const row of result.grid) {
+          for (const cell of row) {
+            if (cell.stitchType === "back") backCount++;
+            else crossCount++;
+          }
+        }
+
+        res.json({
+          ...result,
+          dmcColors: dmcColorsWithSymbols,
+          stats: {
+            backstitchCells: backCount,
+            crossStitchCells: crossCount,
+          },
+          previewUrl: generation.url,
+          promptUsed: lineArtPrompt,
+        });
+      } catch (err: any) {
+        console.error("Text-to-line-art error:", err);
+        res.status(500).json({
+          error: err.message || "Text-to-line-art pattern generation failed",
         });
       }
     },
