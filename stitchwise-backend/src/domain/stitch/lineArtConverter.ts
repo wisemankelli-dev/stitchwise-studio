@@ -197,6 +197,97 @@ function thresholdEdges(
   return mask;
 }
 
+/**
+ * Sample border pixels (all 4 edges) to find the dominant background color.
+ * Returns { r, g, b } of the most common color found along the edges.
+ */
+function detectBackgroundColor(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): { r: number; g: number; b: number } {
+  const colorCounts = new Map<string, number>();
+  const borderThickness = Math.max(1, Math.floor(Math.min(width, height) * 0.05));
+
+  // Sample top and bottom edges
+  for (let row = 0; row < borderThickness; row++) {
+    for (let col = 0; col < width; col++) {
+      addBorderSample(pixels, row, col, width, colorCounts);
+      addBorderSample(pixels, height - 1 - row, col, width, colorCounts);
+    }
+  }
+  // Sample left and right edges
+  for (let row = borderThickness; row < height - borderThickness; row++) {
+    for (let col = 0; col < borderThickness; col++) {
+      addBorderSample(pixels, row, col, width, colorCounts);
+      addBorderSample(pixels, row, width - 1 - col, width, colorCounts);
+    }
+  }
+
+  // Find the most common color
+  let bestKey = "";
+  let bestCount = 0;
+  for (const [key, count] of colorCounts) {
+    if (count > bestCount) {
+      bestCount = count;
+      bestKey = key;
+    }
+  }
+
+  if (bestKey) {
+    const [r, g, b] = bestKey.split(",").map(Number);
+    return { r, g, b };
+  }
+  return { r: 255, g: 255, b: 255 };
+}
+
+function addBorderSample(
+  pixels: Uint8ClampedArray,
+  row: number,
+  col: number,
+  width: number,
+  map: Map<string, number>,
+): void {
+  const idx = (row * width + col) * 4;
+  const r = pixels[idx];
+  const g = pixels[idx + 1];
+  const b = pixels[idx + 2];
+  // Quantize to reduce noise
+  const qr = Math.round(r / 16) * 16;
+  const qg = Math.round(g / 16) * 16;
+  const qb = Math.round(b / 16) * 16;
+  const key = `${qr},${qg},${qb}`;
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+/**
+ * Replace pixels close to the detected background color with pure white.
+ * Threshold of 80 in RGB distance catches anti-aliased edges.
+ */
+function replaceBackgroundWithWhite(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  bgColor: { r: number; g: number; b: number },
+): void {
+  const threshold = 80;
+  const thresholdSq = threshold * threshold;
+
+  for (let i = 0; i < width * height; i++) {
+    const idx = i * 4;
+    const dr = pixels[idx] - bgColor.r;
+    const dg = pixels[idx + 1] - bgColor.g;
+    const db = pixels[idx + 2] - bgColor.b;
+    const distSq = dr * dr + dg * dg + db * db;
+
+    if (distSq <= thresholdSq) {
+      pixels[idx] = 255;
+      pixels[idx + 1] = 255;
+      pixels[idx + 2] = 255;
+    }
+  }
+}
+
 // ─── Main Pipeline ──────────────────────────────────────────────────────────
 
 /**
@@ -230,7 +321,13 @@ export async function lineArtToStitchGrid(
 
   const rawPixels = new Uint8ClampedArray(data);
 
-  // Step 2: Map each pixel to its nearest DMC color.
+  // Step 2: Detect and replace background with pure white.
+  // Sample the border (all 4 edges) to find the dominant background color,
+  // then push every pixel close to it to pure white before DMC mapping.
+  const bgColor = detectBackgroundColor(rawPixels, size, size);
+  replaceBackgroundWithWhite(rawPixels, size, size, bgColor);
+
+  // Step 3: Map each pixel to its nearest DMC color.
   // No edge detection — this is color quantization, not outline extraction.
   // Closed color regions from the AI's flat vector art become stitch regions.
   const MAX_COLORS = 15;

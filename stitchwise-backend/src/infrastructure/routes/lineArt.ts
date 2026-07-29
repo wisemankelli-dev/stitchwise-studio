@@ -123,7 +123,7 @@ export function createLineArtRouter(): Router {
         // Prompt for flat vector art with solid color regions — no shading.
         // Our pipeline uses k-means color quantization to extract the
         // dominant colors, then maps each to nearest DMC thread.
-        const lineArtPrompt = `${prompt}, flat vector art style, solid bold colors, no shading, no gradients, simple shapes, distinct color regions, clip art style, clean edges`;
+        const lineArtPrompt = `${prompt}, flat vector art style, solid bold colors, pure white background, no shading, no gradients, simple shapes, distinct color regions, clip art style, clean edges`;
         const negativePrompt = "photorealistic, shading, gradients, complex details, 3D, rendered, blurry";
 
         console.error(JSON.stringify({
