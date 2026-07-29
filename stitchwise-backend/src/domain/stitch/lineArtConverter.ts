@@ -193,20 +193,18 @@ export async function lineArtToStitchGrid(
   const edgeMask = thresholdEdges(magnitude, edgeThreshold);
 
   // Step 5: Build the stitch grid.
-  // Outline pixels (edgeMask=1) → backstitch with outline DMC color.
-  // Region pixels (edgeMask=0) → cross stitch with the pixel's actual color
-  //   mapped to nearest DMC. White/very-light region pixels are also mapped
-  //   to DMC (they become Blanc/White or the nearest light thread).
+  // Outline pixels (edgeMask=1) → backstitch with DMC 310 Black.
+  // Region pixels (edgeMask=0) → ALWAYS white (fabric background).
+  // The AI generates line art; our pipeline extracts edges. No fill colors.
   const grid: StitchGrid = [];
   const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
+
+  // Pre-resolve the white DMC so we don't look it up per pixel
+  const whiteDmc = closestDmcColor(255, 255, 255);
 
   for (let row = 0; row < size; row++) {
     const gridRow = [];
     for (let col = 0; col < size; col++) {
-      const idx = (row * size + col) * 4;
-      const r = rawPixels[idx];
-      const g = rawPixels[idx + 1];
-      const b = rawPixels[idx + 2];
       const isEdge = edgeMask[row * size + col] === 1;
 
       let hex: string;
@@ -215,19 +213,17 @@ export async function lineArtToStitchGrid(
       let stitchType: "cross" | "back";
 
       if (isEdge) {
-        // Outline pixel → use the specified outline DMC color with backstitch
-        const outlineDmc = closestDmcColor(0, 0, 0); // Always find the black DMC
-        // Use the requested outline code if it exists in DMC palette
+        // Outline pixel → DMC 310 Black with backstitch
+        const outlineDmc = closestDmcColor(0, 0, 0);
         hex = rgbToHex(outlineDmc.rgb[0], outlineDmc.rgb[1], outlineDmc.rgb[2]);
         dmcCode = outlineDmc.code;
         dmcName = outlineDmc.name;
         stitchType = "back";
       } else {
-        // Region pixel → use the actual pixel color mapped to DMC with cross stitch
-        const dmc = closestDmcColor(r, g, b);
-        hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
-        dmcCode = dmc.code;
-        dmcName = dmc.name;
+        // Background pixel → ALWAYS white (fabric), cross stitch
+        hex = rgbToHex(whiteDmc.rgb[0], whiteDmc.rgb[1], whiteDmc.rgb[2]);
+        dmcCode = whiteDmc.code;
+        dmcName = whiteDmc.name;
         stitchType = "cross";
       }
 
