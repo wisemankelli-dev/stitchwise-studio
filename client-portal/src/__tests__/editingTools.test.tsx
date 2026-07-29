@@ -325,7 +325,7 @@ describe("Designer — Cell Click & Grid Interaction", () => {
 
   it("shows grid size information", () => {
     renderDesigner();
-    expect(screen.getByText("32x32 Grid")).toBeInTheDocument();
+    expect(screen.getByText(/100.100 Grid/)).toBeInTheDocument();
   });
 
   it("has zoom controls", () => {

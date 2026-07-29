@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image
+  Upload, Image, Eye
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -169,41 +169,132 @@ function nearestDmc(r: number, g: number, b: number): { hex: string; code: strin
   return { hex, code: best.code, name: best.name };
 }
 
-// Convert an uploaded image to a DMC-colored grid
+// K-means color quantization: reduces image to exactly K colors
+function quantizeColors(pixels: Array<{r: number; g: number; b: number}>, k: number): Array<{r: number; g: number; b: number}> {
+  if (pixels.length === 0 || k <= 0) return [];
+  if (k >= pixels.length) {
+    // More clusters than pixels — each pixel is its own cluster color
+    return pixels.map(p => ({ r: p.r, g: p.g, b: p.b }));
+  }
+  
+  // Initialize centroids by picking evenly-spaced pixels
+  const centroids: Array<{r: number; g: number; b: number}> = [];
+  const step = Math.max(1, Math.floor(pixels.length / k));
+  for (let i = 0; i < k; i++) {
+    const idx = Math.min(i * step, pixels.length - 1);
+    centroids.push({ r: pixels[idx].r, g: pixels[idx].g, b: pixels[idx].b });
+  }
+  
+  // Run k-means iterations
+  const MAX_ITER = 10;
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    // Assign each pixel to nearest centroid
+    const clusters: Array<Array<{r: number; g: number; b: number}>> = centroids.map(() => []);
+    for (const pixel of pixels) {
+      let best = 0;
+      let bestDist = Infinity;
+      for (let c = 0; c < centroids.length; c++) {
+        const dr = pixel.r - centroids[c].r;
+        const dg = pixel.g - centroids[c].g;
+        const db = pixel.b - centroids[c].b;
+        const dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist) { bestDist = dist; best = c; }
+      }
+      clusters[best].push(pixel);
+    }
+    
+    // Recompute centroids
+    let changed = false;
+    for (let c = 0; c < centroids.length; c++) {
+      if (clusters[c].length === 0) continue;
+      let sr = 0, sg = 0, sb = 0;
+      for (const p of clusters[c]) { sr += p.r; sg += p.g; sb += p.b; }
+      const nr = Math.round(sr / clusters[c].length);
+      const ng = Math.round(sg / clusters[c].length);
+      const nb = Math.round(sb / clusters[c].length);
+      if (nr !== centroids[c].r || ng !== centroids[c].g || nb !== centroids[c].b) {
+        changed = true;
+        centroids[c] = { r: nr, g: ng, b: nb };
+      }
+    }
+    if (!changed) break;
+  }
+  
+  return centroids;
+}
+
+// Convert an uploaded image to a DMC-colored grid with color quantization
 function imageToGrid(
   img: CanvasImageSource,
   gridW: number,
   gridH: number,
+  numColors: number = 20,
 ): { grid: Record<string, string>; palette: Array<{ code: string; name: string; hex: string; count: number }> } {
   const canvas = document.createElement('canvas');
   canvas.width = gridW;
   canvas.height = gridH;
   const ctx = canvas.getContext('2d')!;
+  
+  // Fill with white background first (so transparent areas become white)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, gridW, gridH);
   ctx.drawImage(img, 0, 0, gridW, gridH);
   const imageData = ctx.getImageData(0, 0, gridW, gridH);
   
-  const grid: Record<string, string> = {};
-  const colorCounts: Record<string, { code: string; name: string; count: number }> = {};
-  
+  // Step 1: Collect all pixels
+  const allPixels: Array<{r: number; g: number; b: number; y: number; x: number}> = [];
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
       const idx = (y * gridW + x) * 4;
-      const r = imageData.data[idx];
-      const g = imageData.data[idx + 1];
-      const b = imageData.data[idx + 2];
-      const a = imageData.data[idx + 3];
-      
-      if (a < 128) continue; // skip transparent pixels
-      
-      const dmc = nearestDmc(r, g, b);
-      const key = `${y},${x}`;
-      grid[key] = dmc.hex;
-      
-      if (!colorCounts[dmc.hex]) {
-        colorCounts[dmc.hex] = { code: dmc.code, name: dmc.name, count: 0 };
-      }
-      colorCounts[dmc.hex].count++;
+      allPixels.push({
+        r: imageData.data[idx],
+        g: imageData.data[idx + 1],
+        b: imageData.data[idx + 2],
+        y, x,
+      });
     }
+  }
+  
+  // Step 2: Quantize to limited palette using k-means
+  const quantizedColors = quantizeColors(allPixels, numColors);
+  
+  // Step 3: Map each quantized color to nearest DMC thread
+  const quantizedToDmc = new Map<string, { hex: string; code: string; name: string }>();
+  for (const qc of quantizedColors) {
+    const key = `${qc.r},${qc.g},${qc.b}`;
+    if (!quantizedToDmc.has(key)) {
+      const dmc = nearestDmc(qc.r, qc.g, qc.b);
+      quantizedToDmc.set(key, dmc);
+    }
+  }
+  
+  // Step 4: Fill grid — snap each pixel to nearest quantized color, then to DMC
+  const grid: Record<string, string> = {};
+  const colorCounts: Record<string, { code: string; name: string; count: number }> = {};
+  
+  for (const pixel of allPixels) {
+    // Find nearest quantized color
+    let bestQ = quantizedColors[0];
+    let bestDist = Infinity;
+    for (const qc of quantizedColors) {
+      const dr = pixel.r - qc.r;
+      const dg = pixel.g - qc.g;
+      const db = pixel.b - qc.b;
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bestDist) { bestDist = dist; bestQ = qc; }
+    }
+    
+    // Map to DMC via quantized color
+    const qKey = `${bestQ.r},${bestQ.g},${bestQ.b}`;
+    const dmc = quantizedToDmc.get(qKey)!;
+    
+    const key = `${pixel.y},${pixel.x}`;
+    grid[key] = dmc.hex;
+    
+    if (!colorCounts[dmc.hex]) {
+      colorCounts[dmc.hex] = { code: dmc.code, name: dmc.name, count: 0 };
+    }
+    colorCounts[dmc.hex].count++;
   }
   
   const palette = Object.entries(colorCounts)
@@ -305,11 +396,11 @@ function buildManualGridData(
 }
 
 export const Designer: React.FC = () => {
-  const [gridWidth, setGridWidth] = useState(32);
-  const [gridHeight, setGridHeight] = useState(32);
+  const [gridWidth, setGridWidth] = useState(100);
+  const [gridHeight, setGridHeight] = useState(100);
   const [showResizeWarning, setShowResizeWarning] = useState(false);
-  const [pendingGridWidth, setPendingGridWidth] = useState(32);
-  const [pendingGridHeight, setPendingGridHeight] = useState(32);
+  const [pendingGridWidth, setPendingGridWidth] = useState(100);
+  const [pendingGridHeight, setPendingGridHeight] = useState(100);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLORS[0].hex);
@@ -328,6 +419,10 @@ export const Designer: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [generatedPalette, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
+  const [numColors, setNumColors] = useState(15); // color count for quantization
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [showReference, setShowReference] = useState(true);
+  const [referenceOpacity, setReferenceOpacity] = useState(0.20);
 
   // Image upload → grid conversion handler
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,13 +434,16 @@ export const Designer: React.FC = () => {
     reader.onload = (ev) => {
       const img = new window.Image();
       img.onload = () => {
+        // Save the original image for reference overlay
+        setReferenceImage(ev.target?.result as string);
+        setShowReference(true);
         // Maintain aspect ratio: fit image into grid dimensions
         const scale = Math.min(gridWidth / img.width, gridHeight / img.height);
         const drawW = Math.round(img.width * scale);
         const drawH = Math.round(img.height * scale);
         
         // Convert to grid at the aspect-preserving dimensions
-        const result = imageToGrid(img, drawW, drawH);
+        const result = imageToGrid(img, drawW, drawH, numColors);
         
         // Center the design on the grid
         const offsetX = Math.floor((gridWidth - drawW) / 2);
@@ -375,7 +473,7 @@ export const Designer: React.FC = () => {
       img.src = ev.target?.result as string;
     };
     reader.readAsDataURL(file);
-  }, [gridWidth, gridHeight]);
+  }, [gridWidth, gridHeight, numColors]);
 
   // Drawing tools state
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
@@ -750,6 +848,9 @@ export const Designer: React.FC = () => {
     setSelectedShape(null);
     setDrawStart(null);
     setGeneratedPalette([]);
+    setReferenceImage(null);
+    setShowReference(false);
+    setReferenceOpacity(0.20);
   };
 
   const handleExportPdf = useCallback(() => {
@@ -1128,6 +1229,18 @@ export const Designer: React.FC = () => {
                     className="hidden"
                     id="image-upload"
                   />
+                  <select
+                    value={numColors}
+                    onChange={(e) => setNumColors(Number(e.target.value))}
+                    className="rounded-lg border border-blush-100 text-[10px] font-bold text-slate-600 px-1.5 py-2 bg-white"
+                    title="Number of colors"
+                  >
+                    <option value={5}>5 colors</option>
+                    <option value={10}>10 colors</option>
+                    <option value={15}>15 colors</option>
+                    <option value={20}>20 colors</option>
+                    <option value={30}>30 colors</option>
+                  </select>
                   <label
                     htmlFor="image-upload"
                     className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
@@ -1146,6 +1259,31 @@ export const Designer: React.FC = () => {
                   <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
+                  {referenceImage && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setShowReference(!showReference)}
+                        className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          showReference
+                            ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title={showReference ? 'Hide reference image' : 'Show reference image'}
+                      >
+                        <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
+                        Ref
+                      </button>
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        value={Math.round(referenceOpacity * 100)}
+                        onChange={(e) => setReferenceOpacity(Number(e.target.value) / 100)}
+                        className="w-14 h-1.5 accent-pink-500 cursor-pointer"
+                        title={`Reference opacity: ${Math.round(referenceOpacity * 100)}%`}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1261,6 +1399,9 @@ export const Designer: React.FC = () => {
                       isFullscreen={isFullscreen}
                       onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                       cellFractions={cellFractions}
+                      referenceImage={referenceImage}
+                      showReference={showReference}
+                      referenceOpacity={referenceOpacity}
                     />
                 </div>
               </div>

@@ -329,8 +329,8 @@ describe('ShapePicker & Shapes Library', () => {
       const stampedCount = Object.keys(result.grid).length;
       expect(stampedCount).toBe(rabbitFilled);
       // Verify shape's top-left corner
-      // Rabbit first row is "....#...." — filled at column 4 (0-indexed)
-      expect(result.grid['0,4']).toBe('#ff0000');
+      // Rabbit first row is "..#........#.." — filled at column 2 (0-indexed)
+      expect(result.grid['0,2']).toBe('#ff0000');
     });
 
     it('should stamp shape and clip at grid boundaries', () => {
