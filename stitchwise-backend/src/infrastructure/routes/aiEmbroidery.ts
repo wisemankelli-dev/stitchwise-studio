@@ -62,10 +62,13 @@ function flattenGrid(grid: StitchCell[][]): string[][] {
  */
 function buildPatternResponse(pattern: PatternResult, extra: Record<string, unknown> = {}) {
   const flatGrid = flattenGrid(pattern.grid);
+  const stitchTypes: string[][] = pattern.grid.map(row =>
+    row.map(cell => cell.stitchType || "cross"),
+  );
   return {
     success: true,
     grid: flatGrid,
-    stitchTypes: flatGrid.map(row => row.map(() => "cross")),
+    stitchTypes,
     width: pattern.gridSize,
     height: pattern.gridSize,
     dmcPalette: pattern.dmcColors.map((c, i) => ({
@@ -73,7 +76,7 @@ function buildPatternResponse(pattern: PatternResult, extra: Record<string, unkn
       name: c.name,
       hex: c.hex,
       count: c.count,
-      symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+      symbol: c.symbol || CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
     })),
     totalStitches: pattern.stitchCount,
     gridSizes: [...AVAILABLE_GRID_SIZES],
