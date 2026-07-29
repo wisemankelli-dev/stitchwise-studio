@@ -120,9 +120,9 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, edgeThreshold, outlineDmcCode } = parsed.data;
 
-        // Line art prompt engineering — heavily emphasize pure black & white
-        const lineArtPrompt = `${prompt}, black and white line art only, pure black outlines on pure white background, coloring book page, no gray, no color, no shading, no gradients, clean vector style, embroidery pattern template`;
-        const negativePrompt = "photorealistic, shading, gradients, color fills, complex backgrounds, 3D, rendered";
+        // Prompt — SD3.5 handles the line-art style via style_preset
+        const lineArtPrompt = `${prompt}, black and white, simple clean outlines, white background, embroidery pattern`;
+        const negativePrompt = "color, shading, gradients, complex backgrounds, photorealistic, 3D";
 
         console.error(JSON.stringify({
           event: "text_to_line_art_request",

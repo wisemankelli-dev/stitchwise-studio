@@ -14,6 +14,7 @@ const STABILITY_API_BASE = "https://api.stability.ai/v2beta/stable-image/generat
 
 /**
  * Generate an image from a text prompt using Stability AI.
+ * Uses SD3.5 with style_preset="line-art" for clean embroidery-ready line art.
  * Returns the image as a data URL so it works with the existing pipeline.
  */
 export async function generateImageWithStability(
@@ -27,9 +28,10 @@ export async function generateImageWithStability(
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("output_format", "png");
+    formData.append("style_preset", "line-art");
     if (negativePrompt) formData.append("negative_prompt", negativePrompt);
 
-    const response = await axios.post(`${STABILITY_API_BASE}/core`, formData, {
+    const response = await axios.post(`${STABILITY_API_BASE}/sd3`, formData, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "image/*",
