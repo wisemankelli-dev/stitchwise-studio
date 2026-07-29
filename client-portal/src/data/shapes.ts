@@ -80,75 +80,68 @@ const SHAPES: ClipartShape[] = [
     ]), width: 12, height: 11,
   },
 
-  // BUTTERFLY: fully symmetrical wings, narrow body center
+  // BUTTERFLY: two rounded wing lobes, thin body center, antennae
   {
     id: 'butterfly', name: 'Butterfly', category: 'Animals', grid: s([
-      '.#..........#.',
-      '###........###',  // upper wings — broad
-      '####......####',
-      '.#####..#####.',
-      '..##########..',
-      '...########...',
-      '....######....',  // narrow body
-      '...########...',
-      '..##########..',
-      '.#####..#####.',
-      '####......####',  // lower wings
-      '###........###',
-      '.#..........#.',
-    ]), width: 14, height: 13,
+      '....##.##....',   // antennae
+      '...##...##...',
+      '..##.....##..',   // upper wings — rounded
+      '.##...##...##.',
+      '##..######..##',  // body + upper wings
+      '##..######..##',  // body (2px wide)
+      '.##..####..##.',  // lower wings
+      '..##......##..',
+      '...##....##...',
+      '....##..##....',
+    ]), width: 14, height: 10,
   },
 
-  // BIRD: beak pointing right, wing, long tail feathers
+  // BIRD: pointed beak, rounded head, wing, tail feathers
   {
     id: 'bird', name: 'Bird', category: 'Animals', grid: s([
-      '......#.....',
-      '......##....',  // beak
-      '.....###....',
-      '....####....',  // head
-      '...#####....',
-      '..######.#..',  // body + wing start
-      '.#########..',
-      '##########..',
-      '.########...',
-      '..######....',  // tail feathers
-      '...##.##....',
-      '..##...##...',
-      '.##.....##..',
-    ]), width: 12, height: 13,
-  },
-
-  // FISH: forked tail → oval body → eye (facing right)
-  {
-    id: 'fish', name: 'Fish', category: 'Animals', grid: s([
-      '......##....',
-      '....#..#....',
-      '...######...',
-      '..########..',
-      '.#########..',
-      '#####.#####.',
-      '.##########.',
-      '..#####.##..',
-      '...###...#..',
-      '....##......',
+      '......##....',   // beak tip
+      '.....####...',   // beak
+      '....######..',   // head
+      '...########.',   // head + body
+      '..##########',   // body + wing
+      '..##########',   // wing
+      '..#########.',   // body
+      '...#######..',   // body narrow
+      '....#####...',   // tail
+      '.....#.##...',   // tail tips
     ]), width: 12, height: 10,
   },
 
-  // OWL: two huge round eyes, small beak, compact body
+  // FISH: forked tail on left, eye dot, body tapering to mouth on right
+  {
+    id: 'fish', name: 'Fish', category: 'Animals', grid: s([
+      '......##....',   // tail top
+      '....#..#....',   // forked tail
+      '...##.##....',   // tail base
+      '...#####....',   // body start
+      '..#######...',   // body
+      '..#########.',   // body wide
+      '..####.####.',   // eye gap creates visible eye
+      '..####..###.',   // mouth area
+      '...###......',   // underside
+      '....##......',   // tail bottom
+    ]), width: 12, height: 10,
+  },
+
+  // OWL: wide head, two separated round eyes, tapered body
   {
     id: 'owl', name: 'Owl', category: 'Animals', grid: s([
-      '...####...',
-      '..######..',
-      '.##....##.',
-      '##..##..##',  // big eyes (two ## blocks)
-      '##..##..##',
-      '##..##..##',
-      '##......##',
-      '.##....##.',
-      '..######..',  // round body
-      '...####...',
-      '....##....',
-    ]), width: 10, height: 11,
+      '....####....',   // head top
+      '..##....##..',   // head wide
+      '.##......##.',   // head
+      '##..####..##',   // big round eyes (##..## pattern)
+      '##..####..##',   // eyes
+      '##........##',   // face below eyes
+      '.##..##..##.',   // beak area
+      '..########..',   // body
+      '...######...',   // body
+      '....####....',   // tail
+    ]), width: 12, height: 10,
   },
 
   // PAW PRINT: 4 distinct toe pads above, large main pad below
@@ -167,20 +160,20 @@ const SHAPES: ClipartShape[] = [
 
   // ═══════════ FLOWERS (5) ═══════════
 
-  // FLOWER: 5 distinct petals radiating from center
+  // FLOWER: 5 clear petals around center with visible gaps
   {
     id: 'flower', name: 'Flower', category: 'Flowers', grid: s([
-      '.....##.....',
-      '....####....',
-      '...#.##.#...',  // petal tips
-      '..#......#..',
-      '.#..####..#.',
-      '#...####...#',  // petals around center
-      '.#..####..#.',
-      '..#......#..',
-      '...#.##.#...',
-      '....####....',
-      '.....##.....',
+      '.....##.....',   // top petal
+      '....#..#....',   // petal tips
+      '...#....#...',   // petals spread
+      '..#..##..#..',   // petals + center
+      '.#..####..#.',   // petals
+      '#...####...#',   // petals wide + center
+      '.#..####..#.',   // petals
+      '..#..##..#..',   // petals + center
+      '...#....#...',   // petals narrow
+      '....#..#....',   // bottom petals
+      '.....##.....',   // bottom petal
     ]), width: 12, height: 11,
   },
 
