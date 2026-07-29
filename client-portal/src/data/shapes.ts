@@ -39,7 +39,7 @@ const SHAPES: ClipartShape[] = [
       '..##########..',
       '...########...',
       '....######....',
-    ]), width: 14, height: 14,
+    ]), width: 15, height: 14,
   },
 
   // CAT: full-body sitting — arched back, upright triangular ears, curled tail
@@ -58,7 +58,7 @@ const SHAPES: ClipartShape[] = [
       '...######.....',
       '....####......',
       '.....###......',
-    ]), width: 14, height: 13,
+    ]), width: 15, height: 13,
   },
 
   // DOG: sitting with floppy side ears — distinct from cat silhouette
@@ -77,7 +77,7 @@ const SHAPES: ClipartShape[] = [
       '...########...',
       '....######....',
       '.....####.....',
-    ]), width: 14, height: 13,
+    ]), width: 15, height: 13,
   },
 
   // BUTTERFLY: wings curve outward like parentheses (not diagonal) + 2px body
@@ -97,7 +97,7 @@ const SHAPES: ClipartShape[] = [
       '...##...##.....',
       '....#...#......',
       '.....#.#.......',
-    ]), width: 14, height: 14,
+    ]), width: 16, height: 14,
   },
 
   // BIRD: large triangular beak right → body → wing bump → forked tail
@@ -116,7 +116,7 @@ const SHAPES: ClipartShape[] = [
       '....##.##.....',
       '..###...##....',
       '.##......##...',
-    ]), width: 14, height: 13,
+    ]), width: 15, height: 13,
   },
 
   // FISH: V-shaped forked tail on left → teardrop body → eye dot on right
@@ -133,7 +133,7 @@ const SHAPES: ClipartShape[] = [
       '....######.....',
       '.....#..#......',
       '......##.......',
-    ]), width: 14, height: 11,
+    ]), width: 16, height: 11,
   },
 
   // OWL: wide-set eyes (6px gap) → ear tufts → oval body wider than head
@@ -150,7 +150,7 @@ const SHAPES: ClipartShape[] = [
       '..##########..',
       '...########...',
       '....######....',
-    ]), width: 14, height: 11,
+    ]), width: 15, height: 11,
   },
 
   // PAW PRINT: 4 toe pads above → large main pad below
@@ -164,7 +164,7 @@ const SHAPES: ClipartShape[] = [
       '..##########..',
       '...########...',
       '....######....',
-    ]), width: 14, height: 8,
+    ]), width: 15, height: 8,
   },
 
   // ═══════════ FLOWERS (5) ═══════════
@@ -184,7 +184,7 @@ const SHAPES: ClipartShape[] = [
       '....#.#.....',
       '.....##.....',
       '.....###....',
-    ]), width: 12, height: 12,
+    ]), width: 14, height: 12,
   },
 
   // ROSE: tight spiral center → concentric layered petals
@@ -201,7 +201,7 @@ const SHAPES: ClipartShape[] = [
       '..########..',
       '...######...',
       '....####....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // TULIP: U-shaped cup bloom → straight stem → basal leaves
@@ -218,7 +218,7 @@ const SHAPES: ClipartShape[] = [
       '.....###....',
       '.....###....',
       '....#####...',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // DAISY: thin ray petals radiating from small center dot
@@ -235,7 +235,7 @@ const SHAPES: ClipartShape[] = [
       '...#.#.#....',
       '....#.#.....',
       '.....##.....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // LOTUS: pointed teardrop petals opening upward → leaf base
@@ -252,7 +252,7 @@ const SHAPES: ClipartShape[] = [
       '....####....',
       '.....##.....',
       '....####....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // ═══════════ NATURE (5) ═══════════
@@ -272,7 +272,7 @@ const SHAPES: ClipartShape[] = [
       '...#####....',
       '...#####....',
       '..#######...',
-    ]), width: 12, height: 12,
+    ]), width: 13, height: 12,
   },
 
   // LEAF: pointed oval → prominent center vein → stem
@@ -290,7 +290,7 @@ const SHAPES: ClipartShape[] = [
       '....#####...',
       '.....###....',
       '......#.....',
-    ]), width: 12, height: 12,
+    ]), width: 13, height: 12,
   },
 
   // SUN: bold center circle → 8 distinct outward rays
@@ -307,7 +307,7 @@ const SHAPES: ClipartShape[] = [
       '...#.#.#....',
       '....#.#.....',
       '.....##.....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // MOON: clean crescent curve on right side
@@ -323,7 +323,7 @@ const SHAPES: ClipartShape[] = [
       '..##..###...',
       '...######...',
       '....####....',
-    ]), width: 12, height: 10,
+    ]), width: 13, height: 10,
   },
 
   // RAINBOW: semi-circular arc with even bands
@@ -340,7 +340,7 @@ const SHAPES: ClipartShape[] = [
       '...##.##....',
       '....###.....',
       '.....##.....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // ═══════════ HOLIDAY (3) ═══════════
@@ -361,7 +361,7 @@ const SHAPES: ClipartShape[] = [
       '....###.....',
       '....###.....',
       '...#####....',
-    ]), width: 12, height: 13,
+    ]), width: 13, height: 13,
   },
 
   // SNOWFLAKE: 6-pointed symmetrical crystal
@@ -377,7 +377,7 @@ const SHAPES: ClipartShape[] = [
       '...##.##....',
       '....###.....',
       '.....##.....',
-    ]), width: 12, height: 10,
+    ]), width: 13, height: 10,
   },
 
   // CANDY CANE: classic J-hook shape
@@ -395,7 +395,7 @@ const SHAPES: ClipartShape[] = [
       '...####...',
       '..####....',
       '.##.......',
-    ]), width: 10, height: 12,
+    ]), width: 11, height: 12,
   },
 
   // ═══════════ FOOD (4) ═══════════
@@ -415,7 +415,7 @@ const SHAPES: ClipartShape[] = [
       '...#####....',
       '....###.....',
       '.....#......',
-    ]), width: 12, height: 12,
+    ]), width: 13, height: 12,
   },
 
   // CHERRY: two round cherries on V-shaped stem
@@ -431,7 +431,7 @@ const SHAPES: ClipartShape[] = [
       '..##...##...',
       '...#...#....',
       '....#.#.....',
-    ]), width: 12, height: 10,
+    ]), width: 13, height: 10,
   },
 
   // MUSHROOM: wide domed cap → thick stem
@@ -448,7 +448,7 @@ const SHAPES: ClipartShape[] = [
       '....######....',
       '...########...',
       '..##########..',
-    ]), width: 14, height: 11,
+    ]), width: 15, height: 11,
   },
 
   // TEAPOT: spout on left → handle on right → lid on top → round body
@@ -483,7 +483,7 @@ const SHAPES: ClipartShape[] = [
       '.##.....##..',
       '##.......##.',
       '.#.......#..',
-    ]), width: 12, height: 10,
+    ]), width: 13, height: 10,
   },
 
   // HEART: two rounded upper lobes → pointed bottom
@@ -498,7 +498,7 @@ const SHAPES: ClipartShape[] = [
       '...########...',
       '....######....',
       '.....####.....',
-    ]), width: 14, height: 9,
+    ]), width: 15, height: 9,
   },
 
   // DIAMOND: faceted gem — top and bottom points
@@ -516,7 +516,7 @@ const SHAPES: ClipartShape[] = [
       '...#####....',
       '....###.....',
       '.....#......',
-    ]), width: 12, height: 12,
+    ]), width: 13, height: 12,
   },
 
   // HOUSE: triangular roof → door in wall → windows
@@ -533,7 +533,7 @@ const SHAPES: ClipartShape[] = [
       '.##..##..##.',
       '.##......##.',
       '.##########.',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // ANCHOR: top ring → shaft → crossbar → curved flukes
@@ -552,7 +552,7 @@ const SHAPES: ClipartShape[] = [
       '...#####...',
       '..##...##..',
       '.##.....##.',
-    ]), width: 12, height: 13,
+    ]), width: 13, height: 13,
   },
 
   // MUSIC NOTE: filled oval note head → straight upward stem
@@ -569,7 +569,7 @@ const SHAPES: ClipartShape[] = [
       '.##....##...',
       '##.....##...',
       '##..........',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 
   // CROWN: 3 prominent points → jeweled band → base
@@ -583,7 +583,7 @@ const SHAPES: ClipartShape[] = [
       '##############',
       '##..........##',
       '.#..........#.',
-    ]), width: 14, height: 8,
+    ]), width: 15, height: 8,
   },
 
   // ═══════════ BORDERS (4) ═══════════
@@ -601,7 +601,7 @@ const SHAPES: ClipartShape[] = [
       '##........',
       '##########',
       '##########',
-    ]), width: 10, height: 10,
+    ]), width: 11, height: 10,
   },
 
   // LINE: horizontal top and bottom bars
@@ -617,7 +617,7 @@ const SHAPES: ClipartShape[] = [
       '..........',
       '##########',
       '##########',
-    ]), width: 10, height: 10,
+    ]), width: 11, height: 10,
   },
 
   // ZIGZAG: repeating Z pattern
@@ -630,7 +630,7 @@ const SHAPES: ClipartShape[] = [
       '..##..##..',
       '.##....##.',
       '##......##',
-    ]), width: 10, height: 7,
+    ]), width: 11, height: 7,
   },
 
   // SCALLOP: wavy curved border pattern
@@ -640,7 +640,7 @@ const SHAPES: ClipartShape[] = [
       '#.#..#.#..#.#',
       '.#....#....#.',
       '#.#..#.#..#.#',
-    ]), width: 12, height: 4,
+    ]), width: 14, height: 4,
   },
 
   // ═══════════ GEOMETRIC (4) ═══════════
@@ -657,7 +657,7 @@ const SHAPES: ClipartShape[] = [
       '.##....##.',
       '..######..',
       '...####...',
-    ]), width: 10, height: 9,
+    ]), width: 11, height: 9,
   },
 
   // SQUARE: solid filled block
@@ -673,7 +673,7 @@ const SHAPES: ClipartShape[] = [
       '##########',
       '##########',
       '##########',
-    ]), width: 10, height: 10,
+    ]), width: 11, height: 10,
   },
 
   // TRIANGLE: pointed apex → flat base
@@ -687,7 +687,7 @@ const SHAPES: ClipartShape[] = [
       '.#########..',
       '###########.',
       '###########.',
-    ]), width: 12, height: 8,
+    ]), width: 13, height: 8,
   },
 
   // CROSS: equal-arm + shape
@@ -704,7 +704,7 @@ const SHAPES: ClipartShape[] = [
       '.....##.....',
       '.....##.....',
       '.....##.....',
-    ]), width: 12, height: 11,
+    ]), width: 13, height: 11,
   },
 ];
 
@@ -732,8 +732,8 @@ export function stampShape(
 ): { grid: Record<string, string>; stitchTypes: Record<string, string> } {
   const newGrid = { ...grid };
   const newStitchTypes = { ...stitchTypes };
-  for (let r = 0; r < shape.height; r++) {
-    for (let c = 0; c < shape.width; c++) {
+  for (let r = 0; r < shape.grid.length; r++) {
+    for (let c = 0; c < shape.grid[r].length; c++) {
       if (!shape.grid[r][c]) continue;
       const gr = targetRow + r;
       const gc = targetCol + c;
