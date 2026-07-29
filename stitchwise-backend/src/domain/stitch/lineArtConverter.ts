@@ -19,6 +19,31 @@ import { closestDmcColor, rgbToHex } from "./dmcColors";
 
 // ─── Sobel Edge Detection ───────────────────────────────────────────────────
 
+/**
+ * Apply a simple 3x3 Gaussian blur to smooth noise before edge detection.
+ * Uses the kernel: [1 2 1; 2 4 2; 1 2 1] / 16
+ */
+function gaussianBlur3x3(
+  input: Float64Array,
+  width: number,
+  height: number,
+): Float64Array {
+  const kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1];
+  const result = new Float64Array(width * height);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let sum = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          sum += input[(y + ky) * width + (x + kx)] * kernel[(ky + 1) * 3 + (kx + 1)];
+        }
+      }
+      result[y * width + x] = sum / 16;
+    }
+  }
+  return result;
+}
+
 /** Sobel X kernel (3x3) */
 const SOBEL_X = [
   -1, 0, 1,
@@ -205,65 +230,96 @@ export async function lineArtToStitchGrid(
 
   const rawPixels = new Uint8ClampedArray(data);
 
-  // Step 2: Auto-invert if the image is predominantly dark.
-  // Stability AI models often produce dark images with light elements.
-  // If >50% of pixels have luminance < 128, invert to make it
-  // light-background with dark outlines — what Sobel expects.
-  invertIfDark(rawPixels, size, size);
-
-  // Step 3: Binarize to pure black & white for clean edge detection.
-  binarizeImage(rawPixels, size, size);
-
-  // Step 4: Convert to grayscale and apply Sobel edge detection
-  const gray = toGrayscale(rawPixels, size, size);
-  const magnitude = sobelEdgeDetection(gray, size, size);
-
-  // Step 5: Threshold the edge map to produce an outline mask
-  const edgeMask = thresholdEdges(magnitude, edgeThreshold);
-
-  // Step 6: Build the stitch grid — pure B&W line art.
-  // Outline pixels (edgeMask=1) → backstitch with DMC 310 Black.
-  // Region pixels (edgeMask=0) → white (fabric). Color fills are
-  // applied later by the user via the coloring-book fill tool.
+  // Step 2: Map each pixel to its nearest DMC color.
+  // No edge detection — this is color quantization, not outline extraction.
+  // Closed color regions from the AI's flat vector art become stitch regions.
+  const MAX_COLORS = 15;
   const grid: StitchGrid = [];
-  const whiteDmc = closestDmcColor(255, 255, 255);
-  const blackDmc = closestDmcColor(0, 0, 0);
-  const whiteHex = rgbToHex(whiteDmc.rgb[0], whiteDmc.rgb[1], whiteDmc.rgb[2]);
-  const blackHex = rgbToHex(blackDmc.rgb[0], blackDmc.rgb[1], blackDmc.rgb[2]);
-
-  let backCount = 0;
-  let whiteCount = 0;
+  const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
 
   for (let row = 0; row < size; row++) {
     const gridRow = [];
     for (let col = 0; col < size; col++) {
-      const isEdge = edgeMask[row * size + col] === 1;
+      const idx = (row * size + col) * 4;
+      const r = rawPixels[idx];
+      const g = rawPixels[idx + 1];
+      const b = rawPixels[idx + 2];
 
-      if (isEdge) {
-        gridRow.push({
-          color: blackHex,
-          dmcCode: blackDmc.code,
-          dmcName: blackDmc.name,
-          stitchType: "back" as const,
-        });
-        backCount++;
+      const dmc = closestDmcColor(r, g, b);
+      const hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
+
+      gridRow.push({
+        color: hex,
+        dmcCode: dmc.code,
+        dmcName: dmc.name,
+        stitchType: "cross" as const,
+      });
+
+      const key = dmc.code;
+      if (dmcCountMap.has(key)) {
+        dmcCountMap.get(key)!.count++;
       } else {
-        gridRow.push({
-          color: whiteHex,
-          dmcCode: whiteDmc.code,
-          dmcName: whiteDmc.name,
-          stitchType: "cross" as const,
-        });
-        whiteCount++;
+        dmcCountMap.set(key, { code: key, name: dmc.name, hex, count: 1 });
       }
     }
     grid.push(gridRow);
   }
 
-  const dmcColors: DmcUsage[] = [
-    { code: blackDmc.code, name: blackDmc.name, hex: blackHex, count: backCount },
-    { code: whiteDmc.code, name: whiteDmc.name, hex: whiteHex, count: whiteCount },
-  ].filter(c => c.count > 0);
+  // Step 3: Cap palette to top N colors, remap outliers
+  const sorted = Array.from(dmcCountMap.values()).sort((a, b) => b.count - a.count);
+  const topSet = new Set(sorted.slice(0, MAX_COLORS).map(c => c.code));
+
+  // Build remap lookup
+  const remapCache = new Map<string, string>();
+  function nearestInTop(code: string): string {
+    if (topSet.has(code)) return code;
+    if (remapCache.has(code)) return remapCache.get(code)!;
+    const orig = dmcCountMap.get(code);
+    if (!orig) return sorted[0]?.code ?? "520";
+    let best = sorted[0].code;
+    let bestD = Infinity;
+    for (const tc of sorted.slice(0, MAX_COLORS)) {
+      const dr = parseInt(orig.hex.slice(1,3),16) - parseInt(tc.hex.slice(1,3),16);
+      const dg = parseInt(orig.hex.slice(3,5),16) - parseInt(tc.hex.slice(3,5),16);
+      const db = parseInt(orig.hex.slice(5,7),16) - parseInt(tc.hex.slice(5,7),16);
+      const d = dr*dr + dg*dg + db*db;
+      if (d < bestD) { bestD = d; best = tc.code; }
+    }
+    remapCache.set(code, best);
+    return best;
+  }
+
+  // Remap and recount
+  const finalMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      const cell = grid[row][col];
+      const newCode = nearestInTop(cell.dmcCode ?? "520");
+      if (newCode !== cell.dmcCode) {
+        const info = dmcCountMap.get(newCode);
+        if (info) {
+          cell.dmcCode = newCode;
+          cell.dmcName = info.name;
+          cell.color = info.hex;
+        }
+      }
+      const key = cell.dmcCode ?? "520";
+      if (finalMap.has(key)) {
+        finalMap.get(key)!.count++;
+      } else {
+        const info = dmcCountMap.get(key);
+        finalMap.set(key, {
+          code: key,
+          name: info?.name ?? "Unknown",
+          hex: info?.hex ?? "#FFFFFF",
+          count: 1,
+        });
+      }
+    }
+  }
+
+  const dmcColors: DmcUsage[] = Array.from(finalMap.values())
+    .sort((a, b) => b.count - a.count);
 
   return {
     grid,
