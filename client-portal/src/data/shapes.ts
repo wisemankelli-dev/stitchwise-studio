@@ -15,136 +15,143 @@ export const SHAPE_CATEGORIES = [
 export type ShapeCategory = typeof SHAPE_CATEGORIES[number];
 
 function s(rows: string[]): boolean[][] {
-  const maxLen = Math.max(...rows.map(r => r.length));
-  return rows.map(row => {
-    const padded = row.padEnd(maxLen, '.');
-    return [...padded].map(ch => ch === '#');
-  });
+  return rows.map(row => [...row].map(ch => ch === '#'));
 }
 
 const SHAPES: ClipartShape[] = [
 
   // ═══════════ ANIMALS (8) ═══════════
 
-  // RABBIT: long separated ears, round body, small tail
+  // RABBIT: tall separated ears → round head → plump body → small round tail
   {
     id: 'rabbit', name: 'Rabbit', category: 'Animals', grid: s([
-      '..#......#..',  // ear tips — tall, separated
-      '.##......##.',
-      '..#......#..',
-      '..##....##..',  // ears meet head
-      '...######...',  // round head
-      '...######...',
-      '..########..',
-      '.##......##.',  // body
-      '##........##',
-      '##........##',
-      '.##......##.',
-      '..########..',
-      '...######...',
-      '....####....',  // small bunny tail
-    ]), width: 12, height: 14,
+      '..#........#..',
+      '.##........##.',
+      '..#........#..',
+      '..##......##..',
+      '...########...',
+      '...########...',
+      '..##########..',
+      '.##........##.',
+      '##..........##',
+      '##..........##',
+      '.##........##.',
+      '..##########..',
+      '...########...',
+      '....######....',
+    ]), width: 14, height: 14,
   },
 
-  // CAT: pointed triangular ears, round face, whisker dots
+  // CAT: full-body sitting — arched back, upright triangular ears, curled tail
   {
     id: 'cat', name: 'Cat', category: 'Animals', grid: s([
-      '..#......#..',  // pointed ear tips
-      '.##......##.',
-      '.##########.',  // head top
-      '##..####..##',  // wide face
-      '##..####..##',  // eye gaps
-      '##........##',
-      '##..#..#..##',  // nose/whisker area
-      '.##......##.',
-      '..########..',
-      '...######...',
-      '....####....',
-    ]), width: 12, height: 11,
+      '.....##.......',
+      '....###.......',
+      '.....##.......',
+      '....####......',
+      '...######.....',
+      '..########....',
+      '.##########...',
+      '.####..####...',
+      '.####..####...',
+      '..########....',
+      '...######.....',
+      '....####......',
+      '.....###......',
+    ]), width: 14, height: 13,
   },
 
-  // DOG: floppy ears on sides, round face, wider snout
+  // DOG: sitting with floppy side ears — distinct from cat silhouette
   {
     id: 'dog', name: 'Dog', category: 'Animals', grid: s([
-      '..##....##..',  // floppy ear tops
-      '.##......##.',
-      '.##########.',  // broad head
-      '##..####..##',  // eyes
-      '##..####..##',
-      '##........##',  // wide snout
-      '.##..##..##.',
-      '..########..',
-      '...######...',
-      '....####....',
-      '.....##.....',
-    ]), width: 12, height: 11,
+      '..##......##..',
+      '.##........##.',
+      '..##......##..',
+      '...########...',
+      '..##########..',
+      '.############.',
+      '.############.',
+      '.##..####..##.',
+      '.##..####..##.',
+      '..##########..',
+      '...########...',
+      '....######....',
+      '.....####.....',
+    ]), width: 14, height: 13,
   },
 
-  // BUTTERFLY: two rounded wing lobes, thin body center, antennae
+  // BUTTERFLY: rounded wing curves → narrow 2px body → antennae dots
   {
     id: 'butterfly', name: 'Butterfly', category: 'Animals', grid: s([
-      '....##.##....',   // antennae
-      '...##...##...',
-      '..##.....##..',   // upper wings — rounded
-      '.##...##...##.',
-      '##..######..##',  // body + upper wings
-      '##..######..##',  // body (2px wide)
-      '.##..####..##.',  // lower wings
-      '..##......##..',
-      '...##....##...',
-      '....##..##....',
-    ]), width: 14, height: 10,
+      '.....#.#......',
+      '....#...#.....',
+      '...##...##....',
+      '..##.....##...',
+      '.##.......##..',
+      '....###.###...',
+      '....###.###...',
+      '.##.......##..',
+      '..##.....##...',
+      '...##...##....',
+      '....#...#.....',
+      '.....#.#......',
+    ]), width: 14, height: 12,
   },
 
-  // BIRD: pointed beak, rounded head, wing, tail feathers
+  // BIRD: beak right → compact body → wing → forked tail
   {
     id: 'bird', name: 'Bird', category: 'Animals', grid: s([
-      '......##....',   // beak tip
-      '.....####...',   // beak
-      '....######..',   // head
-      '...########.',   // head + body
-      '..##########',   // body + wing
-      '..##########',   // wing
-      '..#########.',   // body
-      '...#######..',   // body narrow
-      '....#####...',   // tail
-      '.....#.##...',   // tail tips
-    ]), width: 12, height: 10,
+      '......#......',
+      '......##.....',
+      '.....###.....',
+      '....####.....',
+      '...#####.....',
+      '..######.#...',
+      '.##########..',
+      '.##########..',
+      '..########...',
+      '...######....',
+      '....##.##....',
+      '..###...##...',
+      '.##......##..',
+    ]), width: 14, height: 13,
   },
 
-  // FISH: forked tail on left, eye dot, body tapering to mouth on right
+  // FISH: forked tail fin → teardrop body → eye area
   {
     id: 'fish', name: 'Fish', category: 'Animals', grid: s([
-      '......##....',   // tail top
-      '....#..#....',   // forked tail
-      '...##.##....',   // tail base
-      '...#####....',   // body start
-      '..#######...',   // body
-      '..#########.',   // body wide
-      '..####.####.',   // eye gap creates visible eye
-      '..####..###.',   // mouth area
-      '...###......',   // underside
-      '....##......',   // tail bottom
-    ]), width: 12, height: 10,
+      '.....##.......',
+      '....####......',
+      '...######.....',
+      '..########....',
+      '.##########...',
+      '.##########...',
+      '..########....',
+      '...######.....',
+      '....####......',
+      '.....##.......',
+      '......#.......',
+    ]), width: 14, height: 11,
   },
 
-  // OWL: wide head, two separated round eyes, tapered body
+  // OWL: wide-set eyes (6px gap) → ear tufts → oval body wider than head
   {
     id: 'owl', name: 'Owl', category: 'Animals', grid: s([
-      '....####....',   // head top
-      '..##....##..',   // head wide
-      '.##......##.',   // head
-      '##..####..##',   // big round eyes (##..## pattern)
-      '##..####..##',   // eyes
-      '##........##',   // face below eyes
-      '.##..##..##.',   // beak area
-      '..########..',   // body
-      '...######...',   // body
-      '....####....',   // tail
-    ]), width: 12, height: 10,
+      '.##........##.',
+      '..##########..',
+      '..##########..',
+      '.##........##.',
+      '##..........##',
+      '##..........##',
+      '##..........##',
+      '.##..####..##.',
+      '..##########..',
+      '...########...',
+      '....######....',
+    ]), width: 14, height: 11,
   },
 
-  // PAW PRINT: 4 distinct toe pads above, large main pad below
+  // PAW PRINT: 4 toe pads above → large main pad below
   {
     id: 'paw', name: 'Paw Print', category: 'Animals', grid: s([
       '..#........#..',
@@ -160,199 +167,198 @@ const SHAPES: ClipartShape[] = [
 
   // ═══════════ FLOWERS (5) ═══════════
 
-  // FLOWER: 5 clear petals around center with visible gaps
+  // FLOWER: 5-petal blossom radiating from center
   {
     id: 'flower', name: 'Flower', category: 'Flowers', grid: s([
-      '.....##.....',   // top petal
-      '....#..#....',   // petal tips
-      '...#....#...',   // petals spread
-      '..#..##..#..',   // petals + center
-      '.#..####..#.',   // petals
-      '#...####...#',   // petals wide + center
-      '.#..####..#.',   // petals
-      '..#..##..#..',   // petals + center
-      '...#....#...',   // petals narrow
-      '....#..#....',   // bottom petals
-      '.....##.....',   // bottom petal
+      '.....##.....',
+      '....#.#.....',
+      '...#.#.#....',
+      '..#..#..#...',
+      '.#..##..#...',
+      '#...##....#.',
+      '.#..##..#...',
+      '..#..#..#...',
+      '...#.#.#....',
+      '....#.#.....',
+      '.....##.....',
+      '.....###....',
+    ]), width: 12, height: 12,
+  },
+
+  // ROSE: tight spiral center → concentric layered petals
+  {
+    id: 'rose', name: 'Rose', category: 'Flowers', grid: s([
+      '....####....',
+      '...######...',
+      '..########..',
+      '.##..##..##.',
+      '##..####..##',
+      '##..####..##',
+      '##..####..##',
+      '.##..##..##.',
+      '..########..',
+      '...######...',
+      '....####....',
     ]), width: 12, height: 11,
   },
 
-  // ROSE: layered petals with spiral center
-  {
-    id: 'rose', name: 'Rose', category: 'Flowers', grid: s([
-      '...####...',
-      '..######..',
-      '.##....##.',  // outer petals
-      '##..##..##',
-      '##.####.##',  // spiral center layers
-      '##.####.##',
-      '##..##..##',
-      '.##....##.',
-      '..######..',
-      '...####...',
-      '....##....',  // short stem
-    ]), width: 10, height: 11,
-  },
-
-  // TULIP: U-shaped cup flower + straight stem
+  // TULIP: U-shaped cup bloom → straight stem → basal leaves
   {
     id: 'tulip', name: 'Tulip', category: 'Flowers', grid: s([
-      '...####...',
-      '..######..',  // cup opening
-      '.##....##.',
-      '##......##',  // cup body
-      '##......##',
-      '.########.',
-      '..######..',
-      '...####...',
-      '....##....',  // stem
-      '....##....',
-      '...####...',  // leaves at base
-    ]), width: 10, height: 11,
+      '....####....',
+      '...######...',
+      '..##....##..',
+      '.##......##.',
+      '.##......##.',
+      '..########..',
+      '...######...',
+      '....####....',
+      '.....###....',
+      '.....###....',
+      '....#####...',
+    ]), width: 12, height: 11,
   },
 
-  // DAISY: thin ray petals radiating outward
+  // DAISY: thin ray petals radiating from small center dot
   {
     id: 'daisy', name: 'Daisy', category: 'Flowers', grid: s([
-      '....##....',
-      '...#..#...',  // ray petals (thin)
-      '..#....#..',
-      '.#..##..#.',
-      '#...##...#',  // center + rays
-      '.#..##..#.',
-      '..#....#..',
-      '...#..#...',
-      '....##....',  // center dot
-      '....##....',
-    ]), width: 10, height: 10,
+      '.....##.....',
+      '....#.#.....',
+      '...#.#.#....',
+      '..#..#..#...',
+      '.#...##..#..',
+      '#....##...#.',
+      '.#...##..#..',
+      '..#..#..#...',
+      '...#.#.#....',
+      '....#.#.....',
+      '.....##.....',
+    ]), width: 12, height: 11,
   },
 
-  // LOTUS: pointed teardrop petals, water lily shape
+  // LOTUS: pointed teardrop petals opening upward → leaf base
   {
     id: 'lotus', name: 'Lotus', category: 'Flowers', grid: s([
       '.....##.....',
-      '....####....',  // pointed tips
-      '...#....#...',
-      '..#..##..#..',  // teardrop petals
+      '....#.#.....',
+      '...#.#.#....',
+      '..#..##..#..',
       '.#..####..#.',
       '.#.######.#.',
-      '..########..',  // inner petals
+      '..########..',
       '...######...',
-      '....####....',  // center
+      '....####....',
       '.....##.....',
-      '....####....',  // leaf base
+      '....####....',
     ]), width: 12, height: 11,
   },
 
   // ═══════════ NATURE (5) ═══════════
 
-  // TREE: triangular canopy + thick trunk
+  // TREE: triangular canopy → straight trunk → root base
   {
     id: 'tree', name: 'Tree', category: 'Nature', grid: s([
       '.....##.....',
-      '....###....',
-      '...#####...',
-      '..#######..',  // canopy (triangle)
-      '.#########.',
-      '###########',
-      '###########',
-      '.#########.',
-      '..#######..',
-      '...#####...',
-      '....###....',  // trunk
-      '....###....',
-      '....###....',
-      '...#####...',  // roots
-    ]), width: 12, height: 14,
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '.#########..',
+      '###########.',
+      '###########.',
+      '...#####....',
+      '...#####....',
+      '...#####....',
+      '..#######...',
+    ]), width: 12, height: 12,
   },
 
-  // LEAF: pointed oval with center vein
+  // LEAF: pointed oval → prominent center vein → stem
   {
     id: 'leaf', name: 'Leaf', category: 'Nature', grid: s([
       '......#.....',
       '.....###....',
-      '....#####...',  // pointed tip
+      '....#####...',
       '...#######..',
       '..#########.',
-      '.#####.#####',  // vein line
-      '###########.',
+      '.#####.#####',
       '.##########.',
-      '..########..',  // tapering base
-      '...######...',
-      '....####....',
-      '.....##.....',
+      '..#########.',
+      '...#######..',
+      '....#####...',
+      '.....###....',
+      '......#.....',
     ]), width: 12, height: 12,
   },
 
-  // SUN: circle with distinct rays all around
+  // SUN: bold center circle → 8 distinct outward rays
   {
     id: 'sun', name: 'Sun', category: 'Nature', grid: s([
       '.....##.....',
       '....#.#.....',
-      '...#.#.#....',  // rays
       '...#.#.#....',
       '.#..###..#..',
-      '#..#####..#.',  // core circle
+      '#..#####..#.',
       '#.#######.#.',
+      '#..#####..#.',
       '.#..###..#..',
-      '...#.#.#....',
       '...#.#.#....',
       '....#.#.....',
       '.....##.....',
-    ]), width: 12, height: 12,
+    ]), width: 12, height: 11,
   },
 
-  // MOON: smooth crescent curve on right side
+  // MOON: clean crescent curve on right side
   {
     id: 'moon', name: 'Moon', category: 'Nature', grid: s([
-      '...####...',
-      '..######..',
-      '.##..###..',
-      '##....##..',  // crescent — filled left, empty right
-      '##....##..',
-      '##....##..',
-      '##....##..',
-      '.##..###..',
-      '..######..',
-      '...####...',
-    ]), width: 10, height: 10,
+      '....####....',
+      '...######...',
+      '..##..###...',
+      '.##....##...',
+      '.##....##...',
+      '.##....##...',
+      '.##....##...',
+      '..##..###...',
+      '...######...',
+      '....####....',
+    ]), width: 12, height: 10,
   },
 
-  // RAINBOW: curved arc, optionally with clouds
+  // RAINBOW: semi-circular arc with even bands
   {
     id: 'rainbow', name: 'Rainbow', category: 'Nature', grid: s([
       '.....##.....',
-      '....###....',
-      '...##.##...',  // outer arc
-      '..#....#...',
-      '.#......#..',  // inner arc
-      '#........#.',
-      '.#......#..',
-      '..#....#...',
-      '...##.##...',
-      '....###....',
+      '....###.....',
+      '...##.##....',
+      '..#....#....',
+      '.#......#...',
+      '#........#..',
+      '.#......#...',
+      '..#....#....',
+      '...##.##....',
+      '....###.....',
       '.....##.....',
     ]), width: 12, height: 11,
   },
 
   // ═══════════ HOLIDAY (3) ═══════════
 
-  // CHRISTMAS TREE: stacked triangle tiers + trunk
+  // CHRISTMAS TREE: stacked triangle tiers → star top → trunk
   {
     id: 'christmas-tree', name: 'Tree', category: 'Holiday', grid: s([
-      '.....##.....',  // star on top
-      '....###....',
-      '...#####...',  // top tier
-      '..#######..',
-      '.#########.',
-      '....###....',
-      '...#####...',  // bottom tier (wider)
-      '..#######..',
-      '.#########.',
-      '###########',
-      '....###....',  // trunk
-      '....###....',
-      '...#####...',
+      '.....##.....',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '###########.',
+      '....###.....',
+      '....###.....',
+      '...#####....',
     ]), width: 12, height: 13,
   },
 
@@ -360,28 +366,28 @@ const SHAPES: ClipartShape[] = [
   {
     id: 'snowflake', name: 'Snowflake', category: 'Holiday', grid: s([
       '.....##.....',
-      '....###....',
-      '...##.##...',  // diagonal arms
+      '....###.....',
+      '...##.##....',
       '..#..##..#..',
-      '##..####..##',  // center cross
+      '##..####..##',
       '.#..####..#.',
       '..#..##..#..',
-      '...##.##...',
-      '....###....',
+      '...##.##....',
+      '....###.....',
       '.....##.....',
     ]), width: 12, height: 10,
   },
 
-  // CANDY CANE: distinctive J-hook shape
+  // CANDY CANE: classic J-hook shape
   {
     id: 'candy', name: 'Candy Cane', category: 'Holiday', grid: s([
-      '..####....',  // hook top
+      '..####....',
       '.##.......',
       '..####....',
-      '...####...',  // curve
+      '...####...',
       '....####..',
       '.....####.',
-      '......####',  // straight cane
+      '......####',
       '.....####.',
       '....####..',
       '...####...',
@@ -392,196 +398,195 @@ const SHAPES: ClipartShape[] = [
 
   // ═══════════ FOOD (4) ═══════════
 
-  // APPLE: round body with stem and leaf
+  // APPLE: round body → stem → small leaf
   {
     id: 'apple', name: 'Apple', category: 'Food', grid: s([
       '.....##.....',
-      '....###....',  // stem
-      '...#####...',
-      '..#######..',  // top indent
-      '.#########.',
-      '###########',  // round body
-      '###########',
-      '.#########.',
-      '..#######..',
-      '...#####...',
-      '....###....',
-      '.....#.....',  // small leaf
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '.#########..',
+      '###########.',
+      '.#########..',
+      '..#######...',
+      '...#####....',
+      '....###.....',
+      '.....#......',
     ]), width: 12, height: 12,
   },
 
-  // CHERRY: two round cherries hanging from V-stem
+  // CHERRY: two round cherries on V-shaped stem
   {
     id: 'cherry', name: 'Cherry', category: 'Food', grid: s([
-      '....##....',  // stem top
-      '...#..#...',
-      '..#....#..',  // V-stem
-      '..##..##..',  // cherry tops
-      '.##....##.',
-      '##......##',  // left cherry
-      '##......##',
-      '.##....##.',
-      '..##..##..',  // right cherry bottom
-      '...####...',
-    ]), width: 10, height: 10,
+      '.....##.....',
+      '....#.#.....',
+      '...#...#....',
+      '..##...##...',
+      '.##.....##..',
+      '.##.....##..',
+      '.##.....##..',
+      '..##...##...',
+      '...#...#....',
+      '....#.#.....',
+    ]), width: 12, height: 10,
   },
 
-  // MUSHROOM: domed cap on thick stem
+  // MUSHROOM: wide domed cap → thick stem
   {
     id: 'mushroom', name: 'Mushroom', category: 'Food', grid: s([
-      '..########..',  // wide domed cap
-      '.##########.',
-      '############',
-      '############',
-      '.##########.',
-      '...######...',  // stem (narrower)
-      '...######...',
-      '...######...',
-      '...######...',
-      '..########..',  // stem base
-      '.##########.',
-    ]), width: 12, height: 11,
+      '...########...',
+      '..##########..',
+      '.############.',
+      '.############.',
+      '...########...',
+      '....######....',
+      '....######....',
+      '....######....',
+      '....######....',
+      '...########...',
+      '..##########..',
+    ]), width: 14, height: 11,
   },
 
-  // TEAPOT: spout on left, handle on right, lid on top, round body
+  // TEAPOT: spout on left → handle on right → lid on top → round body
   {
     id: 'teapot', name: 'Teapot', category: 'Food', grid: s([
-      '.....##......',  // spout tip
-      '....####.....',
       '.....##......',
-      '...######....',  // lid knob + lid
-      '..########...',
-      '.#########...',  // body + spout
-      '#########.##.',  // body + handle start
-      '#############',
-      '############',  // round body
-      '.##########..',
-      '..########...',
+      '....###......',
+      '.....##......',
       '...######....',
-    ]), width: 14, height: 12,
+      '..########...',
+      '.#####.####..',
+      '.#####.######',
+      '.###########.',
+      '..##########.',
+      '...########..',
+      '....######...',
+    ]), width: 14, height: 11,
   },
 
   // ═══════════ SYMBOLS (7) ═══════════
 
-  // STAR: 5 clear points (top, 2 side, 2 bottom)
+  // STAR: 5 clear points with distinct waist indent
   {
     id: 'star', name: 'Star', category: 'Symbols', grid: s([
-      '.....##.....',  // top point
-      '....###....',
-      '...#####...',
-      '..#######..',  // upper body
-      '###########',
-      '#####.#####',  // waist indent
-      '..##...##..',  // lower points
-      '.##.....##.',
-      '##.......##',
-      '.#.......#.',
+      '.....##.....',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '###########.',
+      '#####.#####.',
+      '..##...##...',
+      '.##.....##..',
+      '##.......##.',
+      '.#.......#..',
     ]), width: 12, height: 10,
   },
 
-  // HEART: classic two-lobed top, pointed bottom
+  // HEART: two rounded upper lobes → pointed bottom
   {
     id: 'heart', name: 'Heart', category: 'Symbols', grid: s([
-      '.##......##.',  // two rounded lobes
-      '####....####',
-      '############',
-      '############',  // full heart body
-      '.##########.',
-      '..########..',
-      '...######...',  // point
-      '....####....',
-      '.....##.....',
-    ]), width: 12, height: 9,
+      '.##........##.',
+      '####......####',
+      '##############',
+      '##############',
+      '.############.',
+      '..##########..',
+      '...########...',
+      '....######....',
+      '.....####.....',
+    ]), width: 14, height: 9,
   },
 
-  // DIAMOND: faceted gem with top and bottom points
+  // DIAMOND: faceted gem — top and bottom points
   {
     id: 'diamond', name: 'Diamond', category: 'Symbols', grid: s([
-      '.....##.....',  // top point
-      '....###....',
-      '...#####...',
-      '..#######..',
-      '.####.####.',  // facet lines
-      '##..#..####',
-      '##..##..###',  // inner facets
-      '.####.####.',
-      '..#######..',
-      '...#####...',
-      '....###....',
-      '.....#.....',  // bottom point
+      '.....##.....',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.####.####..',
+      '##..#..####.',
+      '##..##..###.',
+      '.####.####..',
+      '..#######...',
+      '...#####....',
+      '....###.....',
+      '.....#......',
     ]), width: 12, height: 12,
   },
 
-  // HOUSE: triangular roof + rectangular walls + door
+  // HOUSE: triangular roof → door in wall → windows
   {
     id: 'house', name: 'House', category: 'Symbols', grid: s([
-      '.....##.....',  // roof peak
-      '....###....',
-      '...#####...',  // roof
-      '..#######..',
-      '.#########.',
-      '###########',
-      '.##......##.',  // walls
-      '.##..##..##.',  // door in center
+      '.....##.....',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '###########.',
+      '.##..##..##.',
+      '.##..##..##.',
       '.##..##..##.',
       '.##......##.',
       '.##########.',
     ]), width: 12, height: 11,
   },
 
-  // ANCHOR: top ring + crossbar + curved flukes at bottom
+  // ANCHOR: top ring → shaft → crossbar → curved flukes
   {
     id: 'anchor', name: 'Anchor', category: 'Symbols', grid: s([
-      '....####....',  // ring
+      '....####....',
       '...##..##...',
       '....####....',
-      '.....##.....',  // shaft
       '.....##.....',
-      '..#######..',  // crossbar
-      '.##.....##.',
-      '##.......##',  // crossbar ends
+      '.....##.....',
       '..#######..',
-      '.....##.....',  // shaft
+      '.##.....##.',
+      '##.......##',
+      '..#######..',
+      '.....##.....',
       '...#####...',
-      '..##...##..',  // flukes curving out
+      '..##...##..',
       '.##.....##.',
     ]), width: 12, height: 13,
   },
 
-  // MUSIC NOTE: filled oval note head + straight stem
+  // MUSIC NOTE: filled oval note head → straight upward stem
   {
     id: 'music-note', name: 'Music Note', category: 'Symbols', grid: s([
-      '....###....',
-      '...#####...',  // filled note head (oval)
-      '...##.##...',
-      '...##.##...',
-      '...##.##...',  // stem going up
-      '...##.##...',
-      '..##..##...',
-      '.##...##...',
-      '##....##...',  // stem top
-      '##.........',
-      '##.........',
+      '.....###....',
+      '....#####...',
+      '....##.##...',
+      '....##.##...',
+      '....##.##...',
+      '....##.##...',
+      '...##..##...',
+      '..##...##...',
+      '.##....##...',
+      '##.....##...',
+      '##..........',
     ]), width: 12, height: 11,
   },
 
-  // CROWN: 3 prominent points + jeweled band
+  // CROWN: 3 prominent points → jeweled band → base
   {
     id: 'crown', name: 'Crown', category: 'Symbols', grid: s([
-      '.#........#.',  // outer points
-      '##..####..##',  // 3 points
-      '############',  // band
-      '############',
-      '##..####..##',  // jewel details
-      '############',
-      '##........##',
-      '.#........#.',
-    ]), width: 12, height: 8,
+      '.#..........#.',
+      '##...####...##',
+      '##############',
+      '##############',
+      '##...####...##',
+      '##############',
+      '##..........##',
+      '.#..........#.',
+    ]), width: 14, height: 8,
   },
 
   // ═══════════ BORDERS (4) ═══════════
 
-  // CORNER: L-shape frame piece
+  // CORNER: L-shaped frame piece
   {
     id: 'border-corner', name: 'Corner', category: 'Borders', grid: s([
       '##########',
@@ -597,7 +602,7 @@ const SHAPES: ClipartShape[] = [
     ]), width: 10, height: 10,
   },
 
-  // LINE: horizontal bar border
+  // LINE: horizontal top and bottom bars
   {
     id: 'border-line', name: 'Line', category: 'Borders', grid: s([
       '##########',
@@ -613,7 +618,7 @@ const SHAPES: ClipartShape[] = [
     ]), width: 10, height: 10,
   },
 
-  // ZIGZAG: clear ZZ pattern
+  // ZIGZAG: repeating Z pattern
   {
     id: 'border-zigzag', name: 'Zigzag', category: 'Borders', grid: s([
       '##......##',
@@ -626,7 +631,7 @@ const SHAPES: ClipartShape[] = [
     ]), width: 10, height: 7,
   },
 
-  // SCALLOP: repeating curved wave pattern
+  // SCALLOP: wavy curved border pattern
   {
     id: 'border-scallop', name: 'Scallop', category: 'Borders', grid: s([
       '.#....#....#.',
@@ -669,30 +674,30 @@ const SHAPES: ClipartShape[] = [
     ]), width: 10, height: 10,
   },
 
-  // TRIANGLE: clear pointed shape
+  // TRIANGLE: pointed apex → flat base
   {
     id: 'triangle', name: 'Triangle', category: 'Geometric', grid: s([
       '.....##.....',
-      '....###....',
-      '...#####...',
-      '..#######..',
-      '.#########.',
-      '.#########.',
-      '###########',
-      '###########',
+      '....###.....',
+      '...#####....',
+      '..#######...',
+      '.#########..',
+      '.#########..',
+      '###########.',
+      '###########.',
     ]), width: 12, height: 8,
   },
 
-  // CROSS: + shape with equal arms
+  // CROSS: equal-arm + shape
   {
     id: 'cross', name: 'Cross', category: 'Geometric', grid: s([
       '.....##.....',
       '.....##.....',
       '.....##.....',
       '.....##.....',
-      '###########',
-      '###########',
-      '###########',
+      '###########.',
+      '###########.',
+      '###########.',
       '.....##.....',
       '.....##.....',
       '.....##.....',
