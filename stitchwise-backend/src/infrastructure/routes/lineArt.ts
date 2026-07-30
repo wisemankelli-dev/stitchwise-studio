@@ -13,6 +13,7 @@ import multer from "multer";
 import axios from "axios";
 import { z } from "zod";
 import { lineArtToStitchGrid } from "../../domain/stitch/lineArtConverter";
+import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithStability } from "../services/stabilityAIService";
@@ -88,15 +89,17 @@ export function createLineArtRouter(): Router {
   /**
    * POST /api/ai/text-to-line-art-pattern
    *
-   * Generate a line art embroidery pattern from a text prompt.
-   * Uses Stability AI to first generate the line art image, then runs
-   * it through the Sobel edge detection + stitch mapping pipeline.
+   * Generate an embroidery pattern from a text prompt.
+   * Uses Stability AI to generate an image, then runs it through
+   * the k-means color quantization + DMC mapping pipeline for clean,
+   * well-defined stitch regions.
    *
-   * Request body: { prompt: string, gridSize?: number, edgeThreshold?: number, outlineDmcCode?: string }
-   * Response: PatternResult with mixed backstitch (outlines) and cross-stitch (regions) cells
+   * Request body: { prompt: string, gridSize?: number, maxColors?: number }
+   * Response: PatternResult with cross-stitch cells and quantized DMC colors
    *
-   * Prompt engineering appends: "simple line art, coloring book style, black outlines only,
-   *   white background, no shading, no gradients, flat vector art"
+   * Prompt engineering appends: "flat vector art, solid flat colors only,
+   *   no gradients, no shading, clean simple shapes, clip art style,
+   *   white background, suitable for embroidery"
    */
   router.post(
     "/ai/text-to-line-art-pattern",
@@ -106,8 +109,7 @@ export function createLineArtRouter(): Router {
         const schema = z.object({
           prompt: z.string().min(1).max(500),
           gridSize: z.number().int().optional(),
-          edgeThreshold: z.number().int().min(10).max(150).optional(),
-          outlineDmcCode: z.string().optional(),
+          maxColors: z.number().int().min(5).max(30).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -118,22 +120,20 @@ export function createLineArtRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize, edgeThreshold, outlineDmcCode } = parsed.data;
+        const { prompt, gridSize, maxColors } = parsed.data;
 
-        // Prompt for flat vector art with solid color regions — no shading.
-        // Our pipeline uses k-means color quantization to extract the
-        // dominant colors, then maps each to nearest DMC thread.
-        const lineArtPrompt = `${prompt}, flat vector art style, solid bold colors, pure white background, no shading, no gradients, simple shapes, distinct color regions, clip art style, clean edges`;
-        const negativePrompt = "photorealistic, shading, gradients, complex details, 3D, rendered, blurry";
+        // Prompt engineering: request clean flat vector art for quantization
+        const enhancedPrompt = `${prompt}, flat vector art, solid flat colors only, no gradients, no shading, clean simple shapes, clip art style, white background, suitable for embroidery`;
+        const negativePrompt = "photorealistic, shading, gradients, complex backgrounds, 3D, rendered, line art, black outlines, sketchy, hand-drawn";
 
         console.error(JSON.stringify({
-          event: "text_to_line_art_request",
+          event: "text_to_pattern_kmeans",
           originalPrompt: prompt,
-          finalPrompt: lineArtPrompt,
+          finalPrompt: enhancedPrompt,
         }));
 
-        // Step 1: Generate line art image via Stability AI
-        const generation = await generateImageWithStability(lineArtPrompt, negativePrompt);
+        // Step 1: Generate image via Stability AI
+        const generation = await generateImageWithStability(enhancedPrompt, negativePrompt);
 
         if (!generation || !generation.buffer) {
           res.status(500).json({
@@ -142,12 +142,13 @@ export function createLineArtRouter(): Router {
           return;
         }
 
-        // Step 2: Run the line art → stitch grid pipeline
-        const result = await lineArtToStitchGrid(
+        // Step 2: Run the k-means color quantization → DMC mapping pipeline
+        // This replaces the Sobel edge-detection approach with the same
+        // clean quantized pipeline used by the image upload flow.
+        const result = await imageBufferToStitchGrid(
           generation.buffer,
           gridSize ?? DEFAULT_GRID_SIZE,
-          edgeThreshold ?? 50,
-          outlineDmcCode ?? "310",
+          maxColors ?? 24,
         );
 
         // Assign cross-stitch symbols to palette entries
@@ -156,30 +157,16 @@ export function createLineArtRouter(): Router {
           symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
         }));
 
-        // Count stitch types for diagnostics
-        let backCount = 0;
-        let crossCount = 0;
-        for (const row of result.grid) {
-          for (const cell of row) {
-            if (cell.stitchType === "back") backCount++;
-            else crossCount++;
-          }
-        }
-
         res.json({
           ...result,
           dmcColors: dmcColorsWithSymbols,
-          stats: {
-            backstitchCells: backCount,
-            crossStitchCells: crossCount,
-          },
           previewUrl: generation.url,
-          promptUsed: lineArtPrompt,
+          promptUsed: enhancedPrompt,
         });
       } catch (err: any) {
-        console.error("Text-to-line-art error:", err);
+        console.error("Text-to-pattern error:", err);
         res.status(500).json({
-          error: err.message || "Text-to-line-art pattern generation failed",
+          error: err.message || "Text-to-pattern generation failed",
         });
       }
     },
