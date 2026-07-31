@@ -15,10 +15,9 @@
 
 import sharp from "sharp";
 import axios from "axios";
-import type { StitchGrid, StitchCell, PatternResult, DmcUsage } from "./types";
+import type { StitchCell, StitchGrid, PatternResult } from "./types";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "./types";
-import { closestDmcColor, rgbToHex } from "./dmcColors";
-import { quantizePixels, mapToDmcPalette } from "./colorReducer";
+import { pixelsToStitchGrid } from "./pipeline";
 
 /**
  * Convert an image URL to a stitch grid by:
@@ -107,75 +106,8 @@ export async function imageBufferToStitchGrid(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const rawPixels = new Uint8ClampedArray(data);
-
-  // Step 2: Quantize the image to the requested number of colors using median-cut.
-  // This replaces the hardcoded 24-color palette with a dynamic per-image reducer.
-  const quantizedColors = quantizePixels(rawPixels, maxColors);
-
-  // Step 3: Map quantized colors to DMC, deduplicating any that map to the same code.
-  const dmcPalette = mapToDmcPalette(quantizedColors);
-
-  // Step 4: Build the stitch grid by snapping each pixel to the nearest DMC color.
-  const grid: StitchGrid = [];
-  const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
-
-  for (let row = 0; row < size; row++) {
-    const gridRow: StitchCell[] = [];
-    for (let col = 0; col < size; col++) {
-      const idx = (row * size + col) * 4;
-      const r = rawPixels[idx];
-      const g = rawPixels[idx + 1];
-      const b = rawPixels[idx + 2];
-
-      // Find nearest quantized color from the reducer's palette
-      let bestDist = Infinity;
-      let bestColor = quantizedColors[0];
-      for (const qc of quantizedColors) {
-        const d = (r - qc.r) ** 2 + (g - qc.g) ** 2 + (b - qc.b) ** 2;
-        if (d < bestDist) {
-          bestDist = d;
-          bestColor = qc;
-        }
-      }
-
-      // Map to DMC
-      const dmc = closestDmcColor(bestColor.r, bestColor.g, bestColor.b);
-      const hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
-
-      gridRow.push({
-        color: hex,
-        dmcCode: dmc.code,
-        dmcName: dmc.name,
-      });
-
-      // Track DMC usage
-      const key = dmc.code;
-      if (dmcCountMap.has(key)) {
-        dmcCountMap.get(key)!.count++;
-      } else {
-        dmcCountMap.set(key, {
-          code: dmc.code,
-          name: dmc.name,
-          hex,
-          count: 1,
-        });
-      }
-    }
-    grid.push(gridRow);
-  }
-
-  // Build DMC usage array sorted by count (descending)
-  const dmcColors: DmcUsage[] = Array.from(dmcCountMap.values()).sort(
-    (a, b) => b.count - a.count,
-  );
-
-  return {
-    grid,
-    gridSize: size,
-    stitchCount: size * size,
-    dmcColors,
-  };
+  // Step 2: Delegate to the model-agnostic pixel→grid pipeline
+  return pixelsToStitchGrid(new Uint8Array(data), size);
 }
 
 /**
@@ -228,66 +160,6 @@ export async function resizeStitchGrid(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const rawPixels = new Uint8ClampedArray(data);
-
-  // Quantize colors using the dynamic reducer
-  const quantizedColors = quantizePixels(rawPixels, maxColors);
-
-  // Build the grid with DMC mapping
-  const newGrid: StitchGrid = [];
-  const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
-
-  for (let row = 0; row < size; row++) {
-    const gridRow: StitchCell[] = [];
-    for (let col = 0; col < size; col++) {
-      const idx = (row * size + col) * 4;
-      const r = rawPixels[idx];
-      const g = rawPixels[idx + 1];
-      const b = rawPixels[idx + 2];
-
-      // Find nearest quantized color
-      let bestDist = Infinity;
-      let bestColor = quantizedColors[0];
-      for (const qc of quantizedColors) {
-        const d = (r - qc.r) ** 2 + (g - qc.g) ** 2 + (b - qc.b) ** 2;
-        if (d < bestDist) {
-          bestDist = d;
-          bestColor = qc;
-        }
-      }
-
-      const dmc = closestDmcColor(bestColor.r, bestColor.g, bestColor.b);
-      const hex = rgbToHex(dmc.rgb[0], dmc.rgb[1], dmc.rgb[2]);
-
-      gridRow.push({
-        color: hex,
-        dmcCode: dmc.code,
-        dmcName: dmc.name,
-      });
-
-      const key = dmc.code;
-      if (dmcCountMap.has(key)) {
-        dmcCountMap.get(key)!.count++;
-      } else {
-        dmcCountMap.set(key, {
-          code: dmc.code,
-          name: dmc.name,
-          hex,
-          count: 1,
-        });
-      }
-    }
-    newGrid.push(gridRow);
-  }
-
-  const dmcColors: DmcUsage[] = Array.from(dmcCountMap.values()).sort(
-    (a, b) => b.count - a.count,
-  );
-
-  return {
-    grid: newGrid,
-    gridSize: size,
-    stitchCount: size * size,
-    dmcColors,
-  };
+  // Delegate to the model-agnostic pixel→grid pipeline
+  return pixelsToStitchGrid(new Uint8Array(data), size);
 }

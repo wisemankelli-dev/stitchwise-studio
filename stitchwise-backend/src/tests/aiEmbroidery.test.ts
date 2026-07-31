@@ -14,7 +14,7 @@ import { createApp } from "../app";
 
 import { closestDmcColor, rgbToHex, hexToRgb, DMC_COLORS } from "../domain/stitch/dmcColors";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
-import { TextToPatternSchema, ImageToPatternSchema, DEFAULT_GRID_SIZE } from "../domain/ai/embroideryAI";
+import { TextToPatternSchema, ImageToPatternSchema } from "../domain/ai/embroideryAI";
 
 // ─── DMC Color Tests ────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ describe("AI Embroidery Schemas", () => {
     it("validates a valid request", () => {
       const result = TextToPatternSchema.safeParse({
         prompt: "a red rose",
-        gridSize: 32,
+        gridSize: 50,
       });
       expect(result.success).toBe(true);
     });
@@ -101,7 +101,7 @@ describe("AI Embroidery Schemas", () => {
       const result = TextToPatternSchema.safeParse({ prompt: "flower" });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.gridSize).toBe(DEFAULT_GRID_SIZE);
+        expect(result.data.gridSize).toBe(50); // Schema default
       }
     });
 
@@ -111,7 +111,7 @@ describe("AI Embroidery Schemas", () => {
     });
 
     it("validates allowed grid sizes", () => {
-      const result = TextToPatternSchema.safeParse({ prompt: "test", gridSize: 24 });
+      const result = TextToPatternSchema.safeParse({ prompt: "test", gridSize: 50 });
       expect(result.success).toBe(true);
     });
 
@@ -126,12 +126,12 @@ describe("AI Embroidery Schemas", () => {
       const result = ImageToPatternSchema.safeParse({});
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.gridSize).toBe(DEFAULT_GRID_SIZE);
+        expect(result.data.gridSize).toBe(50); // Schema default
       }
     });
 
     it("validates a custom grid size", () => {
-      const result = ImageToPatternSchema.safeParse({ gridSize: 48 });
+      const result = ImageToPatternSchema.safeParse({ gridSize: 75 });
       expect(result.success).toBe(true);
     });
   });
@@ -140,52 +140,52 @@ describe("AI Embroidery Schemas", () => {
 // ─── Pattern Converter Tests (no network) ───────────────────────────────────
 
 describe("Pattern Converter", () => {
-  it("converts a solid red 16x16 image to stitch grid", async () => {
+  it("converts a solid red image to stitch grid", async () => {
     const { default: sharp } = await import("sharp");
     const testImage = await sharp({
-      create: { width: 16, height: 16, channels: 3, background: { r: 255, g: 0, b: 0 } },
+      create: { width: 50, height: 50, channels: 3, background: { r: 255, g: 0, b: 0 } },
     }).png().toBuffer();
 
-    const result = await imageBufferToStitchGrid(testImage, 16);
+    const result = await imageBufferToStitchGrid(testImage, 50);
 
-    expect(result.gridSize).toBe(16);
-    expect(result.stitchCount).toBe(256);
-    expect(result.grid.length).toBe(16);
-    expect(result.grid[0].length).toBe(16);
+    expect(result.gridSize).toBe(50);
+    expect(result.stitchCount).toBe(2500);
+    expect(result.grid.length).toBe(50);
+    expect(result.grid[0].length).toBe(50);
     // All cells should be red-ish (matched to closest DMC red)
     expect(result.grid[0][0].dmcCode).toBeTruthy();
     expect(result.dmcColors.length).toBeGreaterThanOrEqual(1);
-    expect(result.dmcColors[0].count).toBe(256);
+    expect(result.dmcColors[0].count).toBe(2500);
   }, 15000);
 
   it("converts a multi-color image and detects multiple DMC colors", async () => {
     const { default: sharp } = await import("sharp");
-    // Create a 4x4 image with red, green, blue, white quadrants
+    // Create a 50x50 image with red, green, blue, white quadrants
     const testImage = await sharp({
-      create: { width: 4, height: 4, channels: 3, background: { r: 255, g: 0, b: 0 } },
+      create: { width: 50, height: 50, channels: 3, background: { r: 255, g: 0, b: 0 } },
     }).composite([
-      { input: { create: { width: 2, height: 2, channels: 3, background: { r: 0, g: 255, b: 0 } } }, top: 0, left: 0 },
-      { input: { create: { width: 2, height: 2, channels: 3, background: { r: 0, g: 0, b: 255 } } }, top: 2, left: 0 },
-      { input: { create: { width: 2, height: 2, channels: 3, background: { r: 255, g: 255, b: 255 } } }, top: 2, left: 2 },
+      { input: { create: { width: 25, height: 25, channels: 3, background: { r: 0, g: 255, b: 0 } } }, top: 0, left: 0 },
+      { input: { create: { width: 25, height: 25, channels: 3, background: { r: 0, g: 0, b: 255 } } }, top: 25, left: 0 },
+      { input: { create: { width: 25, height: 25, channels: 3, background: { r: 255, g: 255, b: 255 } } }, top: 25, left: 25 },
     ]).png().toBuffer();
 
-    const result = await imageBufferToStitchGrid(testImage, 4);
+    const result = await imageBufferToStitchGrid(testImage, 50);
 
-    expect(result.stitchCount).toBe(16);
+    expect(result.stitchCount).toBe(2500);
     expect(result.dmcColors.length).toBeGreaterThanOrEqual(1);
     expect(result.grid[0][0].dmcCode).toBeTruthy();
   }, 15000);
 
-  it("uses default grid size 32 when not specified", async () => {
+  it("uses default grid size when not specified", async () => {
     const { default: sharp } = await import("sharp");
     const testImage = await sharp({
-      create: { width: 64, height: 64, channels: 3, background: { r: 128, g: 128, b: 128 } },
+      create: { width: 100, height: 100, channels: 3, background: { r: 128, g: 128, b: 128 } },
     }).png().toBuffer();
 
-    const result = await imageBufferToStitchGrid(testImage); // No gridSize = default 32
+    const result = await imageBufferToStitchGrid(testImage); // No gridSize = default 100
 
-    expect(result.gridSize).toBe(32);
-    expect(result.stitchCount).toBe(1024); // 32*32
+    expect(result.gridSize).toBe(100);
+    expect(result.stitchCount).toBe(10000); // 100*100
   }, 15000);
 });
 

@@ -46,6 +46,14 @@ export {
   resizeStitchGrid,
 } from "./patternConverter";
 
+// Model-agnostic pipeline
+export {
+  pixelsToStitchGrid,
+  imageToStitchGrid,
+  svgToStitchGrid,
+  generatePatternFromImage,
+} from "./pipeline";
+
 // Color reduction
 export {
   quantizePixels,
