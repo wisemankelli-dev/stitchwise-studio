@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { SubmitProject } from './pages/SubmitProject';
 import { Designer } from './pages/Designer';
@@ -275,7 +275,7 @@ function AppContent() {
  */
 function App() {
   return (
-    <Router basename="/app">
+    <Router>
       <AuthProvider>
         <AppContent />
       </AuthProvider>
