@@ -265,21 +265,24 @@ export function createLineArtRouter(): Router {
           prompt: prompt,
         }));
 
-        // Art prompt — NO embroidery language, pure illustration
+        // Art prompt — be explicit about colors and subject, avoid artistic styling
+        // that produces muted or unrealistic palettes
         const artPrompt = [
           prompt,
-          "detailed botanical illustration, natural organic shapes, hand-drawn art",
+          "vibrant natural colors, bright and saturated, realistic colors",
           "pure white background, single centered subject, no scenery",
-          "rich natural colors, elegant linework, artistic quality",
+          "clean flat illustration style, solid color regions, no gradients",
         ].join(", ");
 
         const negativePrompt = [
+          "photorealistic, 3D, realistic photo, shading, shadows",
           "embroidery, cross-stitch, needlepoint, pixel art, grid pattern",
           "repeating tiles, tiled pattern, seamless pattern, wallpaper",
           "clip art, cheap vector graphics, childs drawing, simplistic",
-          "cartoon, AI-generated look, 3D rendering, photorealistic",
-          "gradients, shading, shadows, messy composition, abstract noise",
+          "cartoon, AI-generated look, abstract noise",
+          "vintage, muted colors, sepia, watercolor, sketchy",
           "blue sky, clouds, landscape, scenery, background environment",
+          "text, watermark, signature, letters, numbers",
         ].join(", ");
 
         let imageDataUrl: string | null = null;
