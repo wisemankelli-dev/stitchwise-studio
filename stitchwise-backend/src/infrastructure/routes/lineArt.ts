@@ -265,21 +265,20 @@ export function createLineArtRouter(): Router {
           prompt: prompt,
         }));
 
-        // Art prompt — be explicit about colors and subject, avoid artistic styling
-        // that produces muted or unrealistic palettes
+        // Art prompt — keep it simple and let the user's words dominate.
+        // SD3 has good prompt adherence; over-engineering the prompt with style
+        // language produces wrong colors (e.g. violet sunflowers).
         const artPrompt = [
           prompt,
-          "vibrant natural colors, bright and saturated, realistic colors",
-          "pure white background, single centered subject, no scenery",
-          "clean flat illustration style, solid color regions, no gradients",
+          "on pure white background, centered, no shadows",
         ].join(", ");
 
         const negativePrompt = [
-          "photorealistic, 3D, realistic photo, shading, shadows",
+          "photorealistic, 3D, realistic photo, shadows, gradients",
           "embroidery, cross-stitch, needlepoint, pixel art, grid pattern",
           "repeating tiles, tiled pattern, seamless pattern, wallpaper",
           "clip art, cheap vector graphics, childs drawing, simplistic",
-          "cartoon, AI-generated look, abstract noise",
+          "cartoon, abstract noise",
           "vintage, muted colors, sepia, watercolor, sketchy",
           "blue sky, clouds, landscape, scenery, background environment",
           "text, watermark, signature, letters, numbers",
