@@ -842,28 +842,48 @@ class ApiClient {
   // ==================== AI EMBROIDERY PATTERN GENERATION ====================
 
   /**
-   * Generates an embroidery pattern from a text prompt using AI (line art pipeline).
-   * POST /api/ai/text-to-line-art-pattern
+   * Step 1: Generate AI art from a text prompt.
+   * POST /api/ai/generate-art
    */
-  async generatePatternFromText(
-    prompt: string,
-    gridSize?: number,
-  ): Promise<LineArtPatternResponse> {
+  async generateArt(prompt: string): Promise<{ imageDataUrl: string; pipeline: string }> {
     if (!this.isLiveBackend) {
-      throw new Error('Backend not available. Pattern generation requires a live backend connection.');
+      throw new Error('Backend not available. Art generation requires a live backend connection.');
     }
-
-    const body: Record<string, unknown> = { prompt };
-    if (gridSize && gridSize >= 16) body.gridSize = gridSize;
-
-    const response = await fetch(`${this.apiBaseUrl}/ai/text-to-line-art-pattern`, {
+    const response = await fetch(`${this.apiBaseUrl}/ai/generate-art`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify({ prompt }),
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || errData.error || `Pattern generation failed (${response.status})`);
+      throw new Error(errData.message || errData.error || `Art generation failed (${response.status})`);
+    }
+    return await response.json();
+  }
+
+  /**
+   * Step 2: Convert generated art to a stitch pattern.
+   * POST /api/ai/transpose-to-pattern
+   */
+  async transposeToPattern(
+    imageDataUrl: string,
+    gridSize?: number,
+    maxColors?: number,
+  ): Promise<LineArtPatternResponse> {
+    if (!this.isLiveBackend) {
+      throw new Error('Backend not available. Pattern transposition requires a live backend connection.');
+    }
+    const body: Record<string, unknown> = { imageDataUrl };
+    if (gridSize && gridSize >= 16) body.gridSize = gridSize;
+    if (maxColors) body.maxColors = maxColors;
+    const response = await fetch(`${this.apiBaseUrl}/ai/transpose-to-pattern`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || errData.error || `Pattern transposition failed (${response.status})`);
     }
     return await response.json();
   }
@@ -1773,6 +1793,86 @@ class ApiClient {
       },
     };
   }
+
+  // ==================== COLLAGE PERSISTENCE ====================
+  private collageStore: CollageProject[] = [];
+
+  async saveCollage(name: string, layers: FabricLayer[]): Promise<CollageProject> {
+    const id = `collage-${Date.now()}`;
+    const now = new Date().toISOString();
+    const project: CollageProject = { id, name, layers, createdAt: now, updatedAt: now };
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/collage`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, layers }),
+        });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    this.collageStore.push(project);
+    return project;
+  }
+
+  async listCollageProjects(): Promise<CollageProject[]> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/collage`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).projects;
+      } catch { /* fall through to mock */ }
+    }
+    return [...this.collageStore];
+  }
+
+  async deleteCollageProject(id: string): Promise<void> {
+    if (this.isLiveBackend) {
+      try {
+        await fetch(`${this.apiBaseUrl}/collage/${id}`, { method: 'DELETE', headers: this.getHeaders() });
+      } catch { /* fall through to mock */ }
+    }
+    this.collageStore = this.collageStore.filter(p => p.id !== id);
+  }
+
+  // ==================== QUILT BLOCK PERSISTENCE ====================
+  private quiltBlockStore: QuiltBlockDesign[] = [];
+
+  async saveQuiltBlock(name: string, shapes: QuiltBlockShape[], blockSize: number): Promise<QuiltBlockDesign> {
+    const id = `block-${Date.now()}`;
+    const now = new Date().toISOString();
+    const block: QuiltBlockDesign = { id, name, shapes, blockSize, createdAt: now, updatedAt: now };
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/quilt-blocks`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, shapes, blockSize }),
+        });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    this.quiltBlockStore.push(block);
+    return block;
+  }
+
+  async listQuiltBlocks(): Promise<QuiltBlockDesign[]> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/quilt-blocks`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).blocks;
+      } catch { /* fall through to mock */ }
+    }
+    return [...this.quiltBlockStore];
+  }
+
+  async deleteQuiltBlock(id: string): Promise<void> {
+    if (this.isLiveBackend) {
+      try {
+        await fetch(`${this.apiBaseUrl}/quilt-blocks/${id}`, { method: 'DELETE', headers: this.getHeaders() });
+      } catch { /* fall through to mock */ }
+    }
+    this.quiltBlockStore = this.quiltBlockStore.filter(b => b.id !== id);
+  }
 }
 
 export const api = new ApiClient();
@@ -1803,4 +1903,35 @@ export interface AICollageResponse {
   promptUsed?: string;
   processingTimeMs: number;
   totalLayers: number;
+}
+
+// ── Collage Persistence ──────────────────────────────
+export interface CollageProject {
+  id: string;
+  name: string;
+  layers: FabricLayer[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Quilt Block Persistence ──────────────────────────
+export interface QuiltBlockShape {
+  id: string;
+  type: 'square' | 'triangle' | 'hst';
+  color: string;
+  pattern: string;
+  gridX: number;
+  gridY: number;
+  size: number;
+  rotation: number;
+  zIndex: number;
+}
+
+export interface QuiltBlockDesign {
+  id: string;
+  name: string;
+  shapes: QuiltBlockShape[];
+  blockSize: number;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -266,11 +266,11 @@ export function createLineArtRouter(): Router {
         }));
 
         // Art prompt — keep it simple and let the user's words dominate.
-        // SD3 has good prompt adherence; over-engineering the prompt with style
-        // language produces wrong colors (e.g. violet sunflowers).
+        // The subject should fill most of the image, with minimal background.
         const artPrompt = [
           prompt,
-          "on pure white background, centered, no shadows",
+          "fills the entire image, close-up view, large centered subject",
+          "flat illustration, solid colors, no gradients, white background",
         ].join(", ");
 
         const negativePrompt = [

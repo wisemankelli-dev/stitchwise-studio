@@ -30,7 +30,7 @@ export async function generateImageWithStability(
     formData.append("mode", "text-to-image");
     if (negativePrompt) formData.append("negative_prompt", negativePrompt);
 
-    const response = await axios.post(`${STABILITY_API_BASE}/sd3`, formData, {
+    const response = await axios.post(`${STABILITY_API_BASE}/core`, formData, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "image/*",
