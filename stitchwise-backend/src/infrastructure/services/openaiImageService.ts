@@ -42,10 +42,23 @@ export async function generateImageWithDallE(
     return null;
   }
 
-  // Enhance prompt for embroidery-suitable artwork
+  // Enhance prompt for hand-drawn needlepoint artwork, not clip art.
+  // The goal is output that feels designed by a professional needlepoint artist:
+  // recognizable subjects, strong composition, clean edges, thread-friendly palette.
+  const defaultStyle = [
+    "traditional counted cross-stitch design",
+    "hand-drawn needlepoint artwork by a professional needlepoint designer",
+    "elegant composition with clear focal point",
+    "clean distinct shapes with well-defined edges",
+    "balanced negative space for stitching clarity",
+    "DMC-thread-friendly color palette",
+    "timeless heirloom-quality needlepoint pattern",
+    "white background",
+  ].join(", ");
+
   const enhancedPrompt = styleHints
     ? `${prompt}, ${styleHints}`
-    : `${prompt}, flat vector art, solid flat colors, no gradients, no shading, clean simple shapes, white background, needlepoint style`;
+    : `${prompt}, ${defaultStyle}`;
 
   // Try model names in order: dall-e-3, gpt-image-1, dall-e-2
   const models = ["dall-e-3", "gpt-image-1", "dall-e-2"];

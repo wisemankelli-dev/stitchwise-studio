@@ -181,9 +181,21 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
-          // No shape match — use AI image generation
-          const styleHints = "flat vector art, solid flat colors only, no gradients whatsoever, no shading or shadows, simple clean shapes, bold outlines, clip art style, bright bold colors, easy to trace, minimal detail, high contrast, suitable for embroidery";
-          const framingHints = "close-up, centered, filling the frame, on a white background";
+          // No shape match — use AI image generation.
+          // Style hints request hand-drawn needlepoint artwork, not flat clip art.
+          // The goal: output that feels designed by a professional needlepoint artist
+          // with recognizable subjects, strong composition, clean edges, and
+          // thread-friendly palettes that survive stitch-grid conversion.
+          const styleHints = [
+            "traditional counted cross-stitch design",
+            "hand-drawn needlepoint artwork by a professional needlepoint designer",
+            "elegant composition with clear focal point",
+            "clean distinct shapes, balanced negative space",
+            "thread-friendly palette with distinct color regions",
+            "timeless heirloom-quality needlepoint pattern",
+            "not clip art, not flat vector, not AI-generated style, not photorealistic",
+          ].join(", ");
+          const framingHints = "centered composition filling the frame, white background, thoughtful use of negative space";
           const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
 
           console.error(JSON.stringify({

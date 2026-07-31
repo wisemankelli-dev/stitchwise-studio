@@ -122,9 +122,24 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, maxColors } = parsed.data;
 
-        // Prompt engineering: request clean flat vector art for quantization
-        const enhancedPrompt = `${prompt}, flat vector art, solid flat colors only, no gradients, no shading, clean simple shapes, clip art style, white background, suitable for embroidery`;
-        const negativePrompt = "photorealistic, shading, gradients, complex backgrounds, 3D, rendered, line art, black outlines, sketchy, hand-drawn";
+        // Prompt engineering: request hand-drawn needlepoint artwork,
+        // not flat vector clip art. The output should feel designed by a
+        // professional needlepoint artist: strong composition, clean edges,
+        // recognizable shapes, thread-friendly palette.
+        const enhancedPrompt = [
+          prompt,
+          "traditional counted cross-stitch pattern, hand-drawn needlepoint design",
+          "elegant composition with clear focal point",
+          "clean well-defined shapes, balanced negative space",
+          "thread-friendly colors, timeless classic needlepoint aesthetic",
+          "white background, suitable for embroidery conversion",
+        ].join(", ");
+        const negativePrompt = [
+          "clip art, cheap vector graphics, AI-generated look",
+          "messy composition, photorealistic, 3D rendering, overdetailed",
+          "busy patterns, cluttered, abstract noise, modern digital art",
+          "gradients, shading, shadows, black outlines, sketchy",
+        ].join(", ");
 
         console.error(JSON.stringify({
           event: "text_to_pattern_kmeans",
