@@ -42,56 +42,54 @@ export async function generateImageWithDallE(
     return null;
   }
 
-  try {
-    // Enhance prompt for embroidery-suitable artwork
-    const enhancedPrompt = styleHints
-      ? `${prompt}, ${styleHints}`
-      : `${prompt}, flat vector art, solid flat colors, no gradients, no shading, clean simple shapes, white background, needlepoint style`;
+  // Enhance prompt for embroidery-suitable artwork
+  const enhancedPrompt = styleHints
+    ? `${prompt}, ${styleHints}`
+    : `${prompt}, flat vector art, solid flat colors, no gradients, no shading, clean simple shapes, white background, needlepoint style`;
 
-    // Try model names in order: dall-e-3, gpt-image-1, dall-e-2
-    const models = ["dall-e-3", "gpt-image-1", "dall-e-2"];
-    let lastError: string | null = null;
+  // Try model names in order: dall-e-3, gpt-image-1, dall-e-2
+  const models = ["dall-e-3", "gpt-image-1", "dall-e-2"];
+  let lastError: string | null = null;
 
-    for (const model of models) {
-      try {
-        console.error(JSON.stringify({
-          event: "openai_image_request",
-          model,
-          originalPrompt: prompt,
-        }));
+  for (const model of models) {
+    try {
+      console.error(JSON.stringify({
+        event: "openai_image_request",
+        model,
+        originalPrompt: prompt,
+      }));
 
-        // Use URL response (b64_json is deprecated for newer models)
-        const response = await client.images.generate({
-          model,
-          prompt: enhancedPrompt,
-          n: 1,
-          size: "1024x1024",
-        });
+      // Use URL response (b64_json is deprecated for newer models)
+      const response = await client.images.generate({
+        model,
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+      });
 
-        const imageUrl = response.data?.[0]?.url;
-        if (!imageUrl) continue;
+      const imageUrl = response.data?.[0]?.url;
+      if (!imageUrl) continue;
 
-        // Download the image
-        const { default: axios } = await import("axios");
-        const dlResponse = await axios.get(imageUrl, {
-          responseType: "arraybuffer",
-          timeout: 30_000,
-        });
-        const buffer = Buffer.from(dlResponse.data);
+      // Download the image
+      const { default: axios } = await import("axios");
+      const dlResponse = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        timeout: 30_000,
+      });
+      const buffer = Buffer.from(dlResponse.data);
 
-        return { url: imageUrl, buffer };
-      } catch (err: any) {
-        lastError = err?.message || String(err);
-        // Continue to next model
-      }
+      return { url: imageUrl, buffer };
+    } catch (err: any) {
+      lastError = err?.message || String(err);
+      // Continue to next model
     }
-
-    console.error(JSON.stringify({
-      event: "openai_all_models_failed",
-      error: lastError,
-    }));
-    return null;
   }
+
+  console.error(JSON.stringify({
+    event: "openai_all_models_failed",
+    error: lastError,
+  }));
+  return null;
 }
 
 /**
