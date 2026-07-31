@@ -41,25 +41,22 @@ export async function generateSvgFromPrompt(prompt: string): Promise<string | nu
   }
 
   const systemPrompt = [
-    "You are an illustrator creating clean SVG vector art for digital coloring.",
-    "Generate an SVG of a SINGLE subject — drawn as a bold, graphic illustration — on a white background.",
+    "You are a designer creating clean SVG vector art for digital craft patterns.",
+    "Generate a detailed SVG illustration of a SINGLE subject on a white background.",
     "RULES:",
-    "- ONE centered subject only — no repeating tiles, no patterns, no borders, no grids",
-    "- Use 6-10 BOLD, SATURATED flat colors (e.g. vivid yellow #FFD700, forest green #228B22, deep brown #5C3317)",
-    "- Every region MUST be filled with a solid, vibrant color — no outlines-only shapes, no pastels",
-    "- Use LARGE filled regions — petals should be broad, leaves should be substantial",
-    "- Use color contrast between adjacent regions — no two adjacent regions the same color",
-    "- The subject should fill roughly 60-80% of the canvas",
-    "- White (#ffffff) background only — the subject itself must contain ZERO white regions",
-    "- No text, no labels, no captions, no decorations",
-    "- No gradients, no shading, no shadows",
-    "- Use viewBox=\"0 0 500 500\" for the SVG root element",
-    "Do NOT draw pixel art, needlepoint, or embroidery-style art.",
-    "Think: a bold flat-color poster illustration with large filled shapes.",
+    "- ONE centered subject ONLY — no repeating tiles, no patterns, no borders, no grids",
+    "- DRAW DISTINCT BODY PARTS: separate regions for different parts (e.g. flower center, petals, leaves, stem)",
+    "- Use 6-12 BOLD, SATURATED flat colors — assign each distinct part its own color",
+    "- LARGE filled shapes: subject must fill 70-85% of the canvas. No tiny subjects.",
+    "- Every region filled with a vibrant solid color. Zero outlines-only shapes.",
+    "- White (#ffffff) background ONLY — ZERO white inside the subject itself",
+    "- No text, labels, captions, gradients, shadows",
+    "- Use viewBox=\"0 0 500 500\"",
+    "Think: a flat-color illustration where each body part is a clearly distinct colored shape.",
     "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
   ].join("\n");
 
-  const userPrompt = `Draw a single ${prompt} as a bold graphic illustration. Use 6-10 vivid saturated colors. Large filled regions — no white inside the subject.`;
+  const userPrompt = `Draw a single ${prompt} — fill 70-85% of the canvas with large distinct parts each in a different bold color. No white inside the subject.`;
 
   try {
     console.error(JSON.stringify({
