@@ -265,12 +265,14 @@ export function createLineArtRouter(): Router {
           prompt: prompt,
         }));
 
-        // Art prompt — keep it simple and let the user's words dominate.
-        // The subject should fill most of the image, with minimal background.
+        // Art prompt — posterized flat illustration for clean color separation.
+        // Gradients and shading map to wrong DMC colors (violet shadows on yellow petals).
         const artPrompt = [
           prompt,
           "fills the entire image, close-up view, large centered subject",
-          "flat illustration, solid colors, no gradients, white background",
+          "posterized flat illustration, solid flat colors, no shading, no gradients",
+          "limited color palette, 6-8 distinct colors, clean color separation",
+          "white background",
         ].join(", ");
 
         const negativePrompt = [
@@ -357,8 +359,9 @@ export function createLineArtRouter(): Router {
           return;
         }
 
-        const { imageDataUrl, gridSize } = parsed.data;
+        const { imageDataUrl, gridSize, maxColors: reqMaxColors } = parsed.data;
         const targetSize = gridSize ?? DEFAULT_GRID_SIZE;
+        const targetMaxColors = reqMaxColors ?? 12; // default to 12 for clean embroidery
 
         console.error(JSON.stringify({
           event: "transpose_to_pattern_start",
@@ -373,8 +376,8 @@ export function createLineArtRouter(): Router {
         }
         const imageBuffer = Buffer.from(base64Match[1], "base64");
 
-        // Convert image → stitch grid
-        const result = await imageBufferToStitchGrid(imageBuffer, targetSize);
+        // Convert image → stitch grid (with controlled color count)
+        const result = await imageBufferToStitchGrid(imageBuffer, targetSize, targetMaxColors);
 
         const dmcColorsWithSymbols = result.dmcColors.map((c, i) => ({
           ...c,
