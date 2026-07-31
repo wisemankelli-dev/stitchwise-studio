@@ -71,7 +71,6 @@ export async function generateImageWithDallE(
       if (!imageUrl) continue;
 
       // Download the image
-      const { default: axios } = await import("axios");
       const dlResponse = await axios.get(imageUrl, {
         responseType: "arraybuffer",
         timeout: 30_000,
