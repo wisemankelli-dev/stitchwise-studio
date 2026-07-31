@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { api, QuiltBlockDesign, QuiltBlockShape } from '../services/api';
 import {
   RotateCcw, ZoomIn, ZoomOut, Grid3X3,
-  Palette, Download, Save, Trash2, Plus,
+  Palette, Download, Save, Trash2, Plus, Loader2,
   Flower2, Square, Triangle, Minus,
-  Grid, LayoutGrid
+  Grid, LayoutGrid, FolderOpen, ChevronDown, X
 } from 'lucide-react';
 
 interface BlockShape {
@@ -91,6 +92,14 @@ export const QuiltBlockStudio: React.FC = () => {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [toolMode, setToolMode] = useState<'square' | 'triangle' | 'hst'>('square');
 
+  // Save/Load state
+  const [blockName, setBlockName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedBlocks, setSavedBlocks] = useState<QuiltBlockDesign[]>([]);
+  const [showLoadDropdown, setShowLoadDropdown] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const quiltCanvasRef = useRef<HTMLDivElement>(null);
+
   const selectedShape = shapes.find(s => s.id === selectedShapeId);
   const cellPx = 50;
   const gridPx = blockSize * cellPx;
@@ -162,6 +171,160 @@ export const QuiltBlockStudio: React.FC = () => {
     setSelectedShapeId(newShape.id);
   };
 
+  // Save/Load/Export handlers
+  const handleSaveBlock = async () => {
+    const name = blockName.trim() || `Block ${new Date().toLocaleDateString()}`;
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const block = await api.saveQuiltBlock(name, shapes.map(s => ({
+        id: s.id,
+        type: s.type,
+        color: s.color,
+        pattern: s.pattern,
+        gridX: s.gridX,
+        gridY: s.gridY,
+        size: s.size,
+        rotation: s.rotation,
+        zIndex: s.zIndex,
+      })) as QuiltBlockShape[], blockSize);
+      setBlockName('');
+      setSavedBlocks(prev => [block, ...prev.filter(b => b.id !== block.id)]);
+      setSaveMessage(`Saved "${block.name}"!`);
+      setTimeout(() => setSaveMessage(null), 2500);
+    } catch {
+      setSaveMessage('Save failed. Will retry with mock backend.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadBlocks = async () => {
+    try {
+      const blocks = await api.listQuiltBlocks();
+      setSavedBlocks(blocks);
+    } catch { /* use stale */ }
+    setShowLoadDropdown(prev => !prev);
+  };
+
+  const handleLoadBlock = async (id: string) => {
+    const block = await api.loadQuiltBlock(id);
+    if (block) {
+      setShapes(block.shapes.map((s: QuiltBlockShape) => ({
+        id: s.id,
+        type: s.type,
+        color: s.color,
+        pattern: s.pattern,
+        gridX: s.gridX,
+        gridY: s.gridY,
+        size: s.size,
+        rotation: s.rotation,
+        zIndex: s.zIndex,
+      })) as BlockShape[]);
+      setBlockSize(block.blockSize);
+      setSelectedShapeId(block.shapes[block.shapes.length - 1]?.id || '');
+      setSaveMessage(`Loaded "${block.name}"`);
+      setTimeout(() => setSaveMessage(null), 2000);
+    }
+    setShowLoadDropdown(false);
+  };
+
+  const handleDeleteBlock = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await api.deleteQuiltBlock(id);
+    setSavedBlocks(prev => prev.filter(b => b.id !== id));
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const title = (blockName.trim() || 'quilt-block').replace(/\s+/g, '-');
+
+      // Title
+      doc.setFontSize(16);
+      doc.setTextColor(139, 92, 118);
+      doc.text(title, 20, 20);
+
+      // Block diagram — draw a simple SVG grid
+      const cellMm = 8;
+      const ox = 20;
+      const oy = 30;
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Block Size: ${blockSize} x ${blockSize}`, 20, 28);
+
+      // Draw grid lines
+      doc.setDrawColor(220, 200, 210);
+      for (let g = 0; g <= blockSize; g++) {
+        doc.line(ox, oy + g * cellMm, ox + blockSize * cellMm, oy + g * cellMm);
+        doc.line(ox + g * cellMm, oy, ox + g * cellMm, oy + blockSize * cellMm);
+      }
+
+      // Draw shapes
+      const fabricColorMap: Record<string, { color: string; pattern: string }> = {};
+      shapes.forEach(s => fabricColorMap[s.id] = { color: s.color, pattern: s.pattern });
+      shapes.forEach(s => {
+        const cx = ox + s.gridX * cellMm;
+        const cy = oy + s.gridY * cellMm;
+        const sz = s.size * cellMm;
+        doc.setFillColor(hexToRgb(s.color)[0], hexToRgb(s.color)[1], hexToRgb(s.color)[2]);
+        doc.rect(cx, cy, sz, sz, 'F');
+        doc.setDrawColor(150, 150, 150);
+        doc.rect(cx, cy, sz, sz);
+      });
+
+      // Fabric Key
+      const keyY = oy + blockSize * cellMm + 15;
+      doc.setFontSize(12);
+      doc.setTextColor(139, 92, 118);
+      doc.text('Fabric Key', 20, keyY);
+
+      const keys = [...new Set(shapes.map(s => s.color))];
+      keys.forEach((color, i) => {
+        const ky = keyY + 8 + i * 7;
+        doc.setFillColor(hexToRgb(color)[0], hexToRgb(color)[1], hexToRgb(color)[2]);
+        doc.rect(20, ky - 3, 5, 5, 'F');
+        doc.setFontSize(9);
+        doc.setTextColor(80, 80, 80);
+        doc.text(color, 28, ky);
+      });
+
+      // Cutting Guide
+      const cutY = keyY + 8 + keys.length * 7 + 10;
+      doc.setFontSize(12);
+      doc.setTextColor(139, 92, 118);
+      doc.text('Cutting Guide', 20, cutY);
+      const guideY = cutY + 8;
+      // Table header
+      doc.setFontSize(8);
+      doc.setTextColor(60, 60, 60);
+      ['Shape', 'Type', 'Size', 'Qty'].forEach((h, i) => doc.text(h, 20 + i * 35, guideY));
+      doc.setDrawColor(180, 180, 180);
+      doc.line(20, guideY + 2, 20 + 140, guideY + 2);
+
+      shapes.forEach((s, i) => {
+        const ry = guideY + 6 + i * 6;
+        doc.text(s.id.slice(-6), 20, ry);
+        doc.text(s.type, 55, ry);
+        doc.text(`${s.size}u`, 90, ry);
+        doc.text('1', 125, ry);
+      });
+
+      doc.save(`${title}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      setSaveMessage('Export failed');
+      setTimeout(() => setSaveMessage(null), 2000);
+    }
+  };
+
+  // Helper: hex to [r, g, b]
+  function hexToRgb(hex: string): [number, number, number] {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
+  }
+
   return (
     <div className="min-h-screen bg-floral-soft">
       {/* Header */}
@@ -181,14 +344,76 @@ export const QuiltBlockStudio: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="btn-floral-ghost text-xs py-1.5 px-3">
-                <Save className="h-3.5 w-3.5 mr-1" />
-                Save Block
-              </button>
-              <button className="btn-floral-primary text-xs py-1.5 px-3">
-                <Download className="h-3.5 w-3.5 mr-1" />
-                Export
-              </button>
+              {/* Save/Load/Export controls */}
+              <div className="flex items-center gap-2 relative">
+                {/* Name input */}
+                <input
+                  type="text"
+                  value={blockName}
+                  onChange={(e) => setBlockName(e.target.value)}
+                  placeholder="Block name..."
+                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBlock(); }}
+                />
+                {/* Save */}
+                <button
+                  onClick={handleSaveBlock}
+                  disabled={isSaving}
+                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+                {/* Load dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={handleLoadBlocks}
+                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                    Load
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </button>
+                  {showLoadDropdown && (
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                      {savedBlocks.length === 0 ? (
+                        <p className="p-3 text-[11px] text-slate-400 text-center">No saved blocks yet</p>
+                      ) : (
+                        savedBlocks.map(b => (
+                          <div
+                            key={b.id}
+                            onClick={() => handleLoadBlock(b.id)}
+                            className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                          >
+                            <span className="text-xs text-slate-700 truncate flex-1">
+                              {b.name}
+                              <span className="text-[10px] text-slate-400 ml-2">{new Date(b.updatedAt).toLocaleDateString()}</span>
+                            </span>
+                            <button
+                              onClick={(e) => handleDeleteBlock(b.id, e)}
+                              className="text-slate-300 hover:text-red-500 p-1"
+                              title="Delete block"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Export */}
+                <button onClick={handleExportPdf} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export
+                </button>
+              </div>
+              {/* Save message flash */}
+              {saveMessage && (
+                <p className={`text-[10px] px-2 py-0.5 rounded ${saveMessage.startsWith('Save failed') || saveMessage.startsWith('Export') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {saveMessage}
+                </p>
+              )}
             </div>
           </div>
         </div>

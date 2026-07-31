@@ -265,44 +265,37 @@ export function createLineArtRouter(): Router {
           prompt: prompt,
         }));
 
-        // Art prompt — posterized flat illustration for clean color separation.
-        // Gradients and shading map to wrong DMC colors (violet shadows on yellow petals).
+        // Art prompt — minimal additions. The image-to-grid pipeline now
+        // posterizes to flat colors, so we don't need to fight the AI for
+        // specific color palettes. Just ask for a clean, centered subject.
         const artPrompt = [
           prompt,
-          "fills the entire image, close-up view, large centered subject",
-          "posterized flat illustration, solid flat colors, no shading, no gradients",
-          "limited color palette, 6-8 distinct colors, clean color separation",
-          "white background",
+          "centered, fills the frame, clean illustration, white background",
         ].join(", ");
 
         const negativePrompt = [
           "photorealistic, 3D, realistic photo, shadows, gradients",
           "embroidery, cross-stitch, needlepoint, pixel art, grid pattern",
           "repeating tiles, tiled pattern, seamless pattern, wallpaper",
-          "clip art, cheap vector graphics, childs drawing, simplistic",
-          "cartoon, abstract noise",
-          "vintage, muted colors, sepia, watercolor, sketchy",
-          "blue, purple, violet, pink, any blue tones, any purple tones",
-          "blue sky, clouds, landscape, scenery, background environment",
           "text, watermark, signature, letters, numbers",
         ].join(", ");
 
         let imageDataUrl: string | null = null;
         let pipelineUsed: string = "unknown";
 
-        // Step 1: DALL-E primary — better color accuracy for flat illustrations
-        const dalleResult = await generateImageWithDallE(artPrompt);
-        if (dalleResult?.url) {
-          imageDataUrl = dalleResult.url;
-          pipelineUsed = "dall-e";
+        // Step 1: Stability AI primary
+        const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
+        if (stabilityResult?.url) {
+          imageDataUrl = stabilityResult.url;
+          pipelineUsed = "stability-ai";
         }
 
-        // Step 2: Fall back to Stability AI
+        // Step 2: Fall back to DALL-E
         if (!imageDataUrl) {
-          const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
-          if (stabilityResult?.url) {
-            imageDataUrl = stabilityResult.url;
-            pipelineUsed = "stability-ai";
+          const dalleResult = await generateImageWithDallE(artPrompt);
+          if (dalleResult?.url) {
+            imageDataUrl = dalleResult.url;
+            pipelineUsed = "dall-e";
           }
         }
 

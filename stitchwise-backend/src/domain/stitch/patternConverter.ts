@@ -92,17 +92,23 @@ export async function imageBufferToStitchGrid(
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
   const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
 
-  // Step 1: Resize the image directly to the target grid size using nearest-neighbor.
-  // Nearest-neighbor preserves hard edges and creates clean pixel blocks —
-  // ideal for embroidery patterns where each pixel = one stitch.
-  // Median filter removes isolated speckle noise before raw extraction.
-  const { data } = await sharp(imageBuffer)
+  // Step 1: Resize the image to the target grid size using nearest-neighbor.
+  // Step 2: Posterize to exactly maxColors flat colors via PNG palette quantization.
+  //   This eliminates gradient artifacts and shadow-edge pixels that would otherwise
+  //   map to random/wrong DMC threads (e.g. violet edge pixels on yellow petals).
+  //   No dithering — every pixel is forced into one of maxColors solid regions.
+  // Step 3: Extract raw pixels from the posterized image for DMC mapping.
+  const posterizedPng = await sharp(imageBuffer)
     .resize(size, size, {
       fit: "cover",
       position: "centre",
       kernel: sharp.kernel.nearest,
     })
-    .median(1) // 1px median filter removes speckle noise
+    .median(3) // stronger noise reduction before posterization
+    .png({ palette: true, colours: maxColors, dither: 0 })
+    .toBuffer();
+
+  const { data } = await sharp(posterizedPng)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
