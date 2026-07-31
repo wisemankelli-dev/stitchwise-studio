@@ -48,51 +48,48 @@ export async function generateImageWithDallE(
       ? `${prompt}, ${styleHints}`
       : `${prompt}, flat vector art, solid flat colors, no gradients, no shading, clean simple shapes, white background, needlepoint style`;
 
+    // Try model names in order: dall-e-3, gpt-image-1, dall-e-2
+    const models = ["dall-e-3", "gpt-image-1", "dall-e-2"];
+    let lastError: string | null = null;
+
+    for (const model of models) {
+      try {
+        console.error(JSON.stringify({
+          event: "openai_image_request",
+          model,
+          originalPrompt: prompt,
+        }));
+
+        // Use URL response (b64_json is deprecated for newer models)
+        const response = await client.images.generate({
+          model,
+          prompt: enhancedPrompt,
+          n: 1,
+          size: "1024x1024",
+        });
+
+        const imageUrl = response.data?.[0]?.url;
+        if (!imageUrl) continue;
+
+        // Download the image
+        const { default: axios } = await import("axios");
+        const dlResponse = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 30_000,
+        });
+        const buffer = Buffer.from(dlResponse.data);
+
+        return { url: imageUrl, buffer };
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+        // Continue to next model
+      }
+    }
+
     console.error(JSON.stringify({
-      event: "openai_image_request",
-      model: "gpt-image-1",
-      originalPrompt: prompt,
+      event: "openai_all_models_failed",
+      error: lastError,
     }));
-
-    const response = await client.images.generate({
-      model: "gpt-image-1",
-      prompt: enhancedPrompt,
-      n: 1,
-      size: "1024x1024",
-      response_format: "b64_json",
-    });
-
-    const b64Json = response.data?.[0]?.b64_json;
-    if (!b64Json) {
-      console.error(JSON.stringify({
-        event: "openai_empty_response",
-        message: "No image data in OpenAI response",
-      }));
-      return null;
-    }
-
-    const buffer = Buffer.from(b64Json, "base64");
-    const url = `data:image/png;base64,${b64Json}`;
-
-    return { url, buffer };
-  } catch (err: any) {
-    // Handle specific OpenAI errors
-    if (err?.status === 401 || err?.status === 403) {
-      console.error(JSON.stringify({
-        event: "openai_auth_error",
-        message: "Invalid or expired OPENAI_API_KEY",
-      }));
-    } else if (err?.status === 429) {
-      console.error(JSON.stringify({
-        event: "openai_rate_limit",
-        message: "OpenAI rate limit exceeded",
-      }));
-    } else {
-      console.error(JSON.stringify({
-        event: "openai_generation_error",
-        error: err?.message || String(err),
-      }));
-    }
     return null;
   }
 }
