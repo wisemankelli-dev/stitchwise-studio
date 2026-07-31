@@ -104,6 +104,119 @@ export async function generateImageWithDallE(
 }
 
 /**
+ * Generate a cross-stitch-suitable SVG line drawing using GPT-4o.
+ *
+ * GPT-4o outputs clean, single-subject vector art that avoids the
+ * repeating-tile artifacts common with diffusion models like Stability AI.
+ * The SVG is rasterized to a PNG buffer for downstream stitch-grid conversion.
+ *
+ * @param prompt - Text description of the desired subject (e.g. "a bird on a branch")
+ * @returns PNG Buffer ready for stitch-grid conversion, or null if unavailable
+ */
+export async function generateSVGWithGPT4o(prompt: string): Promise<Buffer | null> {
+  const client = getClient();
+  if (!client) {
+    console.error(JSON.stringify({
+      event: "gpt4o_svg_no_key",
+      message: "OPENAI_API_KEY not configured — GPT-4o SVG generation skipped",
+    }));
+    return null;
+  }
+
+  const systemPrompt = [
+    "You are a professional needlepoint and cross-stitch pattern designer.",
+    "Generate an SVG of a SINGLE subject with clean, well-defined outlines on a white background.",
+    "RULES:",
+    "- ONE centered subject only — no repeating tiles, no patterns, no borders",
+    "- Draw ONLY black outlines (#000000 or #1a1a1a) on pure white background (#ffffff)",
+    "- Use simple, bold shapes with clear edges — like a coloring book page",
+    "- The subject should fill roughly 50-70% of the canvas",
+    "- Leave generous negative space around the subject for stitching clarity",
+    "- No text, no labels, no captions",
+    "- No gradients, no shading, no shadows, no fills (outlines only)",
+    "- Think: what a needlepoint artist would trace onto fabric",
+    "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
+  ].join("\n");
+
+  const userPrompt = `Draw a single ${prompt}. Outlines only, white background, centered composition.`;
+
+  try {
+    console.error(JSON.stringify({
+      event: "gpt4o_svg_request",
+      prompt: userPrompt.slice(0, 200),
+    }));
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 4096,
+      temperature: 0.3, // Low temperature for consistent, clean output
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) {
+      console.error(JSON.stringify({ event: "gpt4o_svg_empty_response" }));
+      return null;
+    }
+
+    // Extract SVG from markdown code fence or direct output
+    let svg = content;
+    const svgMatch = content.match(/```(?:svg|xml)?\s*([\s\S]*?)```/);
+    if (svgMatch) {
+      svg = svgMatch[1].trim();
+    }
+
+    // Validate it looks like SVG
+    if (!svg.includes("<svg") || !svg.includes("</svg>")) {
+      console.error(JSON.stringify({
+        event: "gpt4o_svg_invalid",
+        preview: svg.slice(0, 200),
+      }));
+      return null;
+    }
+
+    // Ensure SVG has a white background rect
+    if (!svg.includes("<rect")) {
+      svg = svg.replace(
+        /(<svg[^>]*>)/,
+        '$1\n<rect width="100%" height="100%" fill="#ffffff"/>',
+      );
+    }
+
+    console.error(JSON.stringify({
+      event: "gpt4o_svg_success",
+      svgLength: svg.length,
+    }));
+
+    // Rasterize SVG → PNG using sharp
+    try {
+      const sharp = (await import("sharp")).default;
+      const pngBuffer = await sharp(Buffer.from(svg))
+        .resize(1024, 1024, { fit: "contain", background: "#ffffff" })
+        .png()
+        .toBuffer();
+
+      return pngBuffer;
+    } catch (rasterErr: any) {
+      console.error(JSON.stringify({
+        event: "gpt4o_svg_raster_error",
+        error: rasterErr?.message || String(rasterErr),
+      }));
+      return null;
+    }
+  } catch (err: any) {
+    console.error(JSON.stringify({
+      event: "gpt4o_svg_error",
+      error: err?.message || String(err),
+    }));
+    return null;
+  }
+}
+
+/**
  * Download an image from a URL as a Buffer.
  * Used when the AI service returns a URL instead of raw bytes.
  */
