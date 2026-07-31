@@ -275,17 +275,69 @@ export function createLineArtRouter(): Router {
           gridSize: targetSize,
         }));
 
-        // Step 1: Generate SVG via GPT-4o
-        const svgString = await generateSvgFromPrompt(prompt);
-        if (!svgString) {
+        // ── Art-First Pipeline ─────────────────────────────────────────────
+        // 1. Stability AI — primary: produces rich, detailed illustrations
+        // 2. DALL-E — fallback: broader subject coverage
+        //
+        // GPT-4o SVG is NOT used here — it produces simplistic geometric
+        // shapes. Stability and DALL-E are purpose-built for art generation.
+
+        let imageBuffer: Buffer | null = null;
+        let previewUrl: string | undefined;
+        let pipelineUsed: string = "unknown";
+
+        // Step 1: Stability AI with natural-art prompt (NO embroidery language)
+        const artPrompt = [
+          prompt,
+          "detailed botanical illustration, natural organic shapes, hand-drawn art",
+          "clean composition on white background, single centered subject",
+          "rich natural colors, elegant linework, artistic quality",
+        ].join(", ");
+
+        const negativePrompt = [
+          "embroidery, cross-stitch, needlepoint, pixel art, grid pattern",
+          "repeating tiles, tiled pattern, seamless pattern, wallpaper",
+          "clip art, cheap vector graphics, childs drawing, simplistic",
+          "cartoon, AI-generated look, 3D rendering, photorealistic",
+          "gradients, shading, shadows, messy composition, abstract noise",
+        ].join(", ");
+
+        const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
+        if (stabilityResult?.buffer) {
+          imageBuffer = stabilityResult.buffer;
+          previewUrl = stabilityResult.url;
+          pipelineUsed = "stability-ai";
+          console.error(JSON.stringify({
+            event: "text_to_pattern_pipeline",
+            pipeline: pipelineUsed,
+            prompt: prompt,
+          }));
+        }
+
+        // Step 2: Fall back to DALL-E
+        if (!imageBuffer) {
+          const dalleResult = await generateImageWithDallE(artPrompt);
+          if (dalleResult?.buffer) {
+            imageBuffer = dalleResult.buffer;
+            previewUrl = dalleResult.url;
+            pipelineUsed = "dall-e";
+            console.error(JSON.stringify({
+              event: "text_to_pattern_pipeline",
+              pipeline: pipelineUsed,
+              fallback: true,
+            }));
+          }
+        }
+
+        if (!imageBuffer) {
           res.status(500).json({
-            error: "GPT-4o SVG generation failed. Check OPENAI_API_KEY and try again.",
+            error: "AI image generation failed. All pipelines returned no image.",
           });
           return;
         }
 
-        // Step 2: Convert SVG → stitch grid via the pipeline
-        const result = await svgToStitchGrid(svgString, targetSize, prompt);
+        // Step 3: Convert image → stitch grid
+        const result = await imageBufferToStitchGrid(imageBuffer, targetSize, prompt);
 
         // Assign cross-stitch symbols to palette entries
         const dmcColorsWithSymbols = result.dmcColors.map((c, i) => ({
@@ -295,6 +347,7 @@ export function createLineArtRouter(): Router {
 
         console.error(JSON.stringify({
           event: "text_to_svg_pattern_success",
+          pipeline: pipelineUsed,
           paletteSize: result.dmcColors.length,
           stitchCount: result.stitchCount,
         }));
@@ -302,8 +355,9 @@ export function createLineArtRouter(): Router {
         res.json({
           ...result,
           dmcColors: dmcColorsWithSymbols,
+          previewUrl,
           promptUsed: prompt,
-          pipeline: "gpt4o-svg",
+          pipeline: pipelineUsed,
         });
       } catch (err: any) {
         console.error("Text-to-SVG-pattern error:", err);
