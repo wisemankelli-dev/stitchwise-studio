@@ -104,13 +104,14 @@ export async function generateImageWithDallE(
 }
 
 /**
- * Generate a cross-stitch-suitable SVG line drawing using GPT-4o.
+ * Generate a natural-illustration SVG using GPT-4o.
  *
- * GPT-4o outputs clean, single-subject vector art that avoids the
- * repeating-tile artifacts common with diffusion models like Stability AI.
+ * GPT-4o outputs clean, single-subject vector art with organic curves —
+ * like a botanical field guide plate — that avoids the repeating-tile
+ * artifacts common with diffusion models.
  * The SVG is rasterized to a PNG buffer for downstream stitch-grid conversion.
  *
- * @param prompt - Text description of the desired subject (e.g. "a bird on a branch")
+ * @param prompt - Text description of the desired subject (e.g. "a sunflower with leaves")
  * @returns PNG Buffer ready for stitch-grid conversion, or null if unavailable
  */
 export async function generateSVGWithGPT4o(prompt: string): Promise<Buffer | null> {
@@ -124,23 +125,24 @@ export async function generateSVGWithGPT4o(prompt: string): Promise<Buffer | nul
   }
 
   const systemPrompt = [
-    "You are a professional needlepoint and cross-stitch pattern designer.",
-    "Generate an SVG of a SINGLE subject with clean, well-defined filled regions on a white background.",
+    "You are a botanical and nature illustrator who creates clean SVG vector art.",
+    "Generate an SVG of a SINGLE subject — drawn as a natural, recognizable illustration — on a white background.",
     "RULES:",
     "- ONE centered subject only — no repeating tiles, no patterns, no borders",
-    "- Fill each region with a SOLID flat color — use 8-15 distinct thread-friendly colors",
-    "- Choose colors that work well as DMC embroidery floss (rich reds, greens, blues, golds, browns)",
-    "- Use simple, bold shapes with clear edges — like a finished needlepoint canvas",
+    "- Draw organic, natural shapes with CURVES — petals, leaves, stems should feel lifelike, not blocky",
+    "- Fill each region with a SOLID flat color — use 5-12 distinct, natural colors",
+    "- Use color contrast between adjacent regions instead of black outlines",
     "- The subject should fill roughly 50-70% of the canvas",
-    "- Leave generous negative space around the subject for stitching clarity",
+    "- White (#ffffff) background only behind the subject — no colored background",
     "- No text, no labels, no captions",
-    "- No gradients, no shading, no shadows, no outlines around filled regions",
-    "- White background (#ffffff) only behind the subject — no colored background",
-    "Think: a completed needlepoint piece where every area is stitched with colored thread.",
+    "- No gradients, no shading, no shadows",
+    "IMPORTANT: This is a NATURAL ILLUSTRATION. Use curved paths, not rectangles.",
+    "Do NOT draw pixel art, needlepoint, cross-stitch, or embroidery-style art.",
+    "Think: a simple flat-color botanical plate illustration from a field guide.",
     "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
   ].join("\n");
 
-  const userPrompt = `Draw a single ${prompt}. Filled with solid flat colors, white background, centered composition.`;
+  const userPrompt = `Draw a single ${prompt} as a natural botanical illustration. Use 5-12 solid flat colors on white background. Organic curved shapes — no pixel art, no embroidery style.`;
 
   try {
     console.error(JSON.stringify({

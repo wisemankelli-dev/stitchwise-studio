@@ -1,8 +1,8 @@
 /**
  * OpenAI SVG Service — GPT-4o chat completions for structured SVG generation.
  *
- * Uses GPT-4o to generate clean, single-subject SVG vector art with flat colors
- * and well-defined shapes — ideal for cross-stitch / needlepoint conversion.
+ * Uses GPT-4o to generate clean, single-subject SVG vector art with organic curves
+ * and flat colors — like botanical field guide illustrations.
  * This avoids the repeating-tile artifacts common with diffusion models.
  *
  * Pattern: follows the OpenAI client setup from openaiImageService.ts but
@@ -18,16 +18,16 @@ function getClient(): OpenAI | null {
 }
 
 /**
- * Generate a cross-stitch-suitable SVG using GPT-4o.
+ * Generate a natural-illustration SVG using GPT-4o.
  *
- * GPT-4o produces clean, single-subject vector art with flat colors and
- * well-defined regions — ideal for stitch-grid quantization. This avoids
+ * GPT-4o produces clean, single-subject vector art with organic curves
+ * and flat colors — like a botanical field guide plate. This avoids
  * the repeating-tile artifacts common with diffusion models.
  *
  * The returned SVG string is passed directly to svgToStitchGrid() in the
  * pipeline, which handles rasterization and color quantization.
  *
- * @param prompt - Text description of the desired subject (e.g. "a red cardinal bird on a branch")
+ * @param prompt - Text description of the desired subject (e.g. "a sunflower with green leaves")
  * @returns Raw SVG string ready for stitch-grid conversion, or null if unavailable
  */
 export async function generateSvgFromPrompt(prompt: string): Promise<string | null> {
@@ -41,23 +41,25 @@ export async function generateSvgFromPrompt(prompt: string): Promise<string | nu
   }
 
   const systemPrompt = [
-    "You are a professional needlepoint and cross-stitch pattern designer.",
-    "Generate an SVG of a SINGLE subject with flat, solid-colored regions on a white background.",
+    "You are a botanical and nature illustrator who creates clean SVG vector art.",
+    "Generate an SVG of a SINGLE subject — drawn as a natural, recognizable illustration — on a white background.",
     "RULES:",
     "- ONE centered subject only — no repeating tiles, no patterns, no borders, no grids",
-    "- Use 4-8 distinct flat colors (solid fills, NO gradients, NO shading, NO shadows)",
+    "- Draw organic, natural shapes with CURVES — petals, leaves, stems should feel lifelike, not blocky",
+    "- Use 5-12 distinct flat colors (solid fills, NO gradients, NO shading, NO shadows)",
     "- Every region MUST be filled with a solid color — no outlines-only shapes",
-    "- Shapes must be simple with clean, well-defined edges",
+    "- Use color contrast between adjacent regions instead of black outlines",
     "- The subject should fill roughly 50-70% of the canvas",
     "- White (#ffffff) background with generous negative space",
     "- No text, no labels, no captions, no decorations",
-    "- No black outlines around shapes — use color contrast between regions instead",
     "- Use viewBox=\"0 0 500 500\" for the SVG root element",
-    "Think: a simple pixel-art-like composition made of filled polygons and paths.",
+    "IMPORTANT: This is a NATURAL ILLUSTRATION. Use curved paths, not rectangles.",
+    "Do NOT draw pixel art, needlepoint, cross-stitch, or embroidery-style art.",
+    "Think: a simple flat-color botanical plate illustration from a field guide.",
     "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
   ].join("\n");
 
-  const userPrompt = `Draw a single ${prompt}. Use 4-8 solid flat colors on white background. Simple clean shapes with filled regions.`;
+  const userPrompt = `Draw a single ${prompt} as a natural botanical illustration. Use 5-12 solid flat colors on white background. Organic curved shapes — no pixel art, no embroidery style.`;
 
   try {
     console.error(JSON.stringify({
