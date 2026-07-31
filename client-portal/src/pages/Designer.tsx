@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image, Eye, Sparkles, Loader2
+  Upload, Eye, Sparkles, Loader2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -419,7 +419,7 @@ export const Designer: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [generatedPalette, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
+  const [, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
   const [numColors, setNumColors] = useState(15); // color count for quantization
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [showReference, setShowReference] = useState(true);
