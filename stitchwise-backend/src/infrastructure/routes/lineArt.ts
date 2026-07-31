@@ -290,7 +290,7 @@ export function createLineArtRouter(): Router {
         const artPrompt = [
           prompt,
           "detailed botanical illustration, natural organic shapes, hand-drawn art",
-          "clean composition on white background, single centered subject",
+          "pure white background, single centered subject, no scenery",
           "rich natural colors, elegant linework, artistic quality",
         ].join(", ");
 
@@ -300,6 +300,7 @@ export function createLineArtRouter(): Router {
           "clip art, cheap vector graphics, childs drawing, simplistic",
           "cartoon, AI-generated look, 3D rendering, photorealistic",
           "gradients, shading, shadows, messy composition, abstract noise",
+          "blue sky, clouds, landscape, scenery, background environment",
         ].join(", ");
 
         const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
