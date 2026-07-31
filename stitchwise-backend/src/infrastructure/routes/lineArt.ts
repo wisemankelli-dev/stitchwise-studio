@@ -17,6 +17,7 @@ import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithStability } from "../services/stabilityAIService";
+import { generateSVGWithGPT4o, generateImageWithDallE } from "../services/openaiImageService";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -90,16 +91,17 @@ export function createLineArtRouter(): Router {
    * POST /api/ai/text-to-line-art-pattern
    *
    * Generate an embroidery pattern from a text prompt.
-   * Uses Stability AI to generate an image, then runs it through
-   * the k-means color quantization + DMC mapping pipeline for clean,
-   * well-defined stitch regions.
+   *
+   * Pipeline priority:
+   *   1. GPT-4o SVG → Clean single-subject vector line art (NO repeating tiles)
+   *   2. Stability AI → Diffusion fallback with strong negative prompting
+   *   3. DALL-E → OpenAI image generation (last resort)
+   *
+   * Each pipeline output is run through k-means color quantization + DMC mapping.
    *
    * Request body: { prompt: string, gridSize?: number, maxColors?: number }
-   * Response: PatternResult with cross-stitch cells and quantized DMC colors
-   *
-   * Prompt engineering appends: "flat vector art, solid flat colors only,
-   *   no gradients, no shading, clean simple shapes, clip art style,
-   *   white background, suitable for embroidery"
+   * Response: PatternResult with cross-stitch cells, quantized DMC colors,
+   *   previewUrl, and pipeline identifier
    */
   router.post(
     "/ai/text-to-line-art-pattern",
@@ -122,46 +124,85 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, maxColors } = parsed.data;
 
-        // Prompt engineering: request hand-drawn needlepoint artwork,
-        // not flat vector clip art. The output should feel designed by a
-        // professional needlepoint artist: strong composition, clean edges,
-        // recognizable shapes, thread-friendly palette.
-        const enhancedPrompt = [
-          prompt,
-          "traditional counted cross-stitch pattern, hand-drawn needlepoint design",
-          "elegant composition with clear focal point",
-          "clean well-defined shapes, balanced negative space",
-          "thread-friendly colors, timeless classic needlepoint aesthetic",
-          "white background, suitable for embroidery conversion",
-        ].join(", ");
-        const negativePrompt = [
-          "clip art, cheap vector graphics, AI-generated look",
-          "messy composition, photorealistic, 3D rendering, overdetailed",
-          "busy patterns, cluttered, abstract noise, modern digital art",
-          "gradients, shading, shadows, black outlines, sketchy",
-        ].join(", ");
+        // ── Pipeline Priority ──────────────────────────────────────────────
+        // 1. GPT-4o SVG → Clean single-subject line art (no repeating tiles)
+        // 2. Stability AI → Diffusion model with strong negative prompting
+        // 3. DALL-E → OpenAI image generation (last resort)
+        //
+        // GPT-4o SVG is preferred because it produces crisp, single-subject
+        // vector line art that avoids the repeating-tile artifacts of diffusion
+        // models and converts cleanly to stitch grids.
 
-        console.error(JSON.stringify({
-          event: "text_to_pattern_kmeans",
-          originalPrompt: prompt,
-          finalPrompt: enhancedPrompt,
-        }));
+        let imageBuffer: Buffer | null = null;
+        let previewUrl: string | undefined;
+        let pipelineUsed: string = "unknown";
 
-        // Step 1: Generate image via Stability AI
-        const generation = await generateImageWithStability(enhancedPrompt, negativePrompt);
+        // Step 1: Try GPT-4o SVG (primary — avoids diffusion tile artifacts)
+        imageBuffer = await generateSVGWithGPT4o(prompt);
+        if (imageBuffer) {
+          pipelineUsed = "gpt4o-svg";
+          console.error(JSON.stringify({
+            event: "text_to_pattern_pipeline",
+            pipeline: pipelineUsed,
+            prompt: prompt,
+          }));
+        }
 
-        if (!generation || !generation.buffer) {
+        // Step 2: Fall back to Stability AI
+        if (!imageBuffer) {
+          const stabilityPrompt = [
+            prompt,
+            "traditional counted cross-stitch pattern, hand-drawn needlepoint design",
+            "elegant composition with clear focal point",
+            "clean well-defined shapes, balanced negative space",
+            "thread-friendly colors, timeless classic needlepoint aesthetic",
+            "white background, suitable for embroidery conversion",
+          ].join(", ");
+          const negativePrompt = [
+            "clip art, cheap vector graphics, AI-generated look",
+            "messy composition, photorealistic, 3D rendering, overdetailed",
+            "busy patterns, cluttered, abstract noise, modern digital art",
+            "gradients, shading, shadows, repeating tiles, tiled pattern",
+          ].join(", ");
+
+          const stabilityResult = await generateImageWithStability(stabilityPrompt, negativePrompt);
+          if (stabilityResult?.buffer) {
+            imageBuffer = stabilityResult.buffer;
+            previewUrl = stabilityResult.url;
+            pipelineUsed = "stability-ai";
+            console.error(JSON.stringify({
+              event: "text_to_pattern_pipeline",
+              pipeline: pipelineUsed,
+              fallback: true,
+            }));
+          }
+        }
+
+        // Step 3: Fall back to DALL-E
+        if (!imageBuffer) {
+          const dalleResult = await generateImageWithDallE(prompt);
+          if (dalleResult?.buffer) {
+            imageBuffer = dalleResult.buffer;
+            previewUrl = dalleResult.url;
+            pipelineUsed = "dall-e";
+            console.error(JSON.stringify({
+              event: "text_to_pattern_pipeline",
+              pipeline: pipelineUsed,
+              fallback: true,
+            }));
+          }
+        }
+
+        if (!imageBuffer) {
           res.status(500).json({
-            error: "AI image generation failed. No image returned from Stability AI.",
+            error: "AI image generation failed. All pipelines (GPT-4o SVG, Stability AI, DALL-E) returned no image.",
           });
           return;
         }
 
-        // Step 2: Run the k-means color quantization → DMC mapping pipeline
-        // This replaces the Sobel edge-detection approach with the same
-        // clean quantized pipeline used by the image upload flow.
+        // Run the k-means color quantization → DMC mapping pipeline
         const result = await imageBufferToStitchGrid(
-          generation.buffer,
+          imageBuffer,
           gridSize ?? DEFAULT_GRID_SIZE,
           maxColors ?? 24,
         );
@@ -175,8 +216,9 @@ export function createLineArtRouter(): Router {
         res.json({
           ...result,
           dmcColors: dmcColorsWithSymbols,
-          previewUrl: generation.url,
-          promptUsed: enhancedPrompt,
+          previewUrl,
+          promptUsed: prompt,
+          pipeline: pipelineUsed,
         });
       } catch (err: any) {
         console.error("Text-to-pattern error:", err);
