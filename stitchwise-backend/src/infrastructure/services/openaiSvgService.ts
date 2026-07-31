@@ -56,7 +56,7 @@ export async function generateSvgFromPrompt(prompt: string): Promise<string | nu
     "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
   ].join("\n");
 
-  const userPrompt = `Draw a single ${prompt} — fill 70-85% of the canvas with large distinct parts each in a different bold color. No white inside the subject.`;
+  const userPrompt = `Draw a single ${prompt}. The FLOWER BLOOM must be LARGE — at least 50% of the canvas. Show distinct parts: petals in yellow/orange, center in dark brown, stem and leaves in green. Fill the canvas with bold flat colors.`;
 
   try {
     console.error(JSON.stringify({
