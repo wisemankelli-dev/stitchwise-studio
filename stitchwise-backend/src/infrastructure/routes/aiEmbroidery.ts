@@ -34,6 +34,7 @@ import {
   AVAILABLE_FABRIC_COUNTS,
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
+import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -134,6 +135,43 @@ export function createAIEmbroideryRouter(): Router {
           gridSize = clampToGridSize(rawStitches) as typeof rawGridSize;
         }
         const fabricInches = (gridSize || DEFAULT_GRID_SIZE) / fc;
+
+        // ── Priority 0: Procedural subject pattern (no AI) ──────────────────
+        // Fast path for known subjects that render with mathematical shapes.
+        const proceduralPattern = generateSubjectPattern(
+          prompt,
+          gridSize || DEFAULT_GRID_SIZE,
+        );
+        if (proceduralPattern) {
+          console.error(JSON.stringify({
+            event: "procedural_pattern_generated",
+            prompt: prompt,
+            gridSize: proceduralPattern.gridSize,
+          }));
+
+          const flatGrid = flattenGrid(proceduralPattern.grid);
+          res.json({
+            success: true,
+            grid: flatGrid,
+            stitchTypes: flatGrid.map(row => row.map(() => "cross")),
+            width: proceduralPattern.gridSize,
+            height: proceduralPattern.gridSize,
+            dmcPalette: proceduralPattern.dmcColors.map((c, i) => ({
+              code: c.code,
+              name: c.name,
+              hex: c.hex,
+              count: c.count,
+              symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+            })),
+            totalStitches: proceduralPattern.stitchCount,
+            gridSizes: [...AVAILABLE_GRID_SIZES],
+            promptUsed: prompt,
+            processingTimeMs: 0,
+            fabric: { count: fc, inches: +fabricInches.toFixed(2) },
+            pipeline: "procedural",
+          });
+          return;
+        }
 
         // Check if the prompt matches a known shape — if so, use the Shape Library directly.
         const shapeKeywords: Record<string, RegExp[]> = {
