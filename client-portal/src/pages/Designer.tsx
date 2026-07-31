@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image, Eye, Sparkles, Loader2
+  Upload, Image, Eye, Sparkles, Loader2, RefreshCw
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -487,6 +487,8 @@ export const Designer: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
+  const [generatedArt, setGeneratedArt] = useState<string | null>(null);
+  const [isTransposing, setIsTransposing] = useState(false);
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
@@ -860,6 +862,7 @@ export const Designer: React.FC = () => {
     setReferenceOpacity(0.20);
     setAiError('');
     setAiStats(null);
+    setGeneratedArt(null);
   };
 
   const handleGenerateAi = useCallback(async () => {
@@ -867,10 +870,26 @@ export const Designer: React.FC = () => {
     setIsGenerating(true);
     setAiError('');
     setAiStats(null);
+    setGeneratedArt(null);
+    try {
+      const data = await api.generateArt(aiPrompt.trim());
+      setGeneratedArt(data.imageDataUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to generate art';
+      setAiError(message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [aiPrompt, isGenerating]);
+
+  const handleTranspose = useCallback(async () => {
+    if (!generatedArt || isTransposing) return;
+    setIsTransposing(true);
+    setAiError('');
+    setAiStats(null);
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      const data = await api.generatePatternFromText(aiPrompt.trim(), gridSize);
-      // Response: { grid: [[{color, dmcCode, dmcName, stitchType}]] }
+      const data = await api.transposeToPattern(generatedArt, gridSize, 6);
       const newGrid: Record<string, string> = {};
       const newStitchTypes: Record<string, string> = {};
       let backstitch = 0;
@@ -892,7 +911,6 @@ export const Designer: React.FC = () => {
         }
       }
 
-      // Update grid dimensions to match generated pattern
       const newH = data.grid.length;
       const newW = data.grid[0]?.length || 0;
       if (newW > 0 && newH > 0) {
@@ -913,12 +931,18 @@ export const Designer: React.FC = () => {
         crossStitch,
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to generate pattern';
+      const message = err instanceof Error ? err.message : 'Failed to transpose pattern';
       setAiError(message);
     } finally {
-      setIsGenerating(false);
+      setIsTransposing(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight]);
+  }, [generatedArt, isTransposing, gridWidth, gridHeight]);
+
+  const handleClearArt = useCallback(() => {
+    setGeneratedArt(null);
+    setAiError('');
+    setAiStats(null);
+  }, []);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -1365,11 +1389,11 @@ export const Designer: React.FC = () => {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleGenerateAi(); }}
                     placeholder="Describe a pattern (e.g., 'a sunflower with green leaves')"
                     className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
-                    disabled={isGenerating}
+                    disabled={isGenerating || isTransposing}
                   />
                   <button
                     onClick={handleGenerateAi}
-                    disabled={!aiPrompt.trim() || isGenerating}
+                    disabled={!aiPrompt.trim() || isGenerating || isTransposing}
                     className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0"
                   >
                     {isGenerating ? (
@@ -1377,9 +1401,52 @@ export const Designer: React.FC = () => {
                     ) : (
                       <Sparkles className="h-3.5 w-3.5" />
                     )}
-                    {isGenerating ? 'Generating...' : 'Generate'}
+                    {isGenerating ? 'Generating Art…' : 'Generate Art'}
                   </button>
                 </div>
+
+                {/* Generated Art Preview */}
+                {generatedArt && (
+                  <div className="mt-3 p-3 bg-white rounded-lg border border-purple-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">AI Illustration</span>
+                      <button
+                        onClick={handleClearArt}
+                        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        ✕ Clear
+                      </button>
+                    </div>
+                    <img
+                      src={generatedArt}
+                      alt="AI generated art"
+                      className="w-full max-w-[400px] mx-auto rounded-lg shadow-sm border border-slate-100"
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={handleTranspose}
+                        disabled={isTransposing}
+                        className="flex-1 px-3 py-2 rounded-lg bg-gradient-to-r from-blush-600 to-blush-500 text-white text-xs font-bold hover:from-blush-700 hover:to-blush-600 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isTransposing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        {isTransposing ? 'Making Pattern…' : 'Make Pattern'}
+                      </button>
+                      <button
+                        onClick={handleGenerateAi}
+                        disabled={isGenerating || isTransposing}
+                        className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {aiError && (
                   <p className="mt-2 text-[10px] text-red-500 flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" /> {aiError}

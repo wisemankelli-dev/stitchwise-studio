@@ -842,28 +842,48 @@ class ApiClient {
   // ==================== AI EMBROIDERY PATTERN GENERATION ====================
 
   /**
-   * Generates an embroidery pattern from a text prompt using AI (line art pipeline).
-   * POST /api/ai/text-to-line-art-pattern
+   * Step 1: Generate AI art from a text prompt.
+   * POST /api/ai/generate-art
    */
-  async generatePatternFromText(
-    prompt: string,
-    gridSize?: number,
-  ): Promise<LineArtPatternResponse> {
+  async generateArt(prompt: string): Promise<{ imageDataUrl: string; pipeline: string }> {
     if (!this.isLiveBackend) {
-      throw new Error('Backend not available. Pattern generation requires a live backend connection.');
+      throw new Error('Backend not available. Art generation requires a live backend connection.');
     }
-
-    const body: Record<string, unknown> = { prompt };
-    if (gridSize && gridSize >= 16) body.gridSize = gridSize;
-
-    const response = await fetch(`${this.apiBaseUrl}/ai/text-to-line-art-pattern`, {
+    const response = await fetch(`${this.apiBaseUrl}/ai/generate-art`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify({ prompt }),
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || errData.error || `Pattern generation failed (${response.status})`);
+      throw new Error(errData.message || errData.error || `Art generation failed (${response.status})`);
+    }
+    return await response.json();
+  }
+
+  /**
+   * Step 2: Convert generated art to a stitch pattern.
+   * POST /api/ai/transpose-to-pattern
+   */
+  async transposeToPattern(
+    imageDataUrl: string,
+    gridSize?: number,
+    maxColors?: number,
+  ): Promise<LineArtPatternResponse> {
+    if (!this.isLiveBackend) {
+      throw new Error('Backend not available. Pattern transposition requires a live backend connection.');
+    }
+    const body: Record<string, unknown> = { imageDataUrl };
+    if (gridSize && gridSize >= 16) body.gridSize = gridSize;
+    if (maxColors) body.maxColors = maxColors;
+    const response = await fetch(`${this.apiBaseUrl}/ai/transpose-to-pattern`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || errData.error || `Pattern transposition failed (${response.status})`);
     }
     return await response.json();
   }
