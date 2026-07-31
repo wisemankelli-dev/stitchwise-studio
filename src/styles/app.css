@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-blush-50: #fdf2f8;
+  --color-blush-100: #fce7f3;
+  --color-blush-200: #fbcfe8;
+  --color-blush-300: #f9a8d4;
+  --color-blush-400: #f472b6;
+  --color-blush-500: #ec4899;
+  --color-blush-600: #db2777;
+  --color-blush-700: #be185d;
+  --color-blush-800: #9d174d;
+  --color-blush-900: #831843;
+  --shadow-petal: 0 4px 14px 0 rgb(236 72 153 / 0.1);
+  --shadow-blush: 0 8px 25px 0 rgb(236 72 153 / 0.15);
+}
+
+@layer base {
+  html, body {
+    @apply bg-white text-slate-800 antialiased;
+    font-family: "Nunito", system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "Playfair Display", Georgia, serif;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 6s ease-in-out 2s infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 1s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 200ms; }
+.stagger-4 { animation-delay: 300ms; }
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgb(236 72 153 / 0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Floral watermark pattern */
+.floral-bg {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Ccircle cx='30' cy='30' r='8' fill='none' stroke='%23fbcfe8' stroke-width='0.5' opacity='0.5'/%3E%3Ccircle cx='30' cy='18' r='4' fill='none' stroke='%23fbcfe8' stroke-width='0.5' opacity='0.4'/%3E%3Ccircle cx='30' cy='42' r='4' fill='none' stroke='%23fbcfe8' stroke-width='0.5' opacity='0.4'/%3E%3Ccircle cx='18' cy='30' r='4' fill='none' stroke='%23fbcfe8' stroke-width='0.5' opacity='0.4'/%3E%3Ccircle cx='42' cy='30' r='4' fill='none' stroke='%23fbcfe8' stroke-width='0.5' opacity='0.4'/%3E%3C/svg%3E");
+  background-size: 60px 60px;
+}
+
+/* Font utility */
+.font-body {
+  font-family: "Nunito", system-ui, sans-serif;
+}

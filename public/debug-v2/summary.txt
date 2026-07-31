@@ -1,0 +1,6 @@
+Pipeline: CAD-style SVG → Stitch Grid
+Prompt: floral christmas stocking with holly
+Grid: 100x100
+Colors: DMC 321(5046), DMC 520(3468), DMC 309(507), DMC 3326(426), DMC Ecru(311), DMC 818(242)
+Despeckle passes: 1
+Method: nearest-neighbor render + connected-component merge

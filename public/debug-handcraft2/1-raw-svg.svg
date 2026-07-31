@@ -1,0 +1,28 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <!-- Branch -->
+  <path fill="#8B4513" d="M40 370 L470 370 L480 390 L30 390 Z"/>
+  <path fill="#6B3410" d="M420 370 L440 340 L450 345 L430 380 Z"/>
+  <!-- Tail -->
+  <path fill="#2255AA" d="M120 220 L60 170 L65 160 L130 210 Z"/>
+  <path fill="#3366CC" d="M130 230 L65 185 L70 175 L140 220 Z"/>
+  <!-- Body -->
+  <ellipse cx="230" cy="240" rx="100" ry="70" fill="#3366CC"/>
+  <!-- Belly -->
+  <ellipse cx="260" cy="260" rx="60" ry="40" fill="#FF8844"/>
+  <!-- Head -->
+  <circle cx="320" cy="170" r="45" fill="#3366CC"/>
+  <!-- Eye -->
+  <circle cx="335" cy="160" r="8" fill="#222222"/>
+  <circle cx="337" cy="158" r="3" fill="#FFFFFF"/>
+  <!-- Beak -->
+  <path fill="#FFCC00" d="M360 170 L400 180 L360 190 Z"/>
+  <!-- Wing -->
+  <path fill="#2255AA" d="M200 200 Q280 180 320 240 Q260 280 200 260 Z"/>
+  <!-- Feet -->
+  <path fill="#333333" d="M280 305 L270 330 L265 330 L275 310 Z"/>
+  <path fill="#333333" d="M300 308 L295 335 L290 335 L295 312 Z"/>
+  <path fill="#333333" d="M260 300 L245 325 L240 325 L252 305 Z"/>
+  <!-- Leaf -->
+  <ellipse cx="150" cy="360" rx="30" ry="12" fill="#228833"/>
+</svg>

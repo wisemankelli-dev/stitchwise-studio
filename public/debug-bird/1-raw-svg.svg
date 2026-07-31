@@ -1,0 +1,9 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <path fill="#8B4513" d="M100 350 L300 350 L320 380 L80 380 Z"/>
+  <circle cx="280" cy="220" r="80" fill="#3366CC"/>
+  <path fill="#FF88AA" d="M310 150 Q350 180 310 220 Z"/>
+  <circle cx="260" cy="200" r="15" fill="#222222"/>
+  <ellipse cx="200" cy="400" rx="50" ry="10" fill="#006600"/>
+  <path fill="#FFCC00" d="M320 250 Q340 240 350 260 Q340 270 320 260 Z"/>
+</svg>
