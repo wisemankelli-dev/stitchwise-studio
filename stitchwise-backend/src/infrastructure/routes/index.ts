@@ -17,3 +17,4 @@ export { createPatternEditorRouter } from "./patternEditor";
 export { createPatternExportRouter } from "./patternExport";
 export { createLineArtRouter } from "./lineArt";
 export { createTextToImageRouter } from "./textToImage";
+export { createPatternPersistenceRouter } from "./patternPersistence";
