@@ -109,13 +109,12 @@ export async function imageBufferToStitchGrid(
     .toBuffer();
 
   const { data, info } = await sharp(posterizedPng)
+    .ensureAlpha() // add alpha channel — pixelsToStitchGrid expects RGBA
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   // Step 4: Palette cleanup — remap outlier cold colors (violet/blue) to
-  // their nearest warm neighbor in the posterized palette. This fixes the
-  // AI's tendency to produce violet shadows on warm subjects (e.g. sunflower
-  // petals, birds, moths).
+  // their nearest warm neighbor in the posterized palette.
   const pixels = new Uint8Array(data);
   const cleanedPixels = remapColdColors(pixels, info.width, info.height, maxColors);
 
@@ -135,10 +134,10 @@ function remapColdColors(
 ): Uint8Array {
   const totalPixels = width * height;
 
-  // Collect unique colors and their counts
+  // Collect unique colors and their counts (RGBA — 4 bytes per pixel)
   const colorMap = new Map<string, { r: number; g: number; b: number; count: number }>();
   for (let i = 0; i < totalPixels; i++) {
-    const off = i * 3;
+    const off = i * 4; // RGBA stride
     const key = `${pixels[off]},${pixels[off + 1]},${pixels[off + 2]}`;
     const existing = colorMap.get(key);
     if (existing) {
@@ -152,14 +151,15 @@ function remapColdColors(
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, maxColors);
 
-  // Identify cold colors (hue 200-310: blue through violet)
+  // Identify cold colors (hue 200-310: blue through violet/magenta)
   function isCold(r: number, g: number, b: number): boolean {
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     if (max === min) return false; // grayscale — skip
-    if (max === b && b - r > 15) return true; // blue-dominant
-    if (max === b && b - g > 10 && r > g) return true; // violet (blue + red)
-    // Low saturation blue-ish (slate, periwinkle)
+    if (max === b && b - r > 10 && b - g > 10) return true; // blue-dominant
+    // Violet/magenta: R and B both high, G low (R+B >> G)
+    if (r > g + 15 && b > g + 15 && Math.abs(r - b) < 60) return true;
+    // Periwinkle/slate: low saturation blue-ish
     if (b > r + 5 && b > g + 5 && max - min < 40) return true;
     return false;
   }
@@ -194,10 +194,10 @@ function remapColdColors(
     remap.set(coldKey, bestKey);
   }
 
-  // Apply remap to pixels
+  // Apply remap to pixels (RGBA — 4 bytes per pixel)
   const result = new Uint8Array(pixels);
   for (let i = 0; i < totalPixels; i++) {
-    const off = i * 3;
+    const off = i * 4; // RGBA stride
     const key = `${pixels[off]},${pixels[off + 1]},${pixels[off + 2]}`;
     const target = remap.get(key);
     if (target) {
@@ -205,6 +205,7 @@ function remapColdColors(
       result[off] = tr;
       result[off + 1] = tg;
       result[off + 2] = tb;
+      // alpha remains unchanged at result[off + 3]
     }
   }
 
