@@ -108,12 +108,107 @@ export async function imageBufferToStitchGrid(
     .png({ palette: true, colours: maxColors, dither: 0 })
     .toBuffer();
 
-  const { data } = await sharp(posterizedPng)
+  const { data, info } = await sharp(posterizedPng)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Step 2: Delegate to the model-agnostic pixel→grid pipeline
-  return pixelsToStitchGrid(new Uint8Array(data), size);
+  // Step 4: Palette cleanup — remap outlier cold colors (violet/blue) to
+  // their nearest warm neighbor in the posterized palette. This fixes the
+  // AI's tendency to produce violet shadows on warm subjects (e.g. sunflower
+  // petals, birds, moths).
+  const pixels = new Uint8Array(data);
+  const cleanedPixels = remapColdColors(pixels, info.width, info.height, maxColors);
+
+  // Step 5: Delegate to the model-agnostic pixel→grid pipeline
+  return pixelsToStitchGrid(cleanedPixels, size);
+}
+
+/**
+ * Detect violet/blue palette entries and remap those pixels to the
+ * nearest non-cold color in the same palette. Cold = hue 200-310 (blue through violet).
+ */
+function remapColdColors(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  maxColors: number,
+): Uint8Array {
+  const totalPixels = width * height;
+
+  // Collect unique colors and their counts
+  const colorMap = new Map<string, { r: number; g: number; b: number; count: number }>();
+  for (let i = 0; i < totalPixels; i++) {
+    const off = i * 3;
+    const key = `${pixels[off]},${pixels[off + 1]},${pixels[off + 2]}`;
+    const existing = colorMap.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      colorMap.set(key, { r: pixels[off], g: pixels[off + 1], b: pixels[off + 2], count: 1 });
+    }
+  }
+
+  const colors = [...colorMap.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, maxColors);
+
+  // Identify cold colors (hue 200-310: blue through violet)
+  function isCold(r: number, g: number, b: number): boolean {
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    if (max === min) return false; // grayscale — skip
+    if (max === b && b - r > 15) return true; // blue-dominant
+    if (max === b && b - g > 10 && r > g) return true; // violet (blue + red)
+    // Low saturation blue-ish (slate, periwinkle)
+    if (b > r + 5 && b > g + 5 && max - min < 40) return true;
+    return false;
+  }
+
+  const coldKeys = new Set<string>();
+  const warmColors: Array<{ r: number; g: number; b: number; key: string }> = [];
+
+  for (const [key, c] of colors) {
+    if (isCold(c.r, c.g, c.b)) {
+      coldKeys.add(key);
+    } else {
+      warmColors.push({ r: c.r, g: c.g, b: c.b, key });
+    }
+  }
+
+  // If no cold colors or no warm alternatives, return unchanged
+  if (coldKeys.size === 0 || warmColors.length === 0) return pixels;
+
+  // Build remap table: for each cold color, find nearest warm color
+  const remap = new Map<string, string>();
+  for (const coldKey of coldKeys) {
+    const [cr, cg, cb] = coldKey.split(",").map(Number);
+    let bestDist = Infinity;
+    let bestKey = warmColors[0].key;
+    for (const w of warmColors) {
+      const d = (cr - w.r) ** 2 + (cg - w.g) ** 2 + (cb - w.b) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        bestKey = w.key;
+      }
+    }
+    remap.set(coldKey, bestKey);
+  }
+
+  // Apply remap to pixels
+  const result = new Uint8Array(pixels);
+  for (let i = 0; i < totalPixels; i++) {
+    const off = i * 3;
+    const key = `${pixels[off]},${pixels[off + 1]},${pixels[off + 2]}`;
+    const target = remap.get(key);
+    if (target) {
+      const [tr, tg, tb] = target.split(",").map(Number);
+      result[off] = tr;
+      result[off + 1] = tg;
+      result[off + 2] = tb;
+    }
+  }
+
+  return result;
 }
 
 /**
