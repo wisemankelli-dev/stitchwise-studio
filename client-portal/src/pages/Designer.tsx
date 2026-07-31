@@ -889,7 +889,7 @@ export const Designer: React.FC = () => {
     setAiStats(null);
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      const data = await api.transposeToPattern(generatedArt, gridSize, 6);
+      const data = await api.transposeToPattern(generatedArt, gridSize, 6, aiPrompt.trim());
       const newGrid: Record<string, string> = {};
       const newStitchTypes: Record<string, string> = {};
       let backstitch = 0;

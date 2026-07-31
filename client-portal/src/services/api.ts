@@ -869,6 +869,7 @@ class ApiClient {
     imageDataUrl: string,
     gridSize?: number,
     maxColors?: number,
+    prompt?: string,
   ): Promise<LineArtPatternResponse> {
     if (!this.isLiveBackend) {
       throw new Error('Backend not available. Pattern transposition requires a live backend connection.');
@@ -876,6 +877,7 @@ class ApiClient {
     const body: Record<string, unknown> = { imageDataUrl };
     if (gridSize && gridSize >= 16) body.gridSize = gridSize;
     if (maxColors) body.maxColors = maxColors;
+    if (prompt) body.prompt = prompt;
     const response = await fetch(`${this.apiBaseUrl}/ai/transpose-to-pattern`, {
       method: 'POST',
       headers: this.getHeaders(),
