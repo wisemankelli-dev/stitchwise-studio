@@ -1825,6 +1825,16 @@ class ApiClient {
     return [...this.collageStore];
   }
 
+  async loadCollageProject(id: string): Promise<CollageProject | null> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/collage/${id}`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).project;
+      } catch { /* fall through to mock */ }
+    }
+    return this.collageStore.find(p => p.id === id) || null;
+  }
+
   async deleteCollageProject(id: string): Promise<void> {
     if (this.isLiveBackend) {
       try {
@@ -1863,6 +1873,16 @@ class ApiClient {
       } catch { /* fall through to mock */ }
     }
     return [...this.quiltBlockStore];
+  }
+
+  async loadQuiltBlock(id: string): Promise<QuiltBlockDesign | null> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/quilt-blocks/${id}`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).block;
+      } catch { /* fall through to mock */ }
+    }
+    return this.quiltBlockStore.find(b => b.id === id) || null;
   }
 
   async deleteQuiltBlock(id: string): Promise<void> {

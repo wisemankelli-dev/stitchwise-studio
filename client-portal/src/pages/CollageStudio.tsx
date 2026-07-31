@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { api, FabricLayer, AICollageResponse } from '../services/api';
+import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
+import html2canvas from 'html2canvas';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Flower2, Sparkles, UploadCloud,
+  Flower2, Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
-  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2
+  Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
+  FolderOpen, ChevronDown, X, PenTool
 } from 'lucide-react';
 
 type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
@@ -65,6 +67,14 @@ export const CollageStudio: React.FC = () => {
   const [activeTool, setActiveTool] = useState<CollageTool>('select');
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
+  // Save/Load state
+  const [collageName, setCollageName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<CollageProject[]>([]);
+  const [showLoadDropdown, setShowLoadDropdown] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
 
   const updateLayer = useCallback((id: string, updates: Partial<FabricLayer>) => {
@@ -115,6 +125,61 @@ export const CollageStudio: React.FC = () => {
       setLayers(prev => [...prev, ...newLayers]);
       setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
     }
+  };
+
+  // Save/Load/Export handlers
+  const handleSaveCollage = async () => {
+    const name = collageName.trim() || `Collage ${new Date().toLocaleDateString()}`;
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const project = await api.saveCollage(name, layers);
+      setCollageName('');
+      setSavedProjects(prev => [project, ...prev.filter(p => p.id !== project.id)]);
+      setSaveMessage(`Saved "${project.name}"!`);
+      setTimeout(() => setSaveMessage(null), 2500);
+    } catch (err) {
+      setSaveMessage('Save failed. Will retry with mock backend.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadProjects = async () => {
+    try {
+      const projects = await api.listCollageProjects();
+      setSavedProjects(projects);
+    } catch { /* use stale state */ }
+    setShowLoadDropdown(prev => !prev);
+  };
+
+  const handleLoadCollage = async (id: string) => {
+    const project = await api.loadCollageProject(id);
+    if (project) {
+      setLayers(project.layers);
+      setSelectedLayerId(project.layers[project.layers.length - 1]?.id || 'bg');
+      setSaveMessage(`Loaded "${project.name}"`);
+      setTimeout(() => setSaveMessage(null), 2000);
+    }
+    setShowLoadDropdown(false);
+  };
+
+  const handleDeleteCollage = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await api.deleteCollageProject(id);
+    setSavedProjects(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleExportPng = async () => {
+    if (!canvasRef.current) return;
+    const canvas = await html2canvas(canvasRef.current, {
+      backgroundColor: '#fdf2f8',
+      scale: 2,
+    });
+    const link = document.createElement('a');
+    link.download = `${collageName.trim() || 'collage'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   const handleCanvasClick = (layerId: string) => {
@@ -307,14 +372,76 @@ export const CollageStudio: React.FC = () => {
                   </button>
                 </>
               )}
-              <button className="btn-floral-ghost text-xs py-1.5 px-3">
-                <Save className="h-3.5 w-3.5 mr-1" />
-                Save
-              </button>
-              <button className="btn-floral-primary text-xs py-1.5 px-3">
-                <Download className="h-3.5 w-3.5 mr-1" />
-                Export
-              </button>
+              {/* Save/Load/Export controls */}
+              <div className="flex items-center gap-2 relative">
+                {/* Name input */}
+                <input
+                  type="text"
+                  value={collageName}
+                  onChange={(e) => setCollageName(e.target.value)}
+                  placeholder="Project name..."
+                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
+                />
+                {/* Save */}
+                <button
+                  onClick={handleSaveCollage}
+                  disabled={isSaving}
+                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+                {/* Load dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={handleLoadProjects}
+                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                    Load
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </button>
+                  {showLoadDropdown && (
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                      {savedProjects.length === 0 ? (
+                        <p className="p-3 text-[11px] text-slate-400 text-center">No saved projects yet</p>
+                      ) : (
+                        savedProjects.map(p => (
+                          <div
+                            key={p.id}
+                            onClick={() => handleLoadCollage(p.id)}
+                            className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                          >
+                            <span className="text-xs text-slate-700 truncate flex-1">
+                              {p.name}
+                              <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                            </span>
+                            <button
+                              onClick={(e) => handleDeleteCollage(p.id, e)}
+                              className="text-slate-300 hover:text-red-500 p-1"
+                              title="Delete project"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Export */}
+                <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export
+                </button>
+              </div>
+              {/* Save message flash */}
+              {saveMessage && (
+                <p className={`text-[10px] px-2 py-0.5 rounded ${saveMessage.startsWith('Save failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {saveMessage}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -390,6 +517,7 @@ export const CollageStudio: React.FC = () => {
 
               {/* Canvas Area */}
               <div
+                ref={canvasRef}
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
                 style={{ height: '500px' }}
               >
