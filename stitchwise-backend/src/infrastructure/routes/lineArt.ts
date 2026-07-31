@@ -14,10 +14,12 @@ import axios from "axios";
 import { z } from "zod";
 import { lineArtToStitchGrid } from "../../domain/stitch/lineArtConverter";
 import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
+import { svgToStitchGrid } from "../../domain/stitch/pipeline";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithStability } from "../services/stabilityAIService";
 import { generateSVGWithGPT4o, generateImageWithDallE } from "../services/openaiImageService";
+import { generateSvgFromPrompt } from "../services/openaiSvgService";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -224,6 +226,89 @@ export function createLineArtRouter(): Router {
         console.error("Text-to-pattern error:", err);
         res.status(500).json({
           error: err.message || "Text-to-pattern generation failed",
+        });
+      }
+    },
+  );
+
+  /**
+   * POST /api/ai/text-to-svg-pattern
+   *
+   * Generate an embroidery pattern from a text prompt using GPT-4o SVG.
+   *
+   * This is the dedicated GPT-4o SVG pipeline — NO diffusion models.
+   * GPT-4o generates structured SVG vector art with flat solid-colored regions
+   * and clean shapes, then svgToStitchGrid() rasterizes and quantizes.
+   *
+   * Unlike text-to-line-art-pattern (which falls back to Stability/DALL-E),
+   * this endpoint produces ONLY single-subject vector artwork — no risk of
+   * repeating-tile artifacts.
+   *
+   * Request body: { prompt: string, gridSize?: number, maxColors?: number }
+   * Response: PatternResult with cross-stitch cells, quantized DMC colors
+   */
+  router.post(
+    "/ai/text-to-svg-pattern",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        // Validate input
+        const schema = z.object({
+          prompt: z.string().min(1).max(500),
+          gridSize: z.number().int().optional(),
+          maxColors: z.number().int().min(5).max(30).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        const { prompt, gridSize } = parsed.data;
+        const targetSize = gridSize ?? DEFAULT_GRID_SIZE;
+
+        console.error(JSON.stringify({
+          event: "text_to_svg_pattern_start",
+          prompt: prompt,
+          gridSize: targetSize,
+        }));
+
+        // Step 1: Generate SVG via GPT-4o
+        const svgString = await generateSvgFromPrompt(prompt);
+        if (!svgString) {
+          res.status(500).json({
+            error: "GPT-4o SVG generation failed. Check OPENAI_API_KEY and try again.",
+          });
+          return;
+        }
+
+        // Step 2: Convert SVG → stitch grid via the pipeline
+        const result = await svgToStitchGrid(svgString, targetSize, prompt);
+
+        // Assign cross-stitch symbols to palette entries
+        const dmcColorsWithSymbols = result.dmcColors.map((c, i) => ({
+          ...c,
+          symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+        }));
+
+        console.error(JSON.stringify({
+          event: "text_to_svg_pattern_success",
+          paletteSize: result.dmcColors.length,
+          stitchCount: result.stitchCount,
+        }));
+
+        res.json({
+          ...result,
+          dmcColors: dmcColorsWithSymbols,
+          promptUsed: prompt,
+          pipeline: "gpt4o-svg",
+        });
+      } catch (err: any) {
+        console.error("Text-to-SVG-pattern error:", err);
+        res.status(500).json({
+          error: err.message || "Text-to-SVG-pattern generation failed",
         });
       }
     },
