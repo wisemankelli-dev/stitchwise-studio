@@ -237,9 +237,12 @@ export async function svgToStitchGrid(
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
   const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
 
-  // Render SVG to PNG at target dimensions via Sharp
+  // Render SVG at high resolution (1024px) to preserve organic curved paths,
+  // then let imageToStitchGrid downscale to the target grid via nearest-neighbor.
+  // Rendering directly at gridSize (e.g. 50px) destroys all detail.
+  const SVG_RENDER_SIZE = 1024;
   const pngBuffer = await sharp(Buffer.from(svgString))
-    .resize(size, size, {
+    .resize(SVG_RENDER_SIZE, SVG_RENDER_SIZE, {
       fit: "contain",
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     })
