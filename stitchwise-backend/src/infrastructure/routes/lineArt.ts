@@ -18,6 +18,11 @@ import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/typ
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithStability } from "../services/stabilityAIService";
 import { generateSVGWithGPT4o, generateImageWithDallE } from "../services/openaiImageService";
+import {
+  isKnownSubject,
+  generateSubjectPattern,
+  renderPatternToPng,
+} from "../../domain/stitch/subjectPatternGenerator";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -265,6 +270,27 @@ export function createLineArtRouter(): Router {
           prompt: prompt,
         }));
 
+        // ── Procedural fast path: known subjects skip AI ─────────────────────
+        if (isKnownSubject(prompt)) {
+          const pattern = generateSubjectPattern(prompt, DEFAULT_GRID_SIZE);
+          if (pattern) {
+            const pngBuffer = await renderPatternToPng(pattern.grid, pattern.gridSize);
+            const imageDataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+
+            console.error(JSON.stringify({
+              event: "generate_art_success",
+              pipeline: "procedural",
+              prompt: prompt,
+            }));
+
+            res.json({
+              imageDataUrl,
+              pipeline: "procedural",
+            });
+            return;
+          }
+        }
+
         // Art prompt — minimal additions. The image-to-grid pipeline now
         // posterizes to flat colors, so we don't need to fight the AI for
         // specific color palettes. Just ask for a clean, centered subject.
@@ -342,6 +368,7 @@ export function createLineArtRouter(): Router {
           imageDataUrl: z.string().min(1, "imageDataUrl is required"),
           gridSize: z.number().int().optional(),
           maxColors: z.number().int().min(5).max(30).optional(),
+          prompt: z.string().min(1).max(500).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -352,7 +379,7 @@ export function createLineArtRouter(): Router {
           return;
         }
 
-        const { imageDataUrl, gridSize, maxColors: reqMaxColors } = parsed.data;
+        const { imageDataUrl, gridSize, maxColors: reqMaxColors, prompt } = parsed.data;
         const targetSize = gridSize ?? DEFAULT_GRID_SIZE;
         const targetMaxColors = reqMaxColors ?? 12; // default to 12 for clean embroidery
 
@@ -360,6 +387,30 @@ export function createLineArtRouter(): Router {
           event: "transpose_to_pattern_start",
           gridSize: targetSize,
         }));
+
+        // ── Procedural fast path: known subjects skip image conversion ──────
+        if (prompt && isKnownSubject(prompt)) {
+          const procedural = generateSubjectPattern(prompt, targetSize);
+          if (procedural) {
+            const dmcColorsWithSymbols = procedural.dmcColors.map((c, i) => ({
+              ...c,
+              symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+            }));
+
+            console.error(JSON.stringify({
+              event: "transpose_to_pattern_success",
+              pipeline: "procedural",
+              paletteSize: procedural.dmcColors.length,
+              stitchCount: procedural.stitchCount,
+            }));
+
+            res.json({
+              ...procedural,
+              dmcColors: dmcColorsWithSymbols,
+            });
+            return;
+          }
+        }
 
         // Decode the data URL to a Buffer
         const base64Match = imageDataUrl.match(/^data:image\/\w+;base64,(.+)$/);

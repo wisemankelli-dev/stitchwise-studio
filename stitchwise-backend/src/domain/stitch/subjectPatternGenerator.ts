@@ -21,6 +21,7 @@ import {
 } from "./types";
 import { createEmptyGrid } from "./stitchGrid";
 import { closestDmcColor } from "./dmcColors";
+import sharp from "sharp";
 
 // ─── Geometric Helpers ─────────────────────────────────────────────────────
 
@@ -434,6 +435,38 @@ const SUBJECT_REGISTRY: SubjectEntry[] = [
 ];
 
 // ─── Public API ────────────────────────────────────────────────────────────
+
+/**
+ * Check whether a prompt matches a known subject (lightweight — no grid generation).
+ */
+export function isKnownSubject(prompt: string): boolean {
+  return SUBJECT_REGISTRY.some((entry) => entry.patterns.some((p) => p.test(prompt)));
+}
+
+/**
+ * Render a stitch grid as a PNG image buffer using sharp.
+ * Each stitch cell becomes one pixel.
+ */
+export async function renderPatternToPng(
+  grid: StitchGrid,
+  gridSize: number,
+): Promise<Buffer> {
+  const pixels = Buffer.alloc(gridSize * gridSize * 3); // RGB
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const idx = (row * gridSize + col) * 3;
+      const hex = (grid[row]?.[col]?.color || "#ffffff").replace("#", "");
+      pixels[idx] = parseInt(hex.slice(0, 2), 16);
+      pixels[idx + 1] = parseInt(hex.slice(2, 4), 16);
+      pixels[idx + 2] = parseInt(hex.slice(4, 6), 16);
+    }
+  }
+  return sharp(pixels, {
+    raw: { width: gridSize, height: gridSize, channels: 3 },
+  })
+    .png()
+    .toBuffer();
+}
 
 /**
  * Try to generate a stitch grid pattern procedurally for a known subject.

@@ -235,4 +235,99 @@ describe("generateSubjectPattern", () => {
       expect(result).not.toBeNull();
     });
   });
+
+  describe("isKnownSubject — lightweight subject check", () => {
+    const { isKnownSubject } = require("../domain/stitch/subjectPatternGenerator");
+
+    it("returns true for 'sunflower'", () => {
+      expect(isKnownSubject("sunflower")).toBe(true);
+    });
+
+    it("returns true for 'a sunflower in a garden'", () => {
+      expect(isKnownSubject("a sunflower in a garden")).toBe(true);
+    });
+
+    it("returns true for 'bird on branch'", () => {
+      expect(isKnownSubject("bird on branch")).toBe(true);
+    });
+
+    it("returns true for 'bird on a branch'", () => {
+      expect(isKnownSubject("bird on a branch")).toBe(true);
+    });
+
+    it("returns true for 'lunar moth'", () => {
+      expect(isKnownSubject("lunar moth")).toBe(true);
+    });
+
+    it("returns true for 'luna moth'", () => {
+      expect(isKnownSubject("luna moth")).toBe(true);
+    });
+
+    it("returns false for unrelated prompt ('dragon')", () => {
+      expect(isKnownSubject("dragon")).toBe(false);
+    });
+
+    it("returns false for empty string", () => {
+      expect(isKnownSubject("")).toBe(false);
+    });
+
+    it("returns false for similar but unmatched prompt ('night moth')", () => {
+      expect(isKnownSubject("night moth")).toBe(false);
+    });
+  });
+
+  describe("renderPatternToPng", () => {
+    const { renderPatternToPng } = require("../domain/stitch/subjectPatternGenerator");
+
+    it("returns a Buffer", async () => {
+      const pattern = generateSubjectPattern("sunflower", 50);
+      expect(pattern).not.toBeNull();
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+    });
+
+    it("returns a valid PNG (89 50 4e 47 header)", async () => {
+      const pattern = generateSubjectPattern("sunflower", 50);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      const header = png.slice(0, 8);
+      expect(header.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("has size proportional to gridSize (50 → ~3KB raw)", async () => {
+      const pattern = generateSubjectPattern("sunflower", 50);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      // 50x50 = 2500 RGB pixels, compressed PNG should be > 100 bytes
+      expect(png.length).toBeGreaterThan(100);
+      expect(png.length).toBeLessThan(5000);
+    });
+
+    it("handles larger grids (200x200)", async () => {
+      const pattern = generateSubjectPattern("sunflower", 200);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.length).toBeGreaterThan(200);
+    });
+
+    it("handles bird on branch", async () => {
+      const pattern = generateSubjectPattern("bird on branch", 100);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("handles lunar moth", async () => {
+      const pattern = generateSubjectPattern("lunar moth", 75);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("produces an IDAT chunk (png contains IDAT)", async () => {
+      const pattern = generateSubjectPattern("sunflower", 50);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      // IDAT chunk marker in binary
+      const idatFound = png.includes(Buffer.from("IDAT"));
+      expect(idatFound).toBe(true);
+    });
+  });
 });
