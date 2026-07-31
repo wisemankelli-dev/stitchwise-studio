@@ -280,6 +280,7 @@ export function createLineArtRouter(): Router {
           "clip art, cheap vector graphics, childs drawing, simplistic",
           "cartoon, abstract noise",
           "vintage, muted colors, sepia, watercolor, sketchy",
+          "blue, purple, violet, pink, any blue tones, any purple tones",
           "blue sky, clouds, landscape, scenery, background environment",
           "text, watermark, signature, letters, numbers",
         ].join(", ");
