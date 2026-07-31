@@ -1773,6 +1773,86 @@ class ApiClient {
       },
     };
   }
+
+  // ==================== COLLAGE PERSISTENCE ====================
+  private collageStore: CollageProject[] = [];
+
+  async saveCollage(name: string, layers: FabricLayer[]): Promise<CollageProject> {
+    const id = `collage-${Date.now()}`;
+    const now = new Date().toISOString();
+    const project: CollageProject = { id, name, layers, createdAt: now, updatedAt: now };
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/collage`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, layers }),
+        });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    this.collageStore.push(project);
+    return project;
+  }
+
+  async listCollageProjects(): Promise<CollageProject[]> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/collage`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).projects;
+      } catch { /* fall through to mock */ }
+    }
+    return [...this.collageStore];
+  }
+
+  async deleteCollageProject(id: string): Promise<void> {
+    if (this.isLiveBackend) {
+      try {
+        await fetch(`${this.apiBaseUrl}/collage/${id}`, { method: 'DELETE', headers: this.getHeaders() });
+      } catch { /* fall through to mock */ }
+    }
+    this.collageStore = this.collageStore.filter(p => p.id !== id);
+  }
+
+  // ==================== QUILT BLOCK PERSISTENCE ====================
+  private quiltBlockStore: QuiltBlockDesign[] = [];
+
+  async saveQuiltBlock(name: string, shapes: QuiltBlockShape[], blockSize: number): Promise<QuiltBlockDesign> {
+    const id = `block-${Date.now()}`;
+    const now = new Date().toISOString();
+    const block: QuiltBlockDesign = { id, name, shapes, blockSize, createdAt: now, updatedAt: now };
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/quilt-blocks`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, shapes, blockSize }),
+        });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    this.quiltBlockStore.push(block);
+    return block;
+  }
+
+  async listQuiltBlocks(): Promise<QuiltBlockDesign[]> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/quilt-blocks`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).blocks;
+      } catch { /* fall through to mock */ }
+    }
+    return [...this.quiltBlockStore];
+  }
+
+  async deleteQuiltBlock(id: string): Promise<void> {
+    if (this.isLiveBackend) {
+      try {
+        await fetch(`${this.apiBaseUrl}/quilt-blocks/${id}`, { method: 'DELETE', headers: this.getHeaders() });
+      } catch { /* fall through to mock */ }
+    }
+    this.quiltBlockStore = this.quiltBlockStore.filter(b => b.id !== id);
+  }
 }
 
 export const api = new ApiClient();
@@ -1803,4 +1883,35 @@ export interface AICollageResponse {
   promptUsed?: string;
   processingTimeMs: number;
   totalLayers: number;
+}
+
+// ── Collage Persistence ──────────────────────────────
+export interface CollageProject {
+  id: string;
+  name: string;
+  layers: FabricLayer[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Quilt Block Persistence ──────────────────────────
+export interface QuiltBlockShape {
+  id: string;
+  type: 'square' | 'triangle' | 'hst';
+  color: string;
+  pattern: string;
+  gridX: number;
+  gridY: number;
+  size: number;
+  rotation: number;
+  zIndex: number;
+}
+
+export interface QuiltBlockDesign {
+  id: string;
+  name: string;
+  shapes: QuiltBlockShape[];
+  blockSize: number;
+  createdAt: string;
+  updatedAt: string;
 }
