@@ -42,16 +42,14 @@ export async function generateImageWithDallE(
     return null;
   }
 
-  // Needlepoint artwork — a SINGLE composed piece, never a repeating pattern.
-  // One recognizable subject (bird, flower, animal, house, landscape, seasonal motif),
-  // centered, filling the frame, like a finished needlepoint canvas.
+  // Clean flat illustration — no needlepoint/embroidery language.
+  // One recognizable subject, centered, filling the frame.
   const defaultStyle = [
-    "a single needlepoint artwork, one complete composition",
+    "a single flat illustration, one complete composition",
     "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
-    "hand-drawn by a professional needlepoint artist, heirloom quality",
+    "clean flat illustration style, posterized, solid color regions, no gradients",
     "one clear subject centered and filling the entire frame",
-    "clean well-defined shapes with smooth color regions ideal for thread conversion",
-    "elegant balanced composition, thoughtful use of negative space",
+    "clean well-defined shapes, limited palette of distinct colors",
     "white background, no borders, no frames, no text, no labels",
   ].join(", ");
 

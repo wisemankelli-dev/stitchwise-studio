@@ -290,19 +290,19 @@ export function createLineArtRouter(): Router {
         let imageDataUrl: string | null = null;
         let pipelineUsed: string = "unknown";
 
-        // Step 1: Stability AI
-        const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
-        if (stabilityResult?.url) {
-          imageDataUrl = stabilityResult.url; // already a data: URL
-          pipelineUsed = "stability-ai";
+        // Step 1: DALL-E primary — better color accuracy for flat illustrations
+        const dalleResult = await generateImageWithDallE(artPrompt);
+        if (dalleResult?.url) {
+          imageDataUrl = dalleResult.url;
+          pipelineUsed = "dall-e";
         }
 
-        // Step 2: Fall back to DALL-E
+        // Step 2: Fall back to Stability AI
         if (!imageDataUrl) {
-          const dalleResult = await generateImageWithDallE(artPrompt);
-          if (dalleResult?.url) {
-            imageDataUrl = dalleResult.url;
-            pipelineUsed = "dall-e";
+          const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
+          if (stabilityResult?.url) {
+            imageDataUrl = stabilityResult.url;
+            pipelineUsed = "stability-ai";
           }
         }
 
