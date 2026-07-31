@@ -125,20 +125,22 @@ export async function generateSVGWithGPT4o(prompt: string): Promise<Buffer | nul
 
   const systemPrompt = [
     "You are a professional needlepoint and cross-stitch pattern designer.",
-    "Generate an SVG of a SINGLE subject with clean, well-defined outlines on a white background.",
+    "Generate an SVG of a SINGLE subject with clean, well-defined filled regions on a white background.",
     "RULES:",
     "- ONE centered subject only — no repeating tiles, no patterns, no borders",
-    "- Draw ONLY black outlines (#000000 or #1a1a1a) on pure white background (#ffffff)",
-    "- Use simple, bold shapes with clear edges — like a coloring book page",
+    "- Fill each region with a SOLID flat color — use 8-15 distinct thread-friendly colors",
+    "- Choose colors that work well as DMC embroidery floss (rich reds, greens, blues, golds, browns)",
+    "- Use simple, bold shapes with clear edges — like a finished needlepoint canvas",
     "- The subject should fill roughly 50-70% of the canvas",
     "- Leave generous negative space around the subject for stitching clarity",
     "- No text, no labels, no captions",
-    "- No gradients, no shading, no shadows, no fills (outlines only)",
-    "- Think: what a needlepoint artist would trace onto fabric",
+    "- No gradients, no shading, no shadows, no outlines around filled regions",
+    "- White background (#ffffff) only behind the subject — no colored background",
+    "Think: a completed needlepoint piece where every area is stitched with colored thread.",
     "Return ONLY valid SVG code between ```svg ... ``` markers. No explanation.",
   ].join("\n");
 
-  const userPrompt = `Draw a single ${prompt}. Outlines only, white background, centered composition.`;
+  const userPrompt = `Draw a single ${prompt}. Filled with solid flat colors, white background, centered composition.`;
 
   try {
     console.error(JSON.stringify({
