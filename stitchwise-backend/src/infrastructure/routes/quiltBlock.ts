@@ -21,6 +21,7 @@ import {
 } from "../../domain/quiltBlock";
 import type { QuiltBlockRepo } from "../db/quiltBlockRepo";
 import { authenticate } from "../middleware/auth";
+import { generateQuiltBlockPdf } from "../services/quiltBlockPdfExporter";
 
 /**
  * Creates a router for Quilt Block Studio API endpoints.
@@ -156,6 +157,39 @@ export function createQuiltBlockRouter(repo: QuiltBlockRepo): Router {
       res.status(204).send();
     } catch (err) {
       console.error({ event: "delete_quilt_block_project_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/quilt-block/projects/:id/export-pdf - Export quilt block project as PDF.
+   * Returns a downloadable A4 PDF with block layout, fabric key, and cutting guide.
+   */
+  router.get("/quilt-block/projects/:id/export-pdf", authenticate, async (req: Request, res: Response) => {
+    try {
+      const project = await repo.getProject(req.params.id);
+      if (!project) {
+        res.status(404).json({ error: "Quilt block project not found" });
+        return;
+      }
+
+      const user = (req as any).user;
+      if (project.userId !== user.userId) {
+        res.status(403).json({ error: "Access denied" });
+        return;
+      }
+
+      const pdfBuffer = await generateQuiltBlockPdf(project);
+      const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="quilt_block_${safeName}.pdf"`,
+      );
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error({ event: "export_quilt_block_pdf_error", error: String(err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
