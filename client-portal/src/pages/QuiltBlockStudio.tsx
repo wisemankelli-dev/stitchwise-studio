@@ -1,11 +1,11 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, QuiltBlockDesign, QuiltBlockShape } from '../services/api';
 import {
   RotateCcw, ZoomIn, ZoomOut, Grid3X3,
   Palette, Download, Save, Trash2, Plus, Loader2,
   Flower2, Square, Triangle, Minus,
-  Grid, LayoutGrid, FolderOpen, ChevronDown, X
+  Grid, LayoutGrid, FolderOpen, ChevronDown
 } from 'lucide-react';
 
 interface BlockShape {
@@ -98,7 +98,6 @@ export const QuiltBlockStudio: React.FC = () => {
   const [savedBlocks, setSavedBlocks] = useState<QuiltBlockDesign[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const quiltCanvasRef = useRef<HTMLDivElement>(null);
 
   const selectedShape = shapes.find(s => s.id === selectedShapeId);
   const cellPx = 50;

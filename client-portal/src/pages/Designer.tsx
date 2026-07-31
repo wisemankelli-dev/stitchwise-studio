@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Image, Eye, Sparkles, Loader2, RefreshCw
+  Upload, Eye, Sparkles, Loader2, RefreshCw
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -419,7 +419,6 @@ export const Designer: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [generatedPalette, setGeneratedPalette] = useState<Array<{ code: string; name: string; hex: string; count: number }>>([]);
   const [numColors, setNumColors] = useState(15); // color count for quantization
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [showReference, setShowReference] = useState(true);
@@ -465,7 +464,6 @@ export const Designer: React.FC = () => {
         setGrid(centeredGrid);
         setGridStitchTypes(centeredStitchTypes);
         setCellFractions({});
-        setGeneratedPalette(result.palette);
         setIsProcessingImage(false);
         
         // Reset file input so user can re-upload the same file
@@ -856,7 +854,6 @@ export const Designer: React.FC = () => {
     setCloneSource(null);
     setSelectedShape(null);
     setDrawStart(null);
-    setGeneratedPalette([]);
     setReferenceImage(null);
     setShowReference(false);
     setReferenceOpacity(0.20);
@@ -921,7 +918,6 @@ export const Designer: React.FC = () => {
       setGrid(newGrid);
       setGridStitchTypes(newStitchTypes);
       setCellFractions({});
-      setGeneratedPalette([]);
       setReferenceImage(null);
       setShowReference(false);
       setAiStats({

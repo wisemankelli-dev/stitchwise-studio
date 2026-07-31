@@ -8,7 +8,7 @@ import {
   Flower2, Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
-  FolderOpen, ChevronDown, X, PenTool
+  FolderOpen, ChevronDown
 } from 'lucide-react';
 
 type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
