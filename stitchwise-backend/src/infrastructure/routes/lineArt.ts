@@ -122,23 +122,24 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, maxColors } = parsed.data;
 
-        // Prompt engineering: request hand-drawn needlepoint artwork,
-        // not flat vector clip art. The output should feel designed by a
-        // professional needlepoint artist: strong composition, clean edges,
-        // recognizable shapes, thread-friendly palette.
+        // A single needlepoint artwork — never a repeating pattern.
+        // One recognizable subject centered, filling the frame.
         const enhancedPrompt = [
           prompt,
-          "traditional counted cross-stitch pattern, hand-drawn needlepoint design",
-          "elegant composition with clear focal point",
+          "a single needlepoint artwork, one complete composition",
+          "not tiled, not repeating, not a pattern, not a fabric swatch",
+          "hand-drawn by a professional needlepoint artist",
+          "one clear subject centered and filling the entire frame",
           "clean well-defined shapes, balanced negative space",
-          "thread-friendly colors, timeless classic needlepoint aesthetic",
-          "white background, suitable for embroidery conversion",
+          "thread-friendly colors, white background",
         ].join(", ");
         const negativePrompt = [
+          "tiled, repeating, wallpaper, fabric swatch, pattern grid",
           "clip art, cheap vector graphics, AI-generated look",
           "messy composition, photorealistic, 3D rendering, overdetailed",
           "busy patterns, cluttered, abstract noise, modern digital art",
           "gradients, shading, shadows, black outlines, sketchy",
+          "multiple copies, collage, mosaic, sampler, chart",
         ].join(", ");
 
         console.error(JSON.stringify({

@@ -181,21 +181,18 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
-          // No shape match — use AI image generation.
-          // Style hints request hand-drawn needlepoint artwork, not flat clip art.
-          // The goal: output that feels designed by a professional needlepoint artist
-          // with recognizable subjects, strong composition, clean edges, and
-          // thread-friendly palettes that survive stitch-grid conversion.
+          // A single needlepoint artwork — never a repeating pattern.
+          // One recognizable subject centered, filling the frame.
           const styleHints = [
-            "traditional counted cross-stitch design",
-            "hand-drawn needlepoint artwork by a professional needlepoint designer",
-            "elegant composition with clear focal point",
-            "clean distinct shapes, balanced negative space",
-            "thread-friendly palette with distinct color regions",
-            "timeless heirloom-quality needlepoint pattern",
+            "a single needlepoint artwork, one complete composition",
+            "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
+            "hand-drawn by a professional needlepoint artist, heirloom quality",
+            "one clear subject centered and filling the entire frame",
+            "clean well-defined shapes with smooth color regions ideal for thread conversion",
+            "elegant balanced composition, thoughtful use of negative space",
             "not clip art, not flat vector, not AI-generated style, not photorealistic",
           ].join(", ");
-          const framingHints = "centered composition filling the frame, white background, thoughtful use of negative space";
+          const framingHints = "white background, no borders, no frames, no text, no labels";
           const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
 
           console.error(JSON.stringify({

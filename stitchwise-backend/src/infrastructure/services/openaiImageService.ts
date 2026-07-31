@@ -42,18 +42,17 @@ export async function generateImageWithDallE(
     return null;
   }
 
-  // Enhance prompt for hand-drawn needlepoint artwork, not clip art.
-  // The goal is output that feels designed by a professional needlepoint artist:
-  // recognizable subjects, strong composition, clean edges, thread-friendly palette.
+  // Needlepoint artwork — a SINGLE composed piece, never a repeating pattern.
+  // One recognizable subject (bird, flower, animal, house, landscape, seasonal motif),
+  // centered, filling the frame, like a finished needlepoint canvas.
   const defaultStyle = [
-    "traditional counted cross-stitch design",
-    "hand-drawn needlepoint artwork by a professional needlepoint designer",
-    "elegant composition with clear focal point",
-    "clean distinct shapes with well-defined edges",
-    "balanced negative space for stitching clarity",
-    "DMC-thread-friendly color palette",
-    "timeless heirloom-quality needlepoint pattern",
-    "white background",
+    "a single needlepoint artwork, one complete composition",
+    "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
+    "hand-drawn by a professional needlepoint artist, heirloom quality",
+    "one clear subject centered and filling the entire frame",
+    "clean well-defined shapes with smooth color regions ideal for thread conversion",
+    "elegant balanced composition, thoughtful use of negative space",
+    "white background, no borders, no frames, no text, no labels",
   ].join(", ");
 
   const enhancedPrompt = styleHints
