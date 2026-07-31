@@ -14,12 +14,10 @@ import axios from "axios";
 import { z } from "zod";
 import { lineArtToStitchGrid } from "../../domain/stitch/lineArtConverter";
 import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
-import { svgToStitchGrid } from "../../domain/stitch/pipeline";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithStability } from "../services/stabilityAIService";
 import { generateSVGWithGPT4o, generateImageWithDallE } from "../services/openaiImageService";
-import { generateSvgFromPrompt } from "../services/openaiSvgService";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -232,30 +230,24 @@ export function createLineArtRouter(): Router {
   );
 
   /**
-   * POST /api/ai/text-to-svg-pattern
+   * POST /api/ai/generate-art
    *
-   * Generate an embroidery pattern from a text prompt using GPT-4o SVG.
+   * Generate an artistic illustration from a text prompt.
+   * Returns ONLY the image — no grid conversion yet.
+   * The caller shows the art to the user; if they approve, they call
+   * /api/ai/transpose-to-pattern to convert it to a stitch grid.
    *
-   * This is the dedicated GPT-4o SVG pipeline — NO diffusion models.
-   * GPT-4o generates structured SVG vector art with flat solid-colored regions
-   * and clean shapes, then svgToStitchGrid() rasterizes and quantizes.
+   * Pipeline: Stability AI primary → DALL-E fallback
    *
-   * Unlike text-to-line-art-pattern (which falls back to Stability/DALL-E),
-   * this endpoint produces ONLY single-subject vector artwork — no risk of
-   * repeating-tile artifacts.
-   *
-   * Request body: { prompt: string, gridSize?: number, maxColors?: number }
-   * Response: PatternResult with cross-stitch cells, quantized DMC colors
+   * Request body: { prompt: string }
+   * Response: { imageDataUrl, pipeline }
    */
   router.post(
-    "/ai/text-to-svg-pattern",
+    "/ai/generate-art",
     async (req: Request, res: Response): Promise<void> => {
       try {
-        // Validate input
         const schema = z.object({
           prompt: z.string().min(1).max(500),
-          gridSize: z.number().int().optional(),
-          maxColors: z.number().int().min(5).max(30).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -266,27 +258,14 @@ export function createLineArtRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize } = parsed.data;
-        const targetSize = gridSize ?? DEFAULT_GRID_SIZE;
+        const { prompt } = parsed.data;
 
         console.error(JSON.stringify({
-          event: "text_to_svg_pattern_start",
+          event: "generate_art_start",
           prompt: prompt,
-          gridSize: targetSize,
         }));
 
-        // ── Art-First Pipeline ─────────────────────────────────────────────
-        // 1. Stability AI — primary: produces rich, detailed illustrations
-        // 2. DALL-E — fallback: broader subject coverage
-        //
-        // GPT-4o SVG is NOT used here — it produces simplistic geometric
-        // shapes. Stability and DALL-E are purpose-built for art generation.
-
-        let imageBuffer: Buffer | null = null;
-        let previewUrl: string | undefined;
-        let pipelineUsed: string = "unknown";
-
-        // Step 1: Stability AI with natural-art prompt (NO embroidery language)
+        // Art prompt — NO embroidery language, pure illustration
         const artPrompt = [
           prompt,
           "detailed botanical illustration, natural organic shapes, hand-drawn art",
@@ -303,52 +282,104 @@ export function createLineArtRouter(): Router {
           "blue sky, clouds, landscape, scenery, background environment",
         ].join(", ");
 
+        let imageDataUrl: string | null = null;
+        let pipelineUsed: string = "unknown";
+
+        // Step 1: Stability AI
         const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
-        if (stabilityResult?.buffer) {
-          imageBuffer = stabilityResult.buffer;
-          previewUrl = stabilityResult.url;
+        if (stabilityResult?.url) {
+          imageDataUrl = stabilityResult.url; // already a data: URL
           pipelineUsed = "stability-ai";
-          console.error(JSON.stringify({
-            event: "text_to_pattern_pipeline",
-            pipeline: pipelineUsed,
-            prompt: prompt,
-          }));
         }
 
         // Step 2: Fall back to DALL-E
-        if (!imageBuffer) {
+        if (!imageDataUrl) {
           const dalleResult = await generateImageWithDallE(artPrompt);
-          if (dalleResult?.buffer) {
-            imageBuffer = dalleResult.buffer;
-            previewUrl = dalleResult.url;
+          if (dalleResult?.url) {
+            imageDataUrl = dalleResult.url;
             pipelineUsed = "dall-e";
-            console.error(JSON.stringify({
-              event: "text_to_pattern_pipeline",
-              pipeline: pipelineUsed,
-              fallback: true,
-            }));
           }
         }
 
-        if (!imageBuffer) {
+        if (!imageDataUrl) {
           res.status(500).json({
-            error: "AI image generation failed. All pipelines returned no image.",
+            error: "AI art generation failed. All pipelines returned no image.",
           });
           return;
         }
 
-        // Step 3: Convert image → stitch grid
-        const result = await imageBufferToStitchGrid(imageBuffer, targetSize, prompt);
+        console.error(JSON.stringify({
+          event: "generate_art_success",
+          pipeline: pipelineUsed,
+          prompt: prompt,
+        }));
 
-        // Assign cross-stitch symbols to palette entries
+        res.json({
+          imageDataUrl,
+          pipeline: pipelineUsed,
+        });
+      } catch (err: any) {
+        console.error("generate-art error:", err);
+        res.status(500).json({
+          error: err.message || "Art generation failed",
+        });
+      }
+    },
+  );
+
+  /**
+   * POST /api/ai/transpose-to-pattern
+   *
+   * Convert a generated art image into a stitch grid pattern.
+   * Call this AFTER the user has approved the art from /api/ai/generate-art.
+   *
+   * Request body: { imageDataUrl: string, gridSize?: number, maxColors?: number }
+   * Response: PatternResult with cross-stitch cells, quantized DMC colors
+   */
+  router.post(
+    "/ai/transpose-to-pattern",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const schema = z.object({
+          imageDataUrl: z.string().min(1, "imageDataUrl is required"),
+          gridSize: z.number().int().optional(),
+          maxColors: z.number().int().min(5).max(30).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({
+            error: "Validation failed",
+            details: parsed.error.issues,
+          });
+          return;
+        }
+
+        const { imageDataUrl, gridSize } = parsed.data;
+        const targetSize = gridSize ?? DEFAULT_GRID_SIZE;
+
+        console.error(JSON.stringify({
+          event: "transpose_to_pattern_start",
+          gridSize: targetSize,
+        }));
+
+        // Decode the data URL to a Buffer
+        const base64Match = imageDataUrl.match(/^data:image\/\w+;base64,(.+)$/);
+        if (!base64Match) {
+          res.status(400).json({ error: "Invalid imageDataUrl format" });
+          return;
+        }
+        const imageBuffer = Buffer.from(base64Match[1], "base64");
+
+        // Convert image → stitch grid
+        const result = await imageBufferToStitchGrid(imageBuffer, targetSize);
+
         const dmcColorsWithSymbols = result.dmcColors.map((c, i) => ({
           ...c,
           symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
         }));
 
         console.error(JSON.stringify({
-          event: "text_to_svg_pattern_success",
-          pipeline: pipelineUsed,
+          event: "transpose_to_pattern_success",
           paletteSize: result.dmcColors.length,
           stitchCount: result.stitchCount,
         }));
@@ -356,14 +387,11 @@ export function createLineArtRouter(): Router {
         res.json({
           ...result,
           dmcColors: dmcColorsWithSymbols,
-          previewUrl,
-          promptUsed: prompt,
-          pipeline: pipelineUsed,
         });
       } catch (err: any) {
-        console.error("Text-to-SVG-pattern error:", err);
+        console.error("transpose-to-pattern error:", err);
         res.status(500).json({
-          error: err.message || "Text-to-SVG-pattern generation failed",
+          error: err.message || "Pattern transposition failed",
         });
       }
     },
