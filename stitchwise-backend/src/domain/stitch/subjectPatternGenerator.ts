@@ -6,6 +6,10 @@
  *   - "sunflower"     — brown center, yellow petals, green stem + leaves
  *   - "bird on branch" — brown branch, bird silhouette
  *   - "lunar moth"    — large pale green wings, inner wings, antennae
+ *   - "butterfly"     — symmetrical orange wings with spots, body, antennae
+ *   - "rose"          — concentric red/pink petals, green stem + leaves
+ *   - "heart"         — classic heart with highlight and outline
+ *   - "star"          — 5-pointed gold star on navy background
  *
  * Each generator accepts a gridSize parameter and produces correct patterns
  * at any supported size (50, 75, 100, 150, 200).
@@ -175,6 +179,40 @@ const MOTH = {
   antenna: "#2d2d2d",     // nearly black
   eyespot: "#e8c8a0",     // pale cream/gold
   background: "#ffffff",
+};
+
+const BUTTERFLY = {
+  upperWing: "#f4a020",   // bright orange
+  lowerWing: "#e87830",   // deeper orange
+  wingSpot: "#2d1b00",    // dark brown spots
+  wingEdge: "#1a0a00",    // nearly black edge
+  body: "#3d2b1a",        // dark brown body
+  antenna: "#2d1b00",     // dark brown
+  background: "#f5f0e8",  // warm cream
+};
+
+const ROSE = {
+  outerPetal: "#cc2244",  // deep red
+  midPetal: "#e84060",    // bright rose
+  innerPetal: "#ff6080",  // light pink
+  center: "#880018",      // dark red center
+  stem: "#2e7d32",        // green
+  leaf: "#4caf50",        // bright leaf
+  background: "#fff8f0",  // warm white
+};
+
+const HEART = {
+  fill: "#e8303d",        // classic red
+  highlight: "#ff6070",   // lighter red highlight
+  outline: "#aa1020",     // dark red edge
+  background: "#fff0f0",  // pale pink bg
+};
+
+const STAR = {
+  fill: "#ffd700",        // gold
+  inner: "#ffe44d",       // bright gold center
+  outline: "#b8960c",     // dark gold edge
+  background: "#1a1a3e",  // deep navy
 };
 
 // ─── Subject Generators ────────────────────────────────────────────────────
@@ -364,6 +402,179 @@ function generateLunarMoth(gridSize: number): StitchGrid {
   return grid;
 }
 
+/** Generate a butterfly stitch grid. */
+function generateButterfly(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, BUTTERFLY.background);
+  const cx = 0.5;
+  const cy = 0.55;
+
+  // Upper wings — large ellipses
+  fillEllipse(grid, cx - 0.14, cy - 0.10, 0.18, 0.22, BUTTERFLY.upperWing, gridSize);
+  fillEllipse(grid, cx + 0.14, cy - 0.10, 0.18, 0.22, BUTTERFLY.upperWing, gridSize);
+
+  // Lower wings — smaller
+  fillEllipse(grid, cx - 0.12, cy + 0.15, 0.13, 0.14, BUTTERFLY.lowerWing, gridSize);
+  fillEllipse(grid, cx + 0.12, cy + 0.15, 0.13, 0.14, BUTTERFLY.lowerWing, gridSize);
+
+  // Wing spots
+  fillCircle(grid, cx - 0.18, cy - 0.05, 0.04, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx + 0.18, cy - 0.05, 0.04, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx - 0.10, cy + 0.18, 0.03, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx + 0.10, cy + 0.18, 0.03, BUTTERFLY.wingSpot, gridSize);
+
+  // Wing edges (outline)
+  fillEllipse(grid, cx - 0.14, cy - 0.10, 0.19, 0.23, BUTTERFLY.wingEdge, gridSize);
+  fillEllipse(grid, cx + 0.14, cy - 0.10, 0.19, 0.23, BUTTERFLY.wingEdge, gridSize);
+  // Redraw wings on top to keep outline as border only
+  fillEllipse(grid, cx - 0.14, cy - 0.10, 0.17, 0.21, BUTTERFLY.upperWing, gridSize);
+  fillEllipse(grid, cx + 0.14, cy - 0.10, 0.17, 0.21, BUTTERFLY.upperWing, gridSize);
+
+  // Body
+  fillEllipse(grid, cx, cy, 0.03, 0.16, BUTTERFLY.body, gridSize);
+  fillCircle(grid, cx, cy - 0.16, 0.03, BUTTERFLY.body, gridSize); // head
+
+  // Antennae
+  drawLine(grid, cx - 0.01, cy - 0.18, cx - 0.08, cy - 0.35, 0.01, BUTTERFLY.antenna, gridSize);
+  drawLine(grid, cx + 0.01, cy - 0.18, cx + 0.08, cy - 0.35, 0.01, BUTTERFLY.antenna, gridSize);
+  fillCircle(grid, cx - 0.08, cy - 0.35, 0.02, BUTTERFLY.antenna, gridSize);
+  fillCircle(grid, cx + 0.08, cy - 0.35, 0.02, BUTTERFLY.antenna, gridSize);
+
+  return grid;
+}
+
+/** Generate a rose stitch grid. */
+function generateRose(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, ROSE.background);
+  const cx = 0.5;
+  const cy = 0.42;
+
+  // Stem
+  fillRect(grid, 0.48, 0.60, 0.52, 0.92, ROSE.stem, gridSize);
+
+  // Leaves
+  fillEllipse(grid, 0.38, 0.70, 0.10, 0.04, ROSE.leaf, gridSize);
+  fillEllipse(grid, 0.62, 0.76, 0.10, 0.04, ROSE.leaf, gridSize);
+
+  // Petal layers — concentric circles getting smaller and lighter
+  fillCircle(grid, cx, cy, 0.22, ROSE.outerPetal, gridSize);
+  fillCircle(grid, cx, cy, 0.17, ROSE.midPetal, gridSize);
+  fillCircle(grid, cx, cy, 0.12, ROSE.innerPetal, gridSize);
+  fillCircle(grid, cx, cy, 0.06, ROSE.center, gridSize);
+
+  // Spiral detail — small arcs using fillCircle offsets
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const r = 0.10;
+    const sx = cx + Math.cos(angle) * r;
+    const sy = cy + Math.sin(angle) * r;
+    fillCircle(grid, sx, sy, 0.03, i % 2 === 0 ? ROSE.center : ROSE.midPetal, gridSize);
+  }
+
+  return grid;
+}
+
+/** Generate a heart stitch grid. */
+function generateHeart(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, HEART.background);
+  const cx = 0.5;
+  const cy = 0.45;
+
+  // Build heart shape: two overlapping circles at top + triangle at bottom
+  // Left circle
+  fillCircle(grid, cx - 0.12, cy - 0.05, 0.14, HEART.fill, gridSize);
+  // Right circle
+  fillCircle(grid, cx + 0.12, cy - 0.05, 0.14, HEART.fill, gridSize);
+  // Bottom triangle/point — fill cells below the center that form a V shape
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const ry = row / (gridSize - 1);
+      const rx = col / (gridSize - 1);
+      const midY = cy + 0.10;
+      if (ry > midY && ry < cy + 0.32) {
+        const halfWidth = (1 - (ry - midY) / 0.30) * 0.18;
+        if (Math.abs(rx - cx) < halfWidth) {
+          grid[row][col] = { color: HEART.fill };
+        }
+      }
+    }
+  }
+
+  // Highlight — small lighter patch top-left
+  fillCircle(grid, cx - 0.08, cy - 0.10, 0.05, HEART.highlight, gridSize);
+
+  // Outline — thin border
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      if (grid[row][col].color === HEART.fill) {
+        let isEdge = false;
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const nr = row + dr, nc = col + dc;
+          if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) continue;
+          if (grid[nr][nc].color === HEART.background) { isEdge = true; break; }
+        }
+        if (isEdge) grid[row][col] = { color: HEART.outline };
+      }
+    }
+  }
+
+  return grid;
+}
+
+/** Generate a 5-pointed star stitch grid. */
+function generateStar(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, STAR.background);
+  const cx = 0.5;
+  const cy = 0.48;
+  const outerR = 0.32;
+  const innerR = 0.13;
+
+  // Generate 5-pointed star polygon points
+  const points: Point[] = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    points.push([cx + Math.cos(angle) * r, cy + Math.sin(angle) * r]);
+  }
+
+  // Fill star using point-in-polygon
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const px = col / (gridSize - 1);
+      const py = row / (gridSize - 1);
+      // Ray-casting point-in-polygon
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const [xi, yi] = points[i];
+        const [xj, yj] = points[j];
+        if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      if (inside) grid[row][col] = { color: STAR.fill };
+    }
+  }
+
+  // Inner bright center
+  fillCircle(grid, cx, cy, 0.06, STAR.inner, gridSize);
+
+  // Outline — thin border
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      if (grid[row][col].color === STAR.fill) {
+        let isEdge = false;
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const nr = row + dr, nc = col + dc;
+          if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) continue;
+          if (grid[nr][nc].color === STAR.background) { isEdge = true; break; }
+        }
+        if (isEdge) grid[row][col] = { color: STAR.outline };
+      }
+    }
+  }
+
+  return grid;
+}
+
 // ─── Utility ───────────────────────────────────────────────────────────────
 
 /** Barycentric point-in-triangle test. */
@@ -431,6 +642,22 @@ const SUBJECT_REGISTRY: SubjectEntry[] = [
   {
     patterns: [/lunar\s+moth/i, /luna\s+moth/i],
     generator: generateLunarMoth,
+  },
+  {
+    patterns: [/butterfly/i],
+    generator: generateButterfly,
+  },
+  {
+    patterns: [/rose/i],
+    generator: generateRose,
+  },
+  {
+    patterns: [/heart/i, /love/i],
+    generator: generateHeart,
+  },
+  {
+    patterns: [/star/i, /stars/i],
+    generator: generateStar,
   },
 ];
 
