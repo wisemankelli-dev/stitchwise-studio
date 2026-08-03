@@ -154,8 +154,12 @@ describe("generateSubjectPattern", () => {
       expect(result).toBeNull();
     });
 
-    it("returns null for 'butterfly' (not lunar moth)", () => {
-      const result = generateSubjectPattern("butterfly", 100);
+    it("returns null for 'butterfly' — wait, butterfly is now a known subject (moved below)", () => {
+      // This test name is kept for history; butterfly is now a procedural subject
+      // and should NOT return null. Actual non-matching test is below.
+    });
+    it("returns null for 'dragon' (still not a subject)", () => {
+      const result = generateSubjectPattern("dragon", 100);
       expect(result).toBeNull();
     });
   });
@@ -178,7 +182,7 @@ describe("generateSubjectPattern", () => {
     });
 
     it("all subjects work at size 50", () => {
-      for (const prompt of ["sunflower", "bird on branch", "lunar moth"]) {
+      for (const prompt of ["sunflower", "bird on branch", "lunar moth", "butterfly", "rose", "heart", "star"]) {
         const result = generateSubjectPattern(prompt, 50);
         expect(result).not.toBeNull();
         expect(validateGrid(result!.grid).valid).toBe(true);
@@ -186,7 +190,7 @@ describe("generateSubjectPattern", () => {
     });
 
     it("all subjects work at size 200", () => {
-      for (const prompt of ["sunflower", "bird on branch", "lunar moth"]) {
+      for (const prompt of ["sunflower", "bird on branch", "lunar moth", "butterfly", "rose", "heart", "star"]) {
         const result = generateSubjectPattern(prompt, 200);
         expect(result).not.toBeNull();
         expect(validateGrid(result!.grid).valid).toBe(true);
@@ -236,6 +240,108 @@ describe("generateSubjectPattern", () => {
     });
   });
 
+  describe("butterfly", () => {
+    it("generates a valid grid for 'butterfly' prompt", () => {
+      const result = generateSubjectPattern("butterfly", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("includes orange wing tones", () => {
+      const result = generateSubjectPattern("butterfly", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasOrange = hexes.some((h) => h === "#e87830" || h === "#f4a460");
+      expect(hasOrange).toBe(true);
+    });
+
+    it("has symmetric wing structure", () => {
+      const result = generateSubjectPattern("butterfly", 100);
+      const grid = result!.grid;
+      const gs = result!.gridSize;
+      let symmetric = 0;
+      let nonEmpty = 0;
+      const bg = "#edf7fa"; // BUTTERFLY.background
+      for (let r = 0; r < gs; r++) {
+        for (let c = 0; c < gs / 2; c++) {
+          if (grid[r][c].color !== bg || grid[r][gs - 1 - c].color !== bg) {
+            nonEmpty++;
+            if (grid[r][c].color === grid[r][gs - 1 - c].color) symmetric++;
+          }
+        }
+      }
+      if (nonEmpty > 0) {
+        expect(symmetric / nonEmpty).toBeGreaterThan(0.7);
+      }
+    });
+  });
+
+  describe("rose", () => {
+    it("generates a valid grid for 'rose' prompt", () => {
+      const result = generateSubjectPattern("rose", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("includes pink tones", () => {
+      const result = generateSubjectPattern("rose", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasPink = hexes.some((h) =>
+        h === "#c2185b" || h === "#e91e63" || h === "#f06292" || h === "#880e4f",
+      );
+      expect(hasPink).toBe(true);
+    });
+
+    it("includes green stem/leaf colors", () => {
+      const result = generateSubjectPattern("rose", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasGreen = hexes.some((h) => h === "#2e7d32" || h === "#4caf50");
+      expect(hasGreen).toBe(true);
+    });
+  });
+
+  describe("heart", () => {
+    it("generates a valid grid for 'heart' prompt", () => {
+      const result = generateSubjectPattern("heart", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("includes red fill color", () => {
+      const result = generateSubjectPattern("heart", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasRed = hexes.includes("#e53935");
+      expect(hasRed).toBe(true);
+    });
+
+    it("has a filled center (more red than background)", () => {
+      const result = generateSubjectPattern("heart", 100);
+      const redCount = result!.dmcColors.find((c) => c.hex === "#e53935")?.count ?? 0;
+      expect(redCount).toBeGreaterThan(100);
+    });
+  });
+
+  describe("star", () => {
+    it("generates a valid grid for 'star' prompt", () => {
+      const result = generateSubjectPattern("star", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("includes yellow/gold fill", () => {
+      const result = generateSubjectPattern("star", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasYellow = hexes.includes("#ffd600");
+      expect(hasYellow).toBe(true);
+    });
+
+    it("has navy background", () => {
+      const result = generateSubjectPattern("star", 100);
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasNavy = hexes.includes("#1a237e");
+      expect(hasNavy).toBe(true);
+    });
+  });
+
   describe("isKnownSubject — lightweight subject check", () => {
     const { isKnownSubject } = require("../domain/stitch/subjectPatternGenerator");
 
@@ -261,6 +367,22 @@ describe("generateSubjectPattern", () => {
 
     it("returns true for 'luna moth'", () => {
       expect(isKnownSubject("luna moth")).toBe(true);
+    });
+
+    it("returns true for 'butterfly'", () => {
+      expect(isKnownSubject("butterfly")).toBe(true);
+    });
+
+    it("returns true for 'rose'", () => {
+      expect(isKnownSubject("rose")).toBe(true);
+    });
+
+    it("returns true for 'heart'", () => {
+      expect(isKnownSubject("heart")).toBe(true);
+    });
+
+    it("returns true for 'star'", () => {
+      expect(isKnownSubject("star")).toBe(true);
     });
 
     it("returns false for unrelated prompt ('dragon')", () => {

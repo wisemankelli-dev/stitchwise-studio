@@ -6,6 +6,10 @@
  *   - "sunflower"     — brown center, yellow petals, green stem + leaves
  *   - "bird on branch" — brown branch, bird silhouette
  *   - "lunar moth"    — large pale green wings, inner wings, antennae
+ *   - "butterfly"     — warm orange/brown symmetric wings, dark body
+ *   - "rose"          — concentric pink petals in spiral, green stem
+ *   - "heart"         — classic red heart shape
+ *   - "star"          — 5-pointed yellow/gold star
  *
  * Each generator accepts a gridSize parameter and produces correct patterns
  * at any supported size (50, 75, 100, 150, 200).
@@ -175,6 +179,40 @@ const MOTH = {
   antenna: "#2d2d2d",     // nearly black
   eyespot: "#e8c8a0",     // pale cream/gold
   background: "#ffffff",
+};
+
+const BUTTERFLY = {
+  upperWing: "#e87830",    // warm orange
+  lowerWing: "#f4a460",    // sandy brown
+  wingSpot: "#2d1810",     // dark brown spot
+  wingEdge: "#8b4513",     // saddle brown edge
+  body: "#3a2010",         // dark brown
+  antenna: "#1a0a00",      // nearly black
+  background: "#edf7fa",   // pale sky blue
+};
+
+const ROSE = {
+  outerPetals: "#c2185b",  // deep pink
+  midPetals: "#e91e63",    // hot pink
+  innerPetals: "#f06292",  // light pink
+  center: "#880e4f",       // dark magenta center
+  stem: "#2e7d32",         // green
+  leaf: "#4caf50",         // bright green leaf
+  background: "#fff8f0",   // warm cream
+};
+
+const HEART = {
+  fill: "#e53935",         // red
+  highlight: "#ff6f60",    // lighter red highlight
+  outline: "#b71c1c",      // dark red outline
+  background: "#fff0f0",   // pale pink background
+};
+
+const STAR = {
+  fill: "#ffd600",         // bright yellow/gold
+  inner: "#ffab00",        // amber inner
+  outline: "#e65100",      // orange outline
+  background: "#1a237e",   // deep navy blue
 };
 
 // ─── Subject Generators ────────────────────────────────────────────────────
@@ -364,6 +402,218 @@ function generateLunarMoth(gridSize: number): StitchGrid {
   return grid;
 }
 
+/** Generate a butterfly stitch grid. */
+function generateButterfly(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, BUTTERFLY.background);
+  const cx = 0.5;
+  const cy = 0.5;
+
+  // Body
+  fillEllipse(grid, cx, cy, 0.03, 0.18, BUTTERFLY.body, gridSize);
+
+  // Upper wings (large)
+  fillEllipse(grid, cx - 0.18, cy - 0.06, 0.20, 0.14, BUTTERFLY.upperWing, gridSize);
+  fillEllipse(grid, cx + 0.18, cy - 0.06, 0.20, 0.14, BUTTERFLY.upperWing, gridSize);
+
+  // Lower wings (smaller, rounder)
+  fillEllipse(grid, cx - 0.12, cy + 0.14, 0.14, 0.09, BUTTERFLY.lowerWing, gridSize);
+  fillEllipse(grid, cx + 0.12, cy + 0.14, 0.14, 0.09, BUTTERFLY.lowerWing, gridSize);
+
+  // Wing spots on upper wings
+  fillCircle(grid, cx - 0.22, cy - 0.10, 0.025, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx + 0.22, cy - 0.10, 0.025, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx - 0.14, cy - 0.02, 0.02, BUTTERFLY.wingSpot, gridSize);
+  fillCircle(grid, cx + 0.14, cy - 0.02, 0.02, BUTTERFLY.wingSpot, gridSize);
+
+  // Wing edge detail
+  for (const side of [-1, 1]) {
+    const wCx = cx + side * 0.18;
+    const wCy = cy - 0.06;
+    const edgePts: Point[] = [];
+    for (let i = 0; i <= 10; i++) {
+      const a = -Math.PI / 2 + (i / 10) * Math.PI;
+      edgePts.push([wCx + Math.cos(a) * 0.18, wCy + Math.sin(a) * 0.12]);
+    }
+    for (let i = 0; i < edgePts.length - 1; i++) {
+      drawLine(grid, edgePts[i][0], edgePts[i][1],
+        edgePts[i + 1][0], edgePts[i + 1][1], 0.007, BUTTERFLY.wingEdge, gridSize);
+    }
+  }
+
+  // Antennae
+  drawLine(grid, cx - 0.01, cy - 0.12, cx - 0.10, cy - 0.32, 0.007, BUTTERFLY.antenna, gridSize);
+  drawLine(grid, cx + 0.01, cy - 0.12, cx + 0.10, cy - 0.32, 0.007, BUTTERFLY.antenna, gridSize);
+
+  // Antennae tips
+  fillCircle(grid, cx - 0.10, cy - 0.32, 0.012, BUTTERFLY.antenna, gridSize);
+  fillCircle(grid, cx + 0.10, cy - 0.32, 0.012, BUTTERFLY.antenna, gridSize);
+
+  return grid;
+}
+
+/** Generate a rose stitch grid. */
+function generateRose(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, ROSE.background);
+  const cx = 0.5;
+  const cy = 0.42;
+
+  // Stem
+  fillRect(grid, 0.48, 0.55, 0.52, 0.90, ROSE.stem, gridSize);
+
+  // Leaves on stem
+  fillEllipse(grid, 0.40, 0.68, 0.09, 0.03, ROSE.leaf, gridSize);
+  fillEllipse(grid, 0.60, 0.74, 0.09, 0.03, ROSE.leaf, gridSize);
+
+  // Concentric petal layers — alternating colors outward
+  const layers: { radius: number; color: string }[] = [
+    { radius: 0.05, color: ROSE.center },
+    { radius: 0.10, color: ROSE.innerPetals },
+    { radius: 0.16, color: ROSE.midPetals },
+    { radius: 0.22, color: ROSE.outerPetals },
+    { radius: 0.28, color: ROSE.midPetals },
+    { radius: 0.34, color: ROSE.outerPetals },
+  ];
+
+  for (const layer of layers) {
+    fillCircle(grid, cx, cy, layer.radius, layer.color, gridSize);
+  }
+
+  // Petal "spiral" effect — small arcs radiating from center
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const r1 = 0.06;
+    const r2 = 0.32;
+    for (let j = 1; j < layers.length; j++) {
+      const r = r1 + (j / (layers.length - 1)) * (r2 - r1);
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      const gci = Math.round(px * (gridSize - 1));
+      const gri = Math.round(py * (gridSize - 1));
+      if (gri >= 0 && gri < gridSize && gci >= 0 && gci < gridSize) {
+        // Slightly darken intersections for petal definition
+        grid[gri][gci] = { color: j % 2 === 0 ? ROSE.center : ROSE.innerPetals };
+      }
+    }
+  }
+
+  return grid;
+}
+
+/** Generate a heart stitch grid. */
+function generateHeart(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, HEART.background);
+  const cx = 0.5;
+  const cy = 0.42;
+
+  // Heart shape: two circles for top lobes + triangle for bottom
+  // Left lobe
+  fillCircle(grid, cx - 0.13, cy - 0.06, 0.14, HEART.fill, gridSize);
+  // Right lobe
+  fillCircle(grid, cx + 0.13, cy - 0.06, 0.14, HEART.fill, gridSize);
+  // Bottom triangle/point
+  const heartApex: Point = [cx, cy + 0.32];
+  const heartLeft: Point = [cx - 0.26, cy + 0.04];
+  const heartRight: Point = [cx + 0.26, cy + 0.04];
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      const px = c / (gridSize - 1);
+      const py = r / (gridSize - 1);
+      if (pointInTriangle(px, py, heartApex, heartLeft, heartRight)) {
+        grid[r][c] = { color: HEART.fill };
+      }
+    }
+  }
+
+  // Highlight — lighter arc on upper-left
+  fillCircle(grid, cx - 0.08, cy - 0.10, 0.05, HEART.highlight, gridSize);
+
+  // Outline — trace the perimeter with a thin line
+  for (const [sx, sy, ex, ey] of [
+    [cx - 0.22, cy - 0.20, cx - 0.05, cy - 0.22],
+    [cx + 0.05, cy - 0.22, cx + 0.22, cy - 0.20],
+    [cx + 0.22, cy - 0.20, cx + 0.28, cy + 0.08],
+    [cx + 0.28, cy + 0.08, cx, cy + 0.34],
+  ] as [number, number, number, number][]) {
+    drawLine(grid, sx, sy, ex, ey, 0.01, HEART.outline, gridSize);
+  }
+  // Mirror left outline
+  for (const [sx, sy, ex, ey] of [
+    [cx - 0.22, cy - 0.20, cx - 0.28, cy + 0.08],
+    [cx - 0.28, cy + 0.08, cx, cy + 0.34],
+  ] as [number, number, number, number][]) {
+    drawLine(grid, sx, sy, ex, ey, 0.01, HEART.outline, gridSize);
+  }
+
+  return grid;
+}
+
+/** Generate a 5-pointed star stitch grid. */
+function generateStar(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, gridSize, STAR.background);
+  const cx = 0.5;
+  const cy = 0.48;
+
+  // 5-pointed star geometry — outer and inner radii
+  const outerR = 0.34;
+  const innerR = 0.14;
+  const points = 5;
+
+  const outerPts: Point[] = [];
+  const innerPts: Point[] = [];
+
+  for (let i = 0; i < points; i++) {
+    const outerAngle = (i / points) * Math.PI * 2 - Math.PI / 2;
+    const innerAngle = outerAngle + Math.PI / points;
+    outerPts.push([cx + Math.cos(outerAngle) * outerR, cy + Math.sin(outerAngle) * outerR]);
+    innerPts.push([cx + Math.cos(innerAngle) * innerR, cy + Math.sin(innerAngle) * innerR]);
+  }
+
+  // Form 5 triangles: center → outer point → inner point
+  for (let i = 0; i < points; i++) {
+    const o = outerPts[i];
+    const inner1 = innerPts[(i - 1 + points) % points];
+    const inner2 = innerPts[i];
+
+    // Triangle: center → inner1 → outer point
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        const px = c / (gridSize - 1);
+        const py = r / (gridSize - 1);
+        if (pointInTriangle(px, py, [cx, cy], inner1, o) ||
+            pointInTriangle(px, py, [cx, cy], inner2, o)) {
+          grid[r][c] = { color: STAR.fill };
+        }
+      }
+    }
+  }
+
+  // Inner pentagon — darker center
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      const px = c / (gridSize - 1);
+      const py = r / (gridSize - 1);
+      let inside = true;
+      for (let i = 0; i < points; i++) {
+        const a = innerPts[i];
+        const b = innerPts[(i + 1) % points];
+        // Check if point is to the right of each edge (clockwise winding)
+        const cross = (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]);
+        if (cross > 0) { inside = false; break; }
+      }
+      if (inside) {
+        grid[r][c] = { color: STAR.inner };
+      }
+    }
+  }
+
+  // Outline rays from center to tips
+  for (const o of outerPts) {
+    drawLine(grid, cx, cy, o[0], o[1], 0.01, STAR.outline, gridSize);
+  }
+
+  return grid;
+}
+
 // ─── Utility ───────────────────────────────────────────────────────────────
 
 /** Barycentric point-in-triangle test. */
@@ -431,6 +681,22 @@ const SUBJECT_REGISTRY: SubjectEntry[] = [
   {
     patterns: [/lunar\s+moth/i, /luna\s+moth/i],
     generator: generateLunarMoth,
+  },
+  {
+    patterns: [/butterfly/i],
+    generator: generateButterfly,
+  },
+  {
+    patterns: [/rose/i],
+    generator: generateRose,
+  },
+  {
+    patterns: [/heart/i, /love\s+heart/i],
+    generator: generateHeart,
+  },
+  {
+    patterns: [/star/i, /5\s*point(?:ed)?\s+star/i],
+    generator: generateStar,
   },
 ];
 
