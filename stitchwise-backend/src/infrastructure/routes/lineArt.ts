@@ -16,8 +16,7 @@ import { lineArtToStitchGrid } from "../../domain/stitch/lineArtConverter";
 import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
-import { generateImageWithStability } from "../services/stabilityAIService";
-import { generateSVGWithGPT4o, generateImageWithDallE } from "../services/openaiImageService";
+import { generateImageWithDallE } from "../services/openaiImageService";
 import {
   isKnownSubject,
   generateSubjectPattern,
@@ -99,8 +98,7 @@ export function createLineArtRouter(): Router {
    *
    * Pipeline priority:
    *   1. GPT-4o SVG → Clean single-subject vector line art (NO repeating tiles)
-   *   2. Stability AI → Diffusion fallback with strong negative prompting
-   *   3. DALL-E → OpenAI image generation (last resort)
+   *   2. DALL-E → OpenAI image generation fallback
    *
    * Each pipeline output is run through k-means color quantization + DMC mapping.
    *
@@ -131,8 +129,7 @@ export function createLineArtRouter(): Router {
 
         // ── Pipeline Priority ──────────────────────────────────────────────
         // 1. GPT-4o SVG → Clean single-subject line art (no repeating tiles)
-        // 2. Stability AI → Diffusion model with strong negative prompting
-        // 3. DALL-E → OpenAI image generation (last resort)
+        // 2. DALL-E → OpenAI image generation fallback
         //
         // GPT-4o SVG is preferred because it produces crisp, single-subject
         // vector line art that avoids the repeating-tile artifacts of diffusion
@@ -153,37 +150,7 @@ export function createLineArtRouter(): Router {
           }));
         }
 
-        // Step 2: Fall back to Stability AI
-        if (!imageBuffer) {
-          const stabilityPrompt = [
-            prompt,
-            "traditional counted cross-stitch pattern, hand-drawn needlepoint design",
-            "elegant composition with clear focal point",
-            "clean well-defined shapes, balanced negative space",
-            "thread-friendly colors, timeless classic needlepoint aesthetic",
-            "white background, suitable for embroidery conversion",
-          ].join(", ");
-          const negativePrompt = [
-            "clip art, cheap vector graphics, AI-generated look",
-            "messy composition, photorealistic, 3D rendering, overdetailed",
-            "busy patterns, cluttered, abstract noise, modern digital art",
-            "gradients, shading, shadows, repeating tiles, tiled pattern",
-          ].join(", ");
-
-          const stabilityResult = await generateImageWithStability(stabilityPrompt, negativePrompt);
-          if (stabilityResult?.buffer) {
-            imageBuffer = stabilityResult.buffer;
-            previewUrl = stabilityResult.url;
-            pipelineUsed = "stability-ai";
-            console.error(JSON.stringify({
-              event: "text_to_pattern_pipeline",
-              pipeline: pipelineUsed,
-              fallback: true,
-            }));
-          }
-        }
-
-        // Step 3: Fall back to DALL-E
+        // Step 2: Fall back to DALL-E
         if (!imageBuffer) {
           const dalleResult = await generateImageWithDallE(prompt);
           if (dalleResult?.buffer) {
@@ -200,7 +167,7 @@ export function createLineArtRouter(): Router {
 
         if (!imageBuffer) {
           res.status(500).json({
-            error: "AI image generation failed. All pipelines (GPT-4o SVG, Stability AI, DALL-E) returned no image.",
+            error: "AI image generation failed. Both GPT-4o SVG and DALL-E returned no image.",
           });
           return;
         }
@@ -309,20 +276,11 @@ export function createLineArtRouter(): Router {
         let imageDataUrl: string | null = null;
         let pipelineUsed: string = "unknown";
 
-        // Step 1: Stability AI primary
-        const stabilityResult = await generateImageWithStability(artPrompt, negativePrompt);
-        if (stabilityResult?.url) {
-          imageDataUrl = stabilityResult.url;
-          pipelineUsed = "stability-ai";
-        }
-
-        // Step 2: Fall back to DALL-E
-        if (!imageDataUrl) {
-          const dalleResult = await generateImageWithDallE(artPrompt);
-          if (dalleResult?.url) {
-            imageDataUrl = dalleResult.url;
-            pipelineUsed = "dall-e";
-          }
+        // OpenAI DALL-E / gpt-image-1 (sole provider)
+        const dalleResult = await generateImageWithDallE(artPrompt);
+        if (dalleResult?.url) {
+          imageDataUrl = dalleResult.url;
+          pipelineUsed = "dall-e";
         }
 
         if (!imageDataUrl) {
