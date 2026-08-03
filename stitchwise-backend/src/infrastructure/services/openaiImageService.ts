@@ -12,6 +12,7 @@
 
 import OpenAI from "openai";
 import axios from "axios";
+import { logAICall, ESTIMATED_COSTS } from "./aiCostLogger";
 
 function getClient(): OpenAI | null {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -32,13 +33,19 @@ function getClient(): OpenAI | null {
 export async function generateImageWithDallE(
   prompt: string,
   styleHints?: string,
+  userId?: string,
 ): Promise<{ url: string; buffer: Buffer } | null> {
   const client = getClient();
   if (!client) {
-    console.error(JSON.stringify({
-      event: "openai_no_key",
-      message: "OPENAI_API_KEY not configured — DALL-E generation skipped",
-    }));
+    logAICall({
+      provider: "openai",
+      prompt,
+      status: "skipped",
+      estimatedCostUsd: 0,
+      durationMs: 0,
+      error: "OPENAI_API_KEY not configured",
+      userId,
+    });
     return null;
   }
 
@@ -63,13 +70,8 @@ export async function generateImageWithDallE(
 
   for (const model of models) {
     try {
-      console.error(JSON.stringify({
-        event: "openai_image_request",
-        model,
-        originalPrompt: prompt,
-      }));
+      const start = Date.now();
 
-      // Use URL response (b64_json is deprecated for newer models)
       const response = await client.images.generate({
         model,
         prompt: enhancedPrompt,
@@ -87,24 +89,40 @@ export async function generateImageWithDallE(
       });
       const buffer = Buffer.from(dlResponse.data);
 
+      logAICall({
+        provider: "openai",
+        prompt,
+        status: "success",
+        estimatedCostUsd: ESTIMATED_COSTS.openai,
+        durationMs: Date.now() - start,
+        userId,
+      });
+
       return { url: imageUrl, buffer };
     } catch (err: any) {
       lastError = err?.message || String(err);
-      const errorBody = err?.response?.data || err?.error || 'no details';
-      console.error(JSON.stringify({
-        event: "openai_model_error",
-        model,
-        error: lastError,
-        details: String(errorBody).substring(0, 300),
-      }));
+      logAICall({
+        provider: "openai",
+        prompt,
+        status: "error",
+        estimatedCostUsd: 0, // Failed DALL-E calls don't cost (bills on success)
+        durationMs: 0,
+        error: (err?.message || String(err)).slice(0, 200),
+        userId,
+      });
       // Continue to next model
     }
   }
 
-  console.error(JSON.stringify({
-    event: "openai_all_models_failed",
-    error: lastError,
-  }));
+  logAICall({
+    provider: "openai",
+    prompt,
+    status: "error",
+    estimatedCostUsd: 0,
+    durationMs: 0,
+    error: `All models failed: ${lastError?.slice(0, 200)}`,
+    userId,
+  });
   return null;
 }
 

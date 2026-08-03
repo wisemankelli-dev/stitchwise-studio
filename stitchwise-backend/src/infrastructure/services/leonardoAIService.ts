@@ -1,15 +1,17 @@
 /**
  * Leonardo AI Service — Integration with the Leonardo AI image generation API.
  *
- * Provides:
- * - generateImageFromText: text-to-image generation via Leonardo's API
- * - generateImageVariation: image-to-image variation
+ * PRIMARY image generator for StitchWise. Leonardo is preferred because:
+ * - Bills per successful generation only (no credit burn on failures)
+ * - ~$0.005 per generation with Kino XL (half Stability's cost)
+ * - Generates 512x512 images ideal for embroidery pattern conversion
  *
  * Leonardo API docs: https://docs.leonardo.ai/reference/createsdgimage
  */
 
 import axios, { AxiosError } from "axios";
 import type { LeonardoGenerationResponse } from "../../domain/ai/embroideryAI";
+import { logAICall, ESTIMATED_COSTS } from "./aiCostLogger";
 
 /** Leonardo AI API base URL. */
 const LEONARDO_API_BASE = "https://cloud.leonardo.ai/api/rest/v1";
@@ -22,7 +24,7 @@ const GENERATION_TIMEOUT_MS = 120_000;
 
 /**
  * Get the Leonardo API key from environment.
- * Falls back gracefully in development/testing.
+ * Returns null if not configured — caller should fall back.
  */
 function getApiKey(): string | null {
   return process.env.LEONARDO_API_KEY || null;
@@ -46,21 +48,34 @@ function createClient() {
 /**
  * Generate an image from a text prompt using Leonardo AI.
  *
+ * Returns null if LEONARDO_API_KEY is not configured (caller should fall back).
+ *
  * @param prompt - Text description of the desired image
  * @param negativePrompt - Things to avoid in the generation
- * @returns Promise resolving to generation response with image URL
+ * @param userId - Optional user ID for cost tracking
+ * @returns Promise resolving to generation response with image URL, or null
  */
 export async function generateImageFromText(
   prompt: string,
   negativePrompt?: string,
-): Promise<LeonardoGenerationResponse> {
+  userId?: string,
+): Promise<LeonardoGenerationResponse | null> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    // Return mock response in development when no API key is configured
-    return getMockGenerationResponse(prompt);
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: "skipped",
+      estimatedCostUsd: 0,
+      durationMs: 0,
+      error: "LEONARDO_API_KEY not configured",
+      userId,
+    });
+    return null;
   }
 
   const client = createClient();
+  const start = Date.now();
 
   try {
     const payload: Record<string, unknown> = {
@@ -91,16 +106,37 @@ export async function generateImageFromText(
     // Poll for completion (Leonardo generates asynchronously)
     const imageUrl = await pollForGeneration(client, generationId);
 
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: "success",
+      estimatedCostUsd: ESTIMATED_COSTS.leonardo,
+      durationMs: Date.now() - start,
+      userId,
+    });
+
     return {
       id: generationId,
       url: imageUrl,
       createdAt: new Date().toISOString(),
     };
   } catch (err) {
+    const isCreditError = err instanceof AxiosError && (err.response?.status === 402 || err.response?.status === 429);
+
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: isCreditError ? "credit_error" : "error",
+      estimatedCostUsd: 0, // Leonardo only bills successful generations
+      durationMs: Date.now() - start,
+      error: String(err).slice(0, 200),
+      userId,
+    });
+
     if (err instanceof AxiosError && err.response?.status === 401) {
-      throw new Error("Invalid Leonardo API key");
+      return null; // Invalid key — fall back
     }
-    throw err;
+    return null; // All errors return null for graceful fallback
   }
 }
 
@@ -138,64 +174,79 @@ async function pollForGeneration(
  *
  * @param imageUrl - URL of the source image
  * @param prompt - Variation prompt
- * @returns Promise resolving to generation response with image URL
+ * @param userId - Optional user ID for cost tracking
+ * @returns Promise resolving to generation response with image URL, or null
  */
 export async function generateImageVariation(
   imageUrl: string,
   prompt: string,
-): Promise<LeonardoGenerationResponse> {
+  userId?: string,
+): Promise<LeonardoGenerationResponse | null> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    // Return mock response
-    return {
-      id: `mock-var-${Date.now()}`,
-      url: imageUrl, // Use original as mock
-      createdAt: new Date().toISOString(),
-    };
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: "skipped",
+      estimatedCostUsd: 0,
+      durationMs: 0,
+      error: "LEONARDO_API_KEY not configured",
+      userId,
+    });
+    return null;
   }
 
   const client = createClient();
+  const start = Date.now();
 
-  const payload = {
-    prompt,
-    modelId: DEFAULT_MODEL_ID,
-    init_image_url: imageUrl,
-    init_strength: 0.6,
-    num_images: 1,
-    sd_version: "v2",
-    presetStyle: "DYNAMIC",
-    scheduler: "DPMSolverMultistep",
-    guidance_scale: 7,
-  };
+  try {
+    const payload = {
+      prompt,
+      modelId: DEFAULT_MODEL_ID,
+      init_image_url: imageUrl,
+      init_strength: 0.6,
+      num_images: 1,
+      sd_version: "v2",
+      presetStyle: "DYNAMIC",
+      scheduler: "DPMSolverMultistep",
+      guidance_scale: 7,
+    };
 
-  const response = await client.post("/generations", payload, {
-    timeout: GENERATION_TIMEOUT_MS,
-  });
+    const response = await client.post("/generations", payload, {
+      timeout: GENERATION_TIMEOUT_MS,
+    });
 
-  const generationId = response.data.sdGenerationJob?.generationId;
-  if (!generationId) {
-    throw new Error("No generationId in Leonardo response");
+    const generationId = response.data.sdGenerationJob?.generationId;
+    if (!generationId) {
+      throw new Error("No generationId in Leonardo response");
+    }
+
+    const url = await pollForGeneration(client, generationId);
+
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: "success",
+      estimatedCostUsd: ESTIMATED_COSTS.leonardo,
+      durationMs: Date.now() - start,
+      userId,
+    });
+
+    return {
+      id: generationId,
+      url,
+      createdAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    logAICall({
+      provider: "leonardo",
+      prompt,
+      status: "error",
+      estimatedCostUsd: 0,
+      durationMs: Date.now() - start,
+      error: String(err).slice(0, 200),
+      userId,
+    });
+    return null;
   }
-
-  const url = await pollForGeneration(client, generationId);
-
-  return {
-    id: generationId,
-    url,
-    createdAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Mock generation response for development/testing without API key.
- * Generates a placeholder image URL using a public SVG/PNG service.
- */
-function getMockGenerationResponse(prompt: string): LeonardoGenerationResponse {
-  // Use a placeholder service that generates colored images
-  const encodedPrompt = encodeURIComponent(prompt.substring(0, 50));
-  return {
-    id: `mock-${Date.now()}`,
-    url: `https://placehold.co/512x512/EEE/999?text=${encodedPrompt}`,
-    createdAt: new Date().toISOString(),
-  };
 }

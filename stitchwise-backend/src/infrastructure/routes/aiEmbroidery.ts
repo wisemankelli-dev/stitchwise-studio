@@ -10,6 +10,7 @@
 
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import type { PrismaClient } from "@prisma/client";
 import {
   TextToPatternSchema,
   ImageToPatternSchema,
@@ -20,6 +21,8 @@ import {
   type StitchCell,
 } from "../../domain/ai/embroideryAI";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
+import { generateImageFromText } from "../services/leonardoAIService";
+import { generateImageWithStability } from "../services/stabilityAIService";
 import { generateImageWithDallE } from "../services/openaiImageService";
 import {
   imageUrlToStitchGrid,
@@ -34,6 +37,7 @@ import {
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
+import { checkAIRateLimit } from "../services/aiRateLimiter";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -95,9 +99,13 @@ function clampToGridSize(raw: number): number {
 
 /**
  * Creates a router for AI Embroidery pattern generation endpoints.
+ *
+ * @param prisma - Optional PrismaClient for rate limiting (creates one if not provided)
  */
-export function createAIEmbroideryRouter(): Router {
+export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
   const router = Router();
+  // Lazy-load PrismaClient for rate limiting when not injected
+  const getPrisma = () => prisma ?? new (require("@prisma/client").PrismaClient)();
 
   /**
    * POST /api/ai/embroidery/text-to-pattern
@@ -205,6 +213,7 @@ export function createAIEmbroideryRouter(): Router {
         let pattern: PatternResult | null = null;
 
         let previewUrl: string | undefined;
+        let rateLimit: { remaining: number; limit: number } | undefined;
 
         if (matchedShape) {
           // Only use Shape Library when the prompt is JUST the shape name
@@ -218,6 +227,20 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
+          // ── Rate limiting: check daily AI call quota ──────────────────
+          const userId = (req as any).user?.userId ?? null;
+          const limit = await checkAIRateLimit(userId, getPrisma());
+          rateLimit = { remaining: limit.remaining, limit: limit.limit };
+          if (!limit.allowed) {
+            res.status(429).json({
+              success: false,
+              error: limit.message ?? "Daily AI generation limit reached",
+              remaining: limit.remaining,
+              limit: limit.limit,
+            });
+            return;
+          }
+
           // A single needlepoint artwork — never a repeating pattern.
           // One recognizable subject centered, filling the frame.
           const styleHints = [
@@ -238,17 +261,37 @@ export function createAIEmbroideryRouter(): Router {
             finalPrompt: enhancedPrompt,
           }));
 
-          // OpenAI DALL-E (sole provider)
-          const dalleResult = await generateImageWithDallE(enhancedPrompt);
-          if (dalleResult?.buffer) {
-            previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-            pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
+          // ── Provider chain: Leonardo → DALL-E → Stability ────────────
+          // Leonardo is primary — cheapest ($0.005/img) and only bills successes.
+          // DALL-E is secondary — reliable but $0.04/img.
+          // Stability is last resort — bills even on failures (credit burn risk).
+
+          // Step 1: Try Leonardo AI (primary)
+          const leonardoResult = await generateImageFromText(enhancedPrompt, negativePrompt, userId);
+
+          if (leonardoResult?.url) {
+            previewUrl = leonardoResult.url;
+            pattern = await imageUrlToStitchGrid(leonardoResult.url, gridSize, maxColors);
           } else {
-            res.status(500).json({
-              success: false,
-              error: "AI generation returned no image",
-            });
-            return;
+            // Step 2: Fall back to DALL-E
+            const dalleResult = await generateImageWithDallE(enhancedPrompt);
+            if (dalleResult?.buffer) {
+              previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
+              pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
+            } else {
+              // Step 3: Last resort — Stability AI
+              const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt, userId);
+              if (stabilityResult?.buffer) {
+                previewUrl = `data:image/png;base64,${stabilityResult.buffer.toString("base64")}`;
+                pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gridSize, maxColors);
+              } else {
+                res.status(500).json({
+                  success: false,
+                  error: "All AI providers failed to generate an image. Please try again.",
+                });
+                return;
+              }
+            }
           }
         }
 
@@ -257,6 +300,7 @@ export function createAIEmbroideryRouter(): Router {
           processingTimeMs: 0,
           fabric: { count: fc, inches: +fabricInches.toFixed(2) },
           previewUrl,
+          ...(rateLimit && { rateLimit }),
         }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
