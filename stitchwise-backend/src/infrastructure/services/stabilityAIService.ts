@@ -56,6 +56,7 @@ export async function generateImageWithStability(
     formData.append("prompt", prompt);
     formData.append("output_format", "png");
     formData.append("mode", "text-to-image");
+    formData.append("aspect_ratio", "1:1"); // 1024x1024 — smallest available for SD3 Core
     if (negativePrompt) formData.append("negative_prompt", negativePrompt);
 
     const response = await axios.post(`${STABILITY_API_BASE}/core`, formData, {

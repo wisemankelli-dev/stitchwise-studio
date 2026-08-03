@@ -3,11 +3,12 @@
  *
  * POST /api/ai/text-to-image-pattern
  *
- * Generates an embroidery pattern from a text prompt using DALL-E / gpt-image-1.
+ * Generates an embroidery pattern from a text prompt using AI image generation.
+ * Provider chain: Leonardo (primary) → DALL-E (secondary) → Stability (last resort).
+ * Leonardo is cheapest ($0.005/img) and only bills successes — no credit burn.
+ *
  * The pipeline is model-agnostic: the AI generates artwork; the pattern engine
  * converts it deterministically to a stitch grid.
- *
- * Supports fallback to Stability AI when DALL-E is unavailable.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -16,6 +17,7 @@ import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generatePatternFromImage } from "../../domain/stitch/pipeline";
 import { generateImageWithDallE } from "../services/openaiImageService";
 import { generateImageWithStability } from "../services/stabilityAIService";
+import { generateImageFromText } from "../services/leonardoAIService";
 
 export function createTextToImageRouter(): Router {
   const router = Router();
@@ -43,17 +45,25 @@ export function createTextToImageRouter(): Router {
         // Style hints for embroidery-suitable artwork
         const styleHints = "flat vector art, solid flat colors only, no gradients, no shading, no photorealistic details, clean simple shapes, clip art style, white background, suitable for cross-stitch embroidery pattern, needlepoint aesthetic";
 
-        // Try DALL-E first, fall back to Stability AI
+        // Provider chain: Leonardo → DALL-E → Stability
         const generateImage = async (p: string) => {
-          // Primary: DALL-E / gpt-image-1
+          // Step 1: Leonardo AI (primary — cheapest, bills only successes)
+          const leonardoResult = await generateImageFromText(p);
+          if (leonardoResult?.url) {
+            // Download the Leonardo image as a buffer
+            const axios = (await import("axios")).default;
+            const dlResponse = await axios.get(leonardoResult.url, {
+              responseType: "arraybuffer",
+              timeout: 30_000,
+            });
+            return { url: leonardoResult.url, buffer: Buffer.from(dlResponse.data) };
+          }
+
+          // Step 2: DALL-E (secondary — reliable, $0.04/img)
           const dalleResult = await generateImageWithDallE(p, styleHints);
           if (dalleResult) return dalleResult;
 
-          // Fallback: Stability AI
-          console.error(JSON.stringify({
-            event: "text_to_image_fallback",
-            message: "DALL-E unavailable, falling back to Stability AI",
-          }));
+          // Step 3: Stability AI (last resort — bills even on failures)
           const enhancedPrompt = `${p}, ${styleHints}`;
           const stabilityResult = await generateImageWithStability(enhancedPrompt);
           if (stabilityResult) return stabilityResult;
