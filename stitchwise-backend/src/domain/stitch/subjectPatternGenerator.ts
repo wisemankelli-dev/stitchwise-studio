@@ -590,7 +590,7 @@ const PEONY = {
 };
 
 function generatePeony(gridSize: number): StitchGrid {
-  const grid = createEmptyGrid(gridSize, PEONY.background);
+  const grid = createEmptyGrid(gridSize, gridSize, PEONY.background);
 
   // Peony bloom: large rounded flower with ruffled layered petals
   const cx = 0.50;
