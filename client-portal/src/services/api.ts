@@ -1538,12 +1538,12 @@ class ApiClient {
   ];
 
   /**
-   * Fetches all community showcase entries (GET /api/showcase).
+   * Fetches all community showcase entries (GET /api/showcase/gallery).
    */
   async getShowcaseEntries(): Promise<ShowcaseEntry[]> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/showcase`, {
+        const response = await fetch(`${this.apiBaseUrl}/showcase/gallery`, {
           headers: this.getHeaders()
         });
         if (!response.ok) throw new Error('Failed to fetch showcase entries');
