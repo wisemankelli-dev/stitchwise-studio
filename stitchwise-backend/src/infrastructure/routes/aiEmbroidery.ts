@@ -20,8 +20,7 @@ import {
   type StitchCell,
 } from "../../domain/ai/embroideryAI";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
-import { generateImageFromText } from "../services/leonardoAIService";
-import { generateImageWithStability } from "../services/stabilityAIService";
+import { generateImageWithDallE } from "../services/openaiImageService";
 import {
   imageUrlToStitchGrid,
   imageBufferToStitchGrid,
@@ -104,7 +103,7 @@ export function createAIEmbroideryRouter(): Router {
    * POST /api/ai/embroidery/text-to-pattern
    *
    * Generate an embroidery pattern from a text description.
-   * Uses Stability AI to generate an image, then converts it to a stitch grid.
+   * Uses OpenAI DALL-E to generate an image, then converts it to a stitch grid.
    *
    * Request body: { prompt: string, gridSize?: 50|75|100|150|200, negativePrompt?: string }
    * Response: { success: true, grid, stitchTypes, width, height, dmcPalette, totalStitches, gridSizes, ... }
@@ -239,27 +238,17 @@ export function createAIEmbroideryRouter(): Router {
             finalPrompt: enhancedPrompt,
           }));
 
-          // Step 1: Try Stability AI first (we have an API key)
-          const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt);
-
-          if (stabilityResult) {
-            // Stability returned a buffer — convert directly and capture preview
-            previewUrl = `data:image/png;base64,${stabilityResult.buffer.toString("base64")}`;
-            pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gridSize, maxColors);
+          // OpenAI DALL-E (sole provider)
+          const dalleResult = await generateImageWithDallE(enhancedPrompt);
+          if (dalleResult?.buffer) {
+            previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
+            pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
           } else {
-            // Step 2: Fall back to Leonardo AI
-            const generation = await generateImageFromText(enhancedPrompt, negativePrompt);
-
-            if (!generation.url) {
-              res.status(500).json({
-                success: false,
-                error: "AI generation returned no image URL",
-              });
-              return;
-            }
-
-            // Step 3: Download the Leonardo image and convert to stitch grid
-            pattern = await imageUrlToStitchGrid(generation.url, gridSize, maxColors);
+            res.status(500).json({
+              success: false,
+              error: "AI generation returned no image",
+            });
+            return;
           }
         }
 
