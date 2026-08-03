@@ -34,6 +34,7 @@ import {
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
+import { checkAIRateLimit } from "../services/aiRateLimiter";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -205,6 +206,7 @@ export function createAIEmbroideryRouter(): Router {
         let pattern: PatternResult | null = null;
 
         let previewUrl: string | undefined;
+        let rateLimit: { remaining: number; limit: number; resetAt: string } | undefined;
 
         if (matchedShape) {
           // Only use Shape Library when the prompt is JUST the shape name
@@ -218,6 +220,23 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
+          // ── Rate limit check ──────────────────────────────────────────
+          const userId = (req as any).user?.id;
+          const userTier = (req as any).user?.subscriptionTier || "anonymous";
+          rateLimit = checkAIRateLimit(userId, userTier);
+          if (!rateLimit.allowed) {
+            res.status(429).json({
+              success: false,
+              error: "Daily AI generation limit reached",
+              rateLimit: {
+                limit: rateLimit.limit,
+                remaining: 0,
+                resetAt: rateLimit.resetAt,
+              },
+            });
+            return;
+          }
+
           // A single needlepoint artwork — never a repeating pattern.
           // One recognizable subject centered, filling the frame.
           const styleHints = [
@@ -239,7 +258,7 @@ export function createAIEmbroideryRouter(): Router {
           }));
 
           // OpenAI DALL-E (sole provider)
-          const dalleResult = await generateImageWithDallE(enhancedPrompt);
+          const dalleResult = await generateImageWithDallE(enhancedPrompt, undefined, userId);
           if (dalleResult?.buffer) {
             previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
             pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
@@ -257,6 +276,11 @@ export function createAIEmbroideryRouter(): Router {
           processingTimeMs: 0,
           fabric: { count: fc, inches: +fabricInches.toFixed(2) },
           previewUrl,
+          rateLimit: {
+            remaining: rateLimit?.remaining,
+            limit: rateLimit?.limit,
+            resetAt: rateLimit?.resetAt,
+          },
         }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

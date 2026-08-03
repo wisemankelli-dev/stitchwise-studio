@@ -12,6 +12,7 @@
 
 import OpenAI from "openai";
 import axios from "axios";
+import { logAICall, getEstimatedCost } from "./aiCostLogger";
 
 function getClient(): OpenAI | null {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -32,6 +33,7 @@ function getClient(): OpenAI | null {
 export async function generateImageWithDallE(
   prompt: string,
   styleHints?: string,
+  userId?: string,
 ): Promise<{ url: string; buffer: Buffer } | null> {
   const client = getClient();
   if (!client) {
@@ -87,6 +89,17 @@ export async function generateImageWithDallE(
       });
       const buffer = Buffer.from(dlResponse.data);
 
+      logAICall({
+        timestamp: new Date().toISOString(),
+        provider: "openai",
+        model,
+        status: "success",
+        estimatedCost: getEstimatedCost(model),
+        durationMs: 0,
+        userId,
+        promptPreview: prompt.slice(0, 100),
+      });
+
       return { url: imageUrl, buffer };
     } catch (err: any) {
       lastError = err?.message || String(err);
@@ -105,6 +118,19 @@ export async function generateImageWithDallE(
     event: "openai_all_models_failed",
     error: lastError,
   }));
+
+  logAICall({
+    timestamp: new Date().toISOString(),
+    provider: "openai",
+    model: "all",
+    status: "error",
+    estimatedCost: 0,
+    durationMs: 0,
+    userId,
+    promptPreview: prompt.slice(0, 100),
+    error: lastError || undefined,
+  });
+
   return null;
 }
 
