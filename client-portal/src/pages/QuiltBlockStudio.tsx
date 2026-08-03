@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, QuiltBlockDesign, QuiltBlockShape } from '../services/api';
+import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
   RotateCcw, ZoomIn, ZoomOut, Grid3X3,
   Palette, Download, Save, Trash2, Plus, Loader2,
   Flower2, Square, Triangle, Minus,
-  Grid, LayoutGrid, FolderOpen, ChevronDown
+  Grid, LayoutGrid, FolderOpen, ChevronDown, Share2, CheckCircle2
 } from 'lucide-react';
 
 interface BlockShape {
@@ -98,6 +99,10 @@ export const QuiltBlockStudio: React.FC = () => {
   const [savedBlocks, setSavedBlocks] = useState<QuiltBlockDesign[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Share to Community state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const selectedShape = shapes.find(s => s.id === selectedShapeId);
   const cellPx = 50;
@@ -406,6 +411,14 @@ export const QuiltBlockStudio: React.FC = () => {
                   <Download className="h-3.5 w-3.5 mr-1" />
                   Export
                 </button>
+                {/* Share */}
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="btn-floral-primary text-xs py-1.5 px-3 bg-purple-500 hover:bg-purple-600"
+                >
+                  <Share2 className="h-3.5 w-3.5 mr-1" />
+                  Share
+                </button>
               </div>
               {/* Save message flash */}
               {saveMessage && (
@@ -687,6 +700,34 @@ export const QuiltBlockStudio: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Share to Community Modal */}
+      {showShareModal && (
+        <ShareToCommunityModal
+          projectType="quilt-block"
+          defaultTitle={blockName}
+          onClose={() => setShowShareModal(false)}
+          onSuccess={(entry) => {
+            setShowShareModal(false);
+            setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
+            setTimeout(() => setShareMessage(null), 4000);
+          }}
+          onError={(msg) => {
+            setShareMessage(msg);
+            setTimeout(() => setShareMessage(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Share success/error toast */}
+      {shareMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
+          <div className="rounded-2xl shadow-floral border px-5 py-4 flex items-center gap-3 max-w-sm bg-white border-emerald-200">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+            <p className="text-xs text-slate-700 font-medium">{shareMessage}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
