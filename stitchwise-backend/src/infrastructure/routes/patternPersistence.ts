@@ -13,6 +13,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../middleware/auth";
 import { serializeGrid, serializePalette, deserializeGrid, deserializePalette } from "../../domain/stitch/patternDataModel";
+import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -139,7 +140,12 @@ export function createPatternPersistenceRouter(prisma: PrismaClient): Router {
       }
 
       const grid = deserializeGrid(record.gridData);
-      const palette = record.dmcPalette ? deserializePalette(record.dmcPalette) : [];
+      const palette = record.dmcPalette
+        ? deserializePalette(record.dmcPalette).map((entry, i) => ({
+            ...entry,
+            symbol: (entry as any).symbol ?? CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+          }))
+        : [];
 
       res.json({
         id: record.id,

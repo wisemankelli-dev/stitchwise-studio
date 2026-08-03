@@ -20,7 +20,7 @@
 import sharp from "sharp";
 import axios from "axios";
 import type { StitchCell, StitchGrid, PatternResult, DmcUsage } from "./types";
-import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "./types";
+import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE, CROSS_STITCH_SYMBOLS } from "./types";
 import { closestDmcColor, rgbToHex } from "./dmcColors";
 import { quantizePixels } from "./colorReducer";
 
@@ -161,10 +161,13 @@ export function pixelsToStitchGrid(
     grid.push(gridRow);
   }
 
-  // Step 4: Build DMC usage array sorted by count (descending)
-  const dmcColors: DmcUsage[] = Array.from(dmcCountMap.values()).sort(
-    (a, b) => b.count - a.count,
-  );
+  // Step 4: Build DMC usage array sorted by count (descending), with cross-stitch symbols
+  const dmcColors: DmcUsage[] = Array.from(dmcCountMap.values())
+    .sort((a, b) => b.count - a.count)
+    .map((entry, i) => ({
+      ...entry,
+      symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
+    }));
 
   return {
     grid,

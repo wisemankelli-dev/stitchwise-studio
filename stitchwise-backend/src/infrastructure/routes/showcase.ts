@@ -14,7 +14,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const error = validateImageFile(file.mimetype, 0);
     if (error) {
-      cb(new Error(error));
+      cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname));
       return;
     }
     cb(null, true);
@@ -32,13 +32,27 @@ export function createShowcaseRouter(repo: ShowcaseRepo): Router {
 
   /**
    * POST /api/showcase/upload - Upload a photo to the Community Showcase.
-   * Accepts multipart/form-data with fields: image (file), title, caption?, projectId?
+   * Accepts multipart/form-data with fields: image (file), title, caption?, projectId?, projectType?
    * Photo is created with status PENDING until reviewed.
    */
   router.post(
     "/showcase/upload",
     authenticate,
-    upload.single("image"),
+    (req: Request, res: Response, next) => {
+      upload.single("image")(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            // Multer-specific errors (file too large, invalid file type, etc.)
+            res.status(400).json({ error: err.message });
+            return;
+          }
+          // Other errors from fileFilter (e.g., custom validation)
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        next();
+      });
+    },
     async (req: Request, res: Response) => {
       try {
         if (!req.file) {
@@ -69,16 +83,13 @@ export function createShowcaseRouter(repo: ShowcaseRepo): Router {
           title: parsed.data.title,
           caption: parsed.data.caption ?? null,
           projectId: parsed.data.projectId ?? null,
+          projectType: parsed.data.projectType ?? null,
           imageUrl: stored.url,
           thumbnailUrl: null, // Could generate thumbnails in production
         });
 
         res.status(201).json(photo);
       } catch (err: any) {
-        if (err.message?.includes("Invalid file type")) {
-          res.status(400).json({ error: err.message });
-          return;
-        }
         console.error({ event: "showcase_upload_error", error: String(err) });
         res.status(500).json({ error: "Internal server error" });
       }
@@ -109,6 +120,24 @@ export function createShowcaseRouter(repo: ShowcaseRepo): Router {
       res.json(photos);
     } catch (err) {
       console.error({ event: "showcase_mine_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/showcase/:id - Fetch a single showcase photo by ID.
+   * No authentication required for approved photos.
+   */
+  router.get("/showcase/:id", async (req: Request, res: Response) => {
+    try {
+      const photo = await repo.getPhoto(req.params.id);
+      if (!photo) {
+        res.status(404).json({ error: "Photo not found" });
+        return;
+      }
+      res.json(photo);
+    } catch (err) {
+      console.error({ event: "showcase_get_error", error: String(err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });

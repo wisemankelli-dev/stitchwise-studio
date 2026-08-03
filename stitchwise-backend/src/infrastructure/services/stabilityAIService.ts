@@ -15,13 +15,28 @@ const STABILITY_API_BASE = "https://api.stability.ai/v2beta/stable-image/generat
 /**
  * Generate an image from a text prompt using Stability AI.
  * Uses SD3 for superior prompt adherence and color accuracy.
+ *
+ * Returns null when:
+ * - STABILITY_API_KEY is not configured
+ * - API returns 401 (invalid key) — key is missing or incorrect
+ * - API returns 402 (payment required) — key is out of credits
+ * - API returns other 4xx/5xx errors or network failures
+ *
+ * All null returns are logged with specific error context so the caller
+ * can fall back gracefully to the next provider in the chain.
  */
 export async function generateImageWithStability(
   prompt: string,
   negativePrompt?: string,
 ): Promise<{ url: string; buffer: Buffer } | null> {
   const apiKey = process.env.STABILITY_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.error(JSON.stringify({
+      event: "stability_skipped",
+      reason: "STABILITY_API_KEY not configured — skipping Stability AI",
+    }));
+    return null;
+  }
 
   try {
     const formData = new FormData();
@@ -44,8 +59,21 @@ export async function generateImageWithStability(
     const url = `data:image/png;base64,${base64}`;
 
     return { url, buffer };
-  } catch (err) {
-    console.error({ event: "stability_generation_error", error: String(err) });
+  } catch (err: any) {
+    const status = err.response?.status;
+    const reason = status === 401 ? "invalid_api_key"
+      : status === 402 ? "out_of_credits"
+      : status === 403 ? "access_denied"
+      : status === 429 ? "rate_limited"
+      : err.code === "ECONNABORTED" ? "timeout"
+      : "unknown";
+
+    console.error(JSON.stringify({
+      event: "stability_generation_error",
+      status: status ?? "network_error",
+      reason,
+      message: err.message?.slice(0, 200),
+    }));
     return null;
   }
 }

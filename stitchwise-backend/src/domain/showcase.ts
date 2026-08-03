@@ -14,6 +14,7 @@ export interface ShowcasePhoto {
   id: string;
   userId: string;
   projectId: string | null;
+  projectType: string | null;
   title: string;
   caption: string | null;
   imageUrl: string;
@@ -40,6 +41,7 @@ export interface GalleryPhoto {
 export interface CreateShowcasePhotoInput {
   userId: string;
   projectId?: string | null;
+  projectType?: string | null;
   title: string;
   caption?: string | null;
   imageUrl: string;
@@ -56,6 +58,7 @@ export interface UpdateShowcasePhotoInput {
 
 export const CreateShowcasePhotoSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
+  projectType: z.enum(["embroidery", "collage", "quiltBlock"]).optional().nullable(),
   title: z.string().min(1, "Title is required").max(200),
   caption: z.string().max(1000).optional().nullable(),
 });
