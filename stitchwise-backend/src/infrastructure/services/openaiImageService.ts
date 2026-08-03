@@ -57,9 +57,8 @@ export async function generateImageWithDallE(
     ? `${prompt}, ${styleHints}`
     : `${prompt}, ${defaultStyle}`;
 
-  // Try model names in order: dall-e-3, gpt-image-1
-  // Note: dall-e-2 was removed — OpenAI deprecated it (returns 400)
-  const models = ["dall-e-3", "gpt-image-1"];
+  // Try model names in order: gpt-image-1 primary (this key has access), then dall-e-3
+  const models = ["gpt-image-1", "dall-e-3"];
   let lastError: string | null = null;
 
   for (const model of models) {
@@ -91,10 +90,12 @@ export async function generateImageWithDallE(
       return { url: imageUrl, buffer };
     } catch (err: any) {
       lastError = err?.message || String(err);
+      const errorBody = err?.response?.data || err?.error || 'no details';
       console.error(JSON.stringify({
         event: "openai_model_error",
         model,
         error: lastError,
+        details: String(errorBody).substring(0, 300),
       }));
       // Continue to next model
     }
