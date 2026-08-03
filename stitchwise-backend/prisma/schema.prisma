@@ -90,6 +90,7 @@ model ShowcasePhoto {
   id           String   @id @default(uuid())
   userId       String
   projectId    String?  // Optional link to the finished design project
+  projectType  String?  // Type of project: "embroidery", "collage", "quiltBlock"
   title        String
   caption      String?
   imageUrl     String   // URL to the stored image

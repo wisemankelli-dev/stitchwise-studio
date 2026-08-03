@@ -16,7 +16,7 @@
 import sharp from "sharp";
 import axios from "axios";
 import type { StitchCell, StitchGrid, PatternResult } from "./types";
-import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "./types";
+import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE, CROSS_STITCH_SYMBOLS } from "./types";
 import { pixelsToStitchGrid } from "./pipeline";
 
 /**
@@ -64,9 +64,9 @@ export async function imageUrlToStitchGrid(
       gridSize: size,
       stitchCount: size * size,
       dmcColors: [
-        { code: '321', name: 'Christmas Red', hex: '#e11d48', count: Math.ceil(size * size / 3) },
-        { code: '798', name: 'Delft Blue', hex: '#0284c7', count: Math.ceil(size * size / 3) },
-        { code: '700', name: 'Green', hex: '#16a34a', count: Math.ceil(size * size / 3) },
+        { code: '321', name: 'Christmas Red', hex: '#e11d48', count: Math.ceil(size * size / 3), symbol: CROSS_STITCH_SYMBOLS[0] },
+        { code: '798', name: 'Delft Blue', hex: '#0284c7', count: Math.ceil(size * size / 3), symbol: CROSS_STITCH_SYMBOLS[1] },
+        { code: '700', name: 'Green', hex: '#16a34a', count: Math.ceil(size * size / 3), symbol: CROSS_STITCH_SYMBOLS[2] },
       ],
     };
   }

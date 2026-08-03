@@ -19,6 +19,7 @@ export class PrismaShowcaseRepo implements ShowcaseRepo {
       data: {
         userId: input.userId,
         projectId: input.projectId ?? null,
+        projectType: input.projectType ?? null,
         title: input.title,
         caption: input.caption ?? null,
         imageUrl: input.imageUrl,
@@ -83,6 +84,7 @@ export class PrismaShowcaseRepo implements ShowcaseRepo {
     id: string;
     userId: string;
     projectId: string | null;
+    projectType: string | null;
     title: string;
     caption: string | null;
     imageUrl: string;
@@ -95,6 +97,7 @@ export class PrismaShowcaseRepo implements ShowcaseRepo {
       id: r.id,
       userId: r.userId,
       projectId: r.projectId,
+      projectType: r.projectType,
       title: r.title,
       caption: r.caption,
       imageUrl: r.imageUrl,
