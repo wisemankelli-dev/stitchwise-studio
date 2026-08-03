@@ -1,8 +1,9 @@
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 
 const PORT = 3000;
+const API_PORT = 3001;
 const DIST_DIR = '/home/team/shared/repo-check/client-portal/dist';
 
 // SPA fallback: serve index.html for any non-file route
@@ -20,9 +21,34 @@ const mimeTypes = {
   '.woff': 'font/woff',
 };
 
+function proxyToApi(req, res) {
+  const options = {
+    hostname: 'localhost',
+    port: API_PORT,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `localhost:${API_PORT}` },
+  };
+  const proxy = httpRequest(options, (apiRes) => {
+    res.writeHead(apiRes.statusCode, apiRes.headers);
+    apiRes.pipe(res);
+  });
+  proxy.on('error', () => {
+    res.writeHead(502);
+    res.end('502 Bad Gateway');
+  });
+  req.pipe(proxy);
+}
+
 createServer(async (req, res) => {
   try {
     let url = new URL(req.url, `http://localhost:${PORT}`).pathname;
+
+    // Proxy all /api/* routes to the backend
+    if (url.startsWith('/api/')) {
+      return proxyToApi(req, res);
+    }
+
     if (url === '/') url = '/index.html';
     
     // For /app/* routes, serve from client-portal dist
@@ -48,5 +74,5 @@ createServer(async (req, res) => {
     res.end('500 Internal Server Error');
   }
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`Serving on port ${PORT}`);
+  console.log(`Serving on port ${PORT}, proxying /api/* to port ${API_PORT}`);
 });
