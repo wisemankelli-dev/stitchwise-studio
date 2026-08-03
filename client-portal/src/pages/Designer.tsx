@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, RefreshCw
+  Upload, Eye, Sparkles, Loader2, RefreshCw, Share2, CheckCircle2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -14,6 +14,7 @@ import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
+import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import { api } from '../services/api';
 
 interface StitchStyle { id: string; name: string; description: string; }
@@ -487,6 +488,10 @@ export const Designer: React.FC = () => {
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
   const [generatedArt, setGeneratedArt] = useState<string | null>(null);
   const [isTransposing, setIsTransposing] = useState(false);
+
+  // Share to Community state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
@@ -1346,6 +1351,12 @@ export const Designer: React.FC = () => {
                   <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    <Share2 className="h-3.5 w-3.5" /> Share
+                  </button>
                   {referenceImage && (
                     <div className="flex items-center gap-1">
                       <button
@@ -1593,6 +1604,36 @@ export const Designer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Share to Community Modal */}
+      {showShareModal && (
+        <ShareToCommunityModal
+          projectType="embroidery"
+          defaultTitle=""
+          defaultStitchCount={stitchData.totalStitches}
+          defaultThreadColors={stitchData.dmcPalette?.map(c => c.hex)}
+          onClose={() => setShowShareModal(false)}
+          onSuccess={(entry) => {
+            setShowShareModal(false);
+            setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
+            setTimeout(() => setShareMessage(null), 4000);
+          }}
+          onError={(msg) => {
+            setShareMessage(msg);
+            setTimeout(() => setShareMessage(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Share success/error toast */}
+      {shareMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
+          <div className="rounded-2xl shadow-floral border px-5 py-4 flex items-center gap-3 max-w-sm bg-white border-emerald-200">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+            <p className="text-xs text-slate-700 font-medium">{shareMessage}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
