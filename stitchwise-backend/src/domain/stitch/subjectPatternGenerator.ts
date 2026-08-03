@@ -10,6 +10,7 @@
  *   - "rose"          — concentric red/pink petals, green stem + leaves
  *   - "heart"         — classic heart with highlight and outline
  *   - "star"          — 5-pointed gold star on navy background
+ *   - "peony/bouquet" — pink ruffled bloom with layered petals, dark center, green leaves
  *
  * Each generator accepts a gridSize parameter and produces correct patterns
  * at any supported size (50, 75, 100, 150, 200).
@@ -575,6 +576,87 @@ function generateStar(gridSize: number): StitchGrid {
   return grid;
 }
 
+// ─── Peony ──────────────────────────────────────────────────────────────────
+
+const PEONY = {
+  bloomDark: "#c2185b",
+  bloomMid: "#e91e63",
+  bloomLight: "#f06292",
+  bloomPale: "#fce4ec",
+  center: "#880e4f",
+  leafDark: "#2e7d32",
+  leafLight: "#4caf50",
+  background: "#ffffff",
+};
+
+function generatePeony(gridSize: number): StitchGrid {
+  const grid = createEmptyGrid(gridSize, PEONY.background);
+
+  // Peony bloom: large rounded flower with ruffled layered petals
+  const cx = 0.50;
+  const cy = 0.42; // slightly above center to leave room for leaves
+  const outerR = 0.32;
+  const midR = 0.24;
+  const innerR = 0.14;
+  const centerR = 0.06;
+
+  // Outer petals — ruffled edge via alternating petal bumps
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const px = col / (gridSize - 1);
+      const py = row / (gridSize - 1);
+      const d = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+
+      if (d > outerR) continue;
+
+      // Ruffled edge: petal bumps around the perimeter
+      if (d > outerR - 0.04) {
+        const angle = Math.atan2(py - cy, px - cx);
+        const petals = 8;
+        const petalAngle = (angle * petals) / (2 * Math.PI);
+        const bump = Math.sin(petalAngle * Math.PI * 2) * 0.03;
+        if (d > outerR - 0.04 + bump) {
+          grid[row][col] = { color: PEONY.bloomMid };
+          continue;
+        }
+      }
+
+      // Mid petals
+      if (d <= midR) {
+        if (d <= centerR) {
+          grid[row][col] = { color: PEONY.center };
+        } else if (d <= innerR) {
+          // Inner ruffles: alternating colors
+          const angle = Math.atan2(py - cy, px - cx);
+          const segment = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 7);
+          grid[row][col] = { color: segment % 2 === 0 ? PEONY.bloomDark : PEONY.bloomMid };
+        } else {
+          // Mid ring: lighter
+          grid[row][col] = { color: PEONY.bloomPale };
+        }
+      } else if (d <= outerR - 0.08) {
+        // Outer ring: alternating pink tones for ruffled look
+        const angle = Math.atan2(py - cy, px - cx);
+        const segment = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 10);
+        grid[row][col] = { color: segment % 2 === 0 ? PEONY.bloomLight : PEONY.bloomMid };
+      } else {
+        grid[row][col] = { color: PEONY.bloomDark };
+      }
+    }
+  }
+
+  // Leaves — two green leaves at base of bloom
+  const leafCy = cy + outerR * 0.7;
+  // Left leaf
+  fillEllipse(grid, cx - 0.15, leafCy + 0.05, 0.12, 0.06, PEONY.leafDark, gridSize);
+  // Right leaf
+  fillEllipse(grid, cx + 0.15, leafCy + 0.05, 0.12, 0.06, PEONY.leafDark, gridSize);
+  // Stem
+  fillRect(grid, cx - 0.02, leafCy + 0.02, cx + 0.02, 0.85, PEONY.leafDark, gridSize);
+
+  return grid;
+}
+
 // ─── Utility ───────────────────────────────────────────────────────────────
 
 /** Barycentric point-in-triangle test. */
@@ -658,6 +740,10 @@ const SUBJECT_REGISTRY: SubjectEntry[] = [
   {
     patterns: [/star/i, /stars/i],
     generator: generateStar,
+  },
+  {
+    patterns: [/peony/i, /bouquet/i, /flower\s+bouquet/i, /pink\s+flower/i],
+    generator: generatePeony,
   },
 ];
 
