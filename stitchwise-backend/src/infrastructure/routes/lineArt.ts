@@ -23,6 +23,38 @@ import {
   renderPatternToPng,
 } from "../../domain/stitch/subjectPatternGenerator";
 
+// ─── AI Prompt Cache ──────────────────────────────────────────────────────────
+// Cache generated images by normalized prompt to avoid duplicate API calls.
+// Max 200 entries (~2 MB); LRU eviction via Map insertion order.
+const promptCache = new Map<string, { imageDataUrl: string; timestamp: number }>();
+const CACHE_MAX_SIZE = 200;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function cacheGet(prompt: string): string | null {
+  const key = prompt.toLowerCase().trim();
+  const entry = promptCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    promptCache.delete(key);
+    return null;
+  }
+  // LRU: delete and re-insert to move to end
+  promptCache.delete(key);
+  promptCache.set(key, entry);
+  return entry.imageDataUrl;
+}
+
+function cacheSet(prompt: string, imageDataUrl: string): void {
+  const key = prompt.toLowerCase().trim();
+  if (promptCache.size >= CACHE_MAX_SIZE) {
+    // Evict oldest (first key in insertion order)
+    const firstKey = promptCache.keys().next().value;
+    if (firstKey) promptCache.delete(firstKey);
+  }
+  promptCache.set(key, { imageDataUrl, timestamp: Date.now() });
+}
+// ─── End Cache ────────────────────────────────────────────────────────────────
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -276,18 +308,49 @@ export function createLineArtRouter(): Router {
         let imageDataUrl: string | null = null;
         let pipelineUsed: string = "unknown";
 
-        // OpenAI DALL-E / gpt-image-1 (sole provider)
-        const dalleResult = await generateImageWithDallE(artPrompt);
-        if (dalleResult?.url) {
-          imageDataUrl = dalleResult.url;
-          pipelineUsed = "dall-e";
+        // ── Cache check: serve identical prompts from memory ──────────────────
+        const cachedUrl = cacheGet(prompt);
+        if (cachedUrl) {
+          console.error(JSON.stringify({
+            event: "generate_art_cache_hit",
+            prompt: prompt,
+          }));
+          res.json({
+            imageDataUrl: cachedUrl,
+            pipeline: "cached",
+          });
+          return;
+        }
+
+        // ── Mock mode: return placeholder for development (no API call) ──────
+        if (process.env.MOCK_AI === "true") {
+          const mockPng = await renderPatternToPng(
+            generateSubjectPattern("rose", DEFAULT_GRID_SIZE)!.grid,
+            DEFAULT_GRID_SIZE,
+          );
+          imageDataUrl = `data:image/png;base64,${mockPng.toString("base64")}`;
+          pipelineUsed = "mock";
+        }
+
+        // ── OpenAI gpt-image-1 (sole provider, no fallback loop) ────────────
+        if (!imageDataUrl) {
+          const dalleResult = await generateImageWithDallE(artPrompt);
+          if (dalleResult?.url) {
+            imageDataUrl = dalleResult.url;
+            pipelineUsed = "dall-e";
+          }
         }
 
         if (!imageDataUrl) {
           res.status(500).json({
-            error: "AI art generation failed. All pipelines returned no image.",
+            error: "AI art generation failed. No image returned.",
           });
           return;
+        }
+
+        // Cache successful generation for future identical prompts
+        if (pipelineUsed !== "mock") {
+          cacheSet(prompt, imageDataUrl);
         }
 
         console.error(JSON.stringify({

@@ -57,55 +57,48 @@ export async function generateImageWithDallE(
     ? `${prompt}, ${styleHints}`
     : `${prompt}, ${defaultStyle}`;
 
-  // Try model names in order: gpt-image-1 primary (this key has access), then dall-e-3
-  const models = ["gpt-image-1", "dall-e-3"];
-  let lastError: string | null = null;
+  // Single model — gpt-image-1 (no fallback loop to avoid wasted credits)
+  const model = "gpt-image-1";
 
-  for (const model of models) {
-    try {
+  try {
+    console.error(JSON.stringify({
+      event: "openai_image_request",
+      model,
+      originalPrompt: prompt,
+    }));
+
+    const response = await client.images.generate({
+      model,
+      prompt: enhancedPrompt,
+      n: 1,
+      size: "1024x1024",
+    });
+
+    const imageUrl = response.data?.[0]?.url;
+    if (!imageUrl) {
       console.error(JSON.stringify({
-        event: "openai_image_request",
+        event: "openai_empty_response",
         model,
-        originalPrompt: prompt,
       }));
-
-      // Use URL response (b64_json is deprecated for newer models)
-      const response = await client.images.generate({
-        model,
-        prompt: enhancedPrompt,
-        n: 1,
-        size: "1024x1024",
-      });
-
-      const imageUrl = response.data?.[0]?.url;
-      if (!imageUrl) continue;
-
-      // Download the image
-      const dlResponse = await axios.get(imageUrl, {
-        responseType: "arraybuffer",
-        timeout: 30_000,
-      });
-      const buffer = Buffer.from(dlResponse.data);
-
-      return { url: imageUrl, buffer };
-    } catch (err: any) {
-      lastError = err?.message || String(err);
-      const errorBody = err?.response?.data || err?.error || 'no details';
-      console.error(JSON.stringify({
-        event: "openai_model_error",
-        model,
-        error: lastError,
-        details: String(errorBody).substring(0, 300),
-      }));
-      // Continue to next model
+      return null;
     }
-  }
 
-  console.error(JSON.stringify({
-    event: "openai_all_models_failed",
-    error: lastError,
-  }));
-  return null;
+    const dlResponse = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+      timeout: 30_000,
+    });
+    const buffer = Buffer.from(dlResponse.data);
+
+    return { url: imageUrl, buffer };
+  } catch (err: any) {
+    console.error(JSON.stringify({
+      event: "openai_model_error",
+      model,
+      error: err?.message || String(err),
+      details: String(err?.response?.data || err?.error || '').substring(0, 300),
+    }));
+    return null;
+  }
 }
 
 /**
