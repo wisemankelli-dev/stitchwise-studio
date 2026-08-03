@@ -138,6 +138,85 @@ describe("generateSubjectPattern", () => {
     });
   });
 
+  describe("butterfly", () => {
+    it("generates a valid grid for 'butterfly' prompt", () => {
+      const result = generateSubjectPattern("butterfly", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("produces symmetrical wings", () => {
+      const result = generateSubjectPattern("butterfly", 100);
+      expect(result).not.toBeNull();
+      const grid = result!.grid;
+      const mid = Math.floor(result!.gridSize / 2);
+      let symmetricCount = 0;
+      let totalNonBg = 0;
+      for (let r = 0; r < result!.gridSize; r++) {
+        for (let c = 0; c < mid; c++) {
+          const left = grid[r][c];
+          const right = grid[r][result!.gridSize - 1 - c];
+          if (left.color !== "#f5f0e8" || right.color !== "#f5f0e8") {
+            totalNonBg++;
+            if (left.color === right.color) symmetricCount++;
+          }
+        }
+      }
+      const ratio = totalNonBg > 0 ? symmetricCount / totalNonBg : 0;
+      expect(ratio).toBeGreaterThan(0.7);
+    });
+  });
+
+  describe("rose", () => {
+    it("generates a valid grid for 'rose' prompt", () => {
+      const result = generateSubjectPattern("rose", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("contains red/pink tones", () => {
+      const result = generateSubjectPattern("rose", 100);
+      expect(result).not.toBeNull();
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasRose = hexes.some((h) =>
+        h === "#cc2244" || h === "#e84060" || h === "#ff6080"
+      );
+      expect(hasRose).toBe(true);
+    });
+  });
+
+  describe("heart", () => {
+    it("generates a valid grid for 'heart' prompt", () => {
+      const result = generateSubjectPattern("heart", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("contains red tones", () => {
+      const result = generateSubjectPattern("heart", 100);
+      expect(result).not.toBeNull();
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasRed = hexes.some((h) => h === "#e8303d");
+      expect(hasRed).toBe(true);
+    });
+  });
+
+  describe("star", () => {
+    it("generates a valid grid for 'star' prompt", () => {
+      const result = generateSubjectPattern("star", 100);
+      expect(result).not.toBeNull();
+      expect(validateGrid(result!.grid).valid).toBe(true);
+    });
+
+    it("contains gold tones", () => {
+      const result = generateSubjectPattern("star", 100);
+      expect(result).not.toBeNull();
+      const hexes = result!.dmcColors.map((c) => c.hex);
+      const hasGold = hexes.some((h) => h === "#ffd700");
+      expect(hasGold).toBe(true);
+    });
+  });
+
   describe("non-matching prompts", () => {
     it("returns null for 'dragon' prompt", () => {
       const result = generateSubjectPattern("dragon", 100);
@@ -151,11 +230,6 @@ describe("generateSubjectPattern", () => {
 
     it("returns null for unrelated prompt", () => {
       const result = generateSubjectPattern("a castle on a hill", 100);
-      expect(result).toBeNull();
-    });
-
-    it("returns null for 'butterfly' (not lunar moth)", () => {
-      const result = generateSubjectPattern("butterfly", 100);
       expect(result).toBeNull();
     });
   });
@@ -177,8 +251,10 @@ describe("generateSubjectPattern", () => {
       expect(result!.gridSize).toBe(100);
     });
 
+    const ALL_PROMPTS = ["sunflower", "bird on branch", "lunar moth", "butterfly", "rose", "heart", "star"];
+
     it("all subjects work at size 50", () => {
-      for (const prompt of ["sunflower", "bird on branch", "lunar moth"]) {
+      for (const prompt of ALL_PROMPTS) {
         const result = generateSubjectPattern(prompt, 50);
         expect(result).not.toBeNull();
         expect(validateGrid(result!.grid).valid).toBe(true);
@@ -186,7 +262,7 @@ describe("generateSubjectPattern", () => {
     });
 
     it("all subjects work at size 200", () => {
-      for (const prompt of ["sunflower", "bird on branch", "lunar moth"]) {
+      for (const prompt of ALL_PROMPTS) {
         const result = generateSubjectPattern(prompt, 200);
         expect(result).not.toBeNull();
         expect(validateGrid(result!.grid).valid).toBe(true);
@@ -274,6 +350,26 @@ describe("generateSubjectPattern", () => {
     it("returns false for similar but unmatched prompt ('night moth')", () => {
       expect(isKnownSubject("night moth")).toBe(false);
     });
+
+    it("returns true for 'butterfly'", () => {
+      expect(isKnownSubject("butterfly")).toBe(true);
+    });
+
+    it("returns true for 'rose'", () => {
+      expect(isKnownSubject("rose")).toBe(true);
+    });
+
+    it("returns true for 'heart'", () => {
+      expect(isKnownSubject("heart")).toBe(true);
+    });
+
+    it("returns true for 'star'", () => {
+      expect(isKnownSubject("star")).toBe(true);
+    });
+
+    it("returns true for 'stars' (plural)", () => {
+      expect(isKnownSubject("stars")).toBe(true);
+    });
   });
 
   describe("renderPatternToPng", () => {
@@ -317,6 +413,34 @@ describe("generateSubjectPattern", () => {
 
     it("handles lunar moth", async () => {
       const pattern = generateSubjectPattern("lunar moth", 75);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("handles butterfly", async () => {
+      const pattern = generateSubjectPattern("butterfly", 50);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("handles rose", async () => {
+      const pattern = generateSubjectPattern("rose", 100);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("handles heart", async () => {
+      const pattern = generateSubjectPattern("heart", 75);
+      const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
+      expect(Buffer.isBuffer(png)).toBe(true);
+      expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
+    });
+
+    it("handles star", async () => {
+      const pattern = generateSubjectPattern("star", 150);
       const png = await renderPatternToPng(pattern!.grid, pattern!.gridSize);
       expect(Buffer.isBuffer(png)).toBe(true);
       expect(png.slice(0, 4).toString("hex")).toBe("89504e47");
