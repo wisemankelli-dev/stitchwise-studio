@@ -443,33 +443,56 @@ function generateButterfly(gridSize: number): StitchGrid {
   return grid;
 }
 
-/** Generate a rose stitch grid. */
+/**
+ * Generate a rose stitch grid.
+ *
+ * Draws layered petals in rings around a dark center, using staggered
+ * angles and overlapping shapes so each ring reads as distinct petals
+ * rather than a flat circle.
+ */
 function generateRose(gridSize: number): StitchGrid {
   const grid = createEmptyGrid(gridSize, gridSize, ROSE.background);
   const cx = 0.5;
   const cy = 0.42;
 
-  // Stem
+  // Stem — thin vertical rectangle
   fillRect(grid, 0.48, 0.60, 0.52, 0.92, ROSE.stem, gridSize);
 
-  // Leaves
-  fillEllipse(grid, 0.38, 0.70, 0.10, 0.04, ROSE.leaf, gridSize);
-  fillEllipse(grid, 0.62, 0.76, 0.10, 0.04, ROSE.leaf, gridSize);
+  // Leaves — angled ellipses flanking the stem
+  fillEllipse(grid, 0.32, 0.66, 0.10, 0.05, ROSE.leaf, gridSize);
+  fillEllipse(grid, 0.68, 0.72, 0.10, 0.05, ROSE.leaf, gridSize);
 
-  // Petal layers — concentric circles getting smaller and lighter
-  fillCircle(grid, cx, cy, 0.22, ROSE.outerPetal, gridSize);
-  fillCircle(grid, cx, cy, 0.17, ROSE.midPetal, gridSize);
-  fillCircle(grid, cx, cy, 0.12, ROSE.innerPetal, gridSize);
-  fillCircle(grid, cx, cy, 0.06, ROSE.center, gridSize);
+  // ── Petal rings (outermost first so inner layers paint on top) ──────────
 
-  // Spiral detail — small arcs using fillCircle offsets
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2;
-    const r = 0.10;
-    const sx = cx + Math.cos(angle) * r;
-    const sy = cy + Math.sin(angle) * r;
-    fillCircle(grid, sx, sy, 0.03, i % 2 === 0 ? ROSE.center : ROSE.midPetal, gridSize);
+  // Outer ring — 6 large petals spaced around the bloom
+  const outerPetalCount = 6;
+  for (let i = 0; i < outerPetalCount; i++) {
+    const a = (i / outerPetalCount) * Math.PI * 2 + 0.12; // slight rotation
+    const r = 0.14;
+    // Petal body — 2 overlapping circles along the radial to create a teardrop
+    fillCircle(grid, cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.08, ROSE.outerPetal, gridSize);
+    fillCircle(grid, cx + Math.cos(a) * (r + 0.05), cy + Math.sin(a) * (r + 0.05), 0.05, ROSE.outerPetal, gridSize);
   }
+
+  // Mid-outer ring — 7 petals, staggered so they sit between the outer petals
+  const midOuterCount = 7;
+  for (let i = 0; i < midOuterCount; i++) {
+    const a = (i / midOuterCount) * Math.PI * 2;
+    const r = 0.09;
+    fillCircle(grid, cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.06, ROSE.midPetal, gridSize);
+    fillCircle(grid, cx + Math.cos(a) * (r + 0.03), cy + Math.sin(a) * (r + 0.03), 0.04, ROSE.midPetal, gridSize);
+  }
+
+  // Inner ring — 5 tightly packed petals around the center
+  const innerCount = 5;
+  for (let i = 0; i < innerCount; i++) {
+    const a = (i / innerCount) * Math.PI * 2 + 0.3;
+    const r = 0.05;
+    fillCircle(grid, cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.05, ROSE.innerPetal, gridSize);
+  }
+
+  // Dark center
+  fillCircle(grid, cx, cy, 0.04, ROSE.center, gridSize);
 
   return grid;
 }
