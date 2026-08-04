@@ -1026,7 +1026,7 @@ class ApiClient {
    */
   async generateCollageFromText(
     prompt: string,
-    options?: { gridSize?: number }
+    options?: { gridSize?: number; blockSize?: number }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
       try {
@@ -1925,6 +1925,8 @@ export interface AICollageResponse {
   promptUsed?: string;
   processingTimeMs: number;
   totalLayers: number;
+  artworkUrl?: string;
+  blockSize?: number;
 }
 
 // ── Collage Persistence ──────────────────────────────
