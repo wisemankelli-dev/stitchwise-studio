@@ -290,12 +290,10 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(100);
       setProgressPhase('Design generated!');
       setAiResult(result);
-      // Show artwork preview if artworkUrl is available (two-phase flow)
-      if (result.artworkUrl) {
-        setShowArtworkPreview(true);
-      } else if (result.layers) {
-        // Fallback: apply layers directly (backend may not support two-phase yet)
-        // Use result directly — React hasn't flushed setAiResult yet
+      // Apply layers directly to canvas — single-phase, no modal
+      if (result.layers && result.layers.length > 0) {
+        console.log("COLLAGE_FIX: applying", result.layers.length, "layers to canvas");
+        (window as any).__collageLayersApplied = result.layers.length;
         if (replaceMode === 'replace') {
           setLayers(result.layers);
           setSelectedLayerId(result.layers[result.layers.length - 1]?.id || 'bg');
@@ -312,8 +310,10 @@ export const CollageStudio: React.FC = () => {
           setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
         }
       }
+      // Artwork preview removed — single-phase flow, layers already on canvas
     } catch (err: any) {
       clearInterval(interval);
+      console.error("COLLAGE_FIX: generation failed:", err.message || err);
       setAiError(err.message || 'AI collage generation failed.');
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
@@ -440,11 +440,10 @@ export const CollageStudio: React.FC = () => {
                 </div>
                 {/* Layers count */}
                 <span className="text-[10px] text-blush-500 font-semibold">{layers.length} layers</span>
-                {/* Apply to Canvas (when AI result active) */}
                 {aiResult && !isGenerating && (
-                  <button onClick={() => aiResult.artworkUrl ? setShowArtworkPreview(true) : applyAiResult()} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Apply
-                  </button>
+                  <span className="p-1.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Applied
+                  </span>
                 )}
                 {/* AI Toggle */}
                 <button
@@ -961,59 +960,6 @@ export const CollageStudio: React.FC = () => {
       </div>
 
 
-      {/* Artwork Preview Modal */}
-      {showArtworkPreview && aiResult?.artworkUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden border-4 border-blush-100" style={{ boxShadow: '0 0 0 4px #fce7f3, 0 0 0 8px #fbcfe8, 0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blush-500 to-purple-500 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-white" />
-                <span className="text-white font-bold text-sm">AI Artwork Preview</span>
-              </div>
-              <button onClick={() => setShowArtworkPreview(false)} className="text-white/80 hover:text-white">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            {/* Artwork Image */}
-            <div className="p-6 bg-gradient-to-b from-blush-50 to-white">
-              <div className="relative rounded-2xl overflow-hidden border-2 border-blush-200 bg-white" style={{ boxShadow: 'inset 0 0 0 3px #fce7f3, 0 4px 12px rgba(244,114,182,0.15)' }}>
-                {/* Stitched border effect */}
-                <div className="absolute inset-0 pointer-events-none z-10" style={{
-                  backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 9px, rgba(244,114,182,0.12) 9px, rgba(244,114,182,0.12) 10px), repeating-linear-gradient(90deg, transparent, transparent 9px, rgba(244,114,182,0.12) 9px, rgba(244,114,182,0.12) 10px)',
-                }} />
-                <img
-                  src={aiResult.artworkUrl}
-                  alt="AI generated collage artwork"
-                  className="w-full object-contain max-h-[50vh]"
-                  style={{ imageRendering: 'auto' }}
-                />
-              </div>
-              {/* Caption */}
-              <p className="text-center text-xs text-slate-500 mt-3 italic">
-                "{promptInput}" — {aiResult.totalLayers - 1} fabric layers detected
-              </p>
-            </div>
-            {/* Actions */}
-            <div className="px-6 py-4 bg-blush-50/50 border-t border-blush-100 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setShowArtworkPreview(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-white border border-slate-200 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConvertToQuilt}
-                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group"
-              >
-                <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
-                Convert to Quilt
-                <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Share to Community Modal */}
       {showShareModal && (
         <ShareToCommunityModal
