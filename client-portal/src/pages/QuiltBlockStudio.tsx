@@ -392,6 +392,14 @@ export const QuiltBlockStudio: React.FC = () => {
                   <input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-blush-500 rounded" />
                   Snap
                 </label>
+                {/* Reset */}
+                <button
+                  onClick={() => { setShapes(DEFAULT_SHAPES); setSelectedShapeId('s4'); }}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
+                  title="Reset block and start over"
+                >
+                  <Trash2 className="h-3 w-3" /> Reset
+                </button>
                 {/* Shapes count + Add */}
                 <span className="text-[10px] text-blush-500 font-semibold">{shapes.length} shapes</span>
                 <button onClick={addShape} className="p-1 rounded bg-blush-50 text-blush-600 hover:bg-blush-100 border border-blush-100">

@@ -296,27 +296,15 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(100);
       setProgressPhase('Design generated!');
       setAiResult(result);
-      // Apply layers directly to canvas — single-phase, no modal
-      if (result.layers && result.layers.length > 0) {
-        console.log("COLLAGE_FIX: applying", result.layers.length, "layers to canvas");
-        (window as any).__collageLayersApplied = result.layers.length;
-        if (replaceMode === 'replace') {
-          setLayers(result.layers);
-          setSelectedLayerId(result.layers[result.layers.length - 1]?.id || 'bg');
-        } else {
-          const maxZ = layers.reduce((max, l) => Math.max(max, l.zIndex), 0);
-          const newLayers = result.layers.filter((l: any) => l.id !== 'bg').map((l: any) => ({
-            ...l,
-            id: `ai-${Date.now()}-${l.id}`,
-            zIndex: maxZ + l.zIndex + 1,
-            x: l.x + 20,
-            y: l.y + 20,
-          }));
-          setLayers(prev => [...prev, ...newLayers]);
-          setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
-        }
+      // Show artwork preview — user clicks "Convert to Quilt" to apply layers
+      if (result.artworkUrl) {
+        setShowArtworkPreview(true);
+      } else if (result.layers && result.layers.length > 0) {
+        // No artwork URL — apply layers directly as fallback
+        console.log("COLLAGE_FIX: direct apply", result.layers.length, "layers (no artwork)");
+        setLayers(result.layers);
+        setSelectedLayerId(result.layers[result.layers.length - 1]?.id || 'bg');
       }
-      // Artwork preview removed — single-phase flow, layers already on canvas
     } catch (err: any) {
       clearInterval(interval);
       console.error("COLLAGE_FIX: generation failed:", err.message || err);
@@ -447,10 +435,18 @@ export const CollageStudio: React.FC = () => {
                 {/* Layers count */}
                 <span className="text-[10px] text-blush-500 font-semibold">{layers.length} layers</span>
                 {aiResult && !isGenerating && (
-                  <span className="p-1.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Applied
-                  </span>
+                  <button onClick={() => aiResult.artworkUrl ? setShowArtworkPreview(true) : applyAiResult()} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Apply
+                  </button>
                 )}
+                {/* Reset */}
+                <button
+                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId('fabric-3'); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
+                  title="Reset canvas and start over"
+                >
+                  <Trash2 className="h-3 w-3" /> Reset
+                </button>
                 {/* AI Toggle */}
                 <button
                   onClick={() => setShowAiBar(!showAiBar)}
@@ -820,10 +816,10 @@ export const CollageStudio: React.FC = () => {
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                   <div>
                     <p className="text-[11px] text-emerald-800">
-                      <strong>Success!</strong> {aiResult.totalLayers} layers applied to canvas.
+                      <strong>Success!</strong> {aiResult.totalLayers} fabric layers detected.
                     </p>
                     <p className="text-[10px] text-emerald-600 mt-1">
-                      ✓ Canvas updated — scroll to see your quilt design
+                      {aiResult.artworkUrl ? 'Preview the artwork, then click "Convert to Quilt" to see your design.' : 'Click "Apply" above to place layers on the canvas.'}
                     </p>
                   </div>
                 </div>
@@ -971,6 +967,50 @@ export const CollageStudio: React.FC = () => {
       </div>
 
 
+      {/* Artwork Preview Modal */}
+      {showArtworkPreview && aiResult?.artworkUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden border-4 border-blush-100" style={{ boxShadow: '0 0 0 4px #fce7f3, 0 0 0 8px #fbcfe8, 0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div className="bg-gradient-to-r from-blush-500 to-purple-500 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-white" />
+                <span className="text-white font-bold text-sm">AI Artwork Preview</span>
+              </div>
+              <button onClick={() => setShowArtworkPreview(false)} className="text-white/80 hover:text-white">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-6 bg-gradient-to-b from-blush-50 to-white">
+              <div className="relative rounded-2xl overflow-hidden border-2 border-blush-200 bg-white" style={{ boxShadow: 'inset 0 0 0 3px #fce7f3, 0 4px 12px rgba(244,114,182,0.15)' }}>
+                <img
+                  src={aiResult.artworkUrl}
+                  alt="AI generated collage artwork"
+                  className="w-full object-contain max-h-[50vh]"
+                />
+              </div>
+              <p className="text-center text-xs text-slate-500 mt-3 italic">
+                "{promptInput}" — {aiResult.totalLayers - 1} fabric layers detected
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-blush-50/50 border-t border-blush-100 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowArtworkPreview(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-white border border-slate-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConvertToQuilt}
+                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group"
+              >
+                <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
+                Convert to Quilt
+                <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Share to Community Modal */}
       {showShareModal && (
         <ShareToCommunityModal
