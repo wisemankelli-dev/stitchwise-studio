@@ -165,6 +165,21 @@ export async function imageBufferToCollageLayers(
   const layers: CollageLayer[] = [];
   const fabricColorCount = new Map<string, { hex: string; name: string; count: number }>();
 
+  // Always start with a white base fabric layer
+  layers.push({
+    id: 'bg',
+    name: 'Base Fabric',
+    color: '#ffffff',
+    pattern: 'solid',
+    x: 0,
+    y: 0,
+    width: canvasWidth,
+    height: canvasHeight,
+    rotation: 0,
+    opacity: 1,
+    zIndex: 0,
+  });
+
   sortedRegions.forEach((region, index) => {
     // Find bounding box of cells
     const rows = region.cells.map((c) => c.row);
@@ -196,7 +211,7 @@ export async function imageBufferToCollageLayers(
       height: Math.round(h * 10) / 10,
       rotation: 0,
       opacity: 1,
-      zIndex: index,
+      zIndex: index + 1,
     });
 
     // Track color usage
@@ -333,11 +348,11 @@ function generateLayersFromPrompt(prompt: string): CollageLayer[] {
 
   const layers: CollageLayer[] = [];
 
-  // Background base layer
+  // Background base layer — always white
   layers.push({
-    id: uuidv4(),
+    id: 'bg',
     name: "Base Fabric",
-    color: colors[0].hex,
+    color: "#ffffff",
     pattern: "solid",
     x: 100,
     y: 100,

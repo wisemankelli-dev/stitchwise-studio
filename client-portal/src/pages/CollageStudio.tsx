@@ -28,12 +28,7 @@ const FABRIC_COLORS = [
   '#c4b5fd', '#fca5a5', '#d9f99d', '#fed7aa', '#e2e8f0',
 ];
 
-const DEFAULT_LAYERS: FabricLayer[] = [
-  { id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
-  { id: 'fabric-1', name: 'Petal Shape', color: '#f9a8d4', pattern: 'polka', x: 150, y: 130, width: 120, height: 100, rotation: 15, opacity: 0.9, zIndex: 1 },
-  { id: 'fabric-2', name: 'Leaf Accent', color: '#86efac', pattern: 'stripe', x: 280, y: 180, width: 80, height: 60, rotation: -10, opacity: 0.8, zIndex: 2 },
-  { id: 'fabric-3', name: 'Center Bloom', color: '#ec4899', pattern: 'solid', x: 200, y: 160, width: 60, height: 60, rotation: 0, opacity: 1, zIndex: 3 },
-];
+const DEFAULT_LAYERS: FabricLayer[] = [];
 
 const CANVAS_WIDTH = 500;
 const CANVAS_HEIGHT = 500;
@@ -49,7 +44,7 @@ const TOOLS: { id: CollageTool; icon: React.ReactNode; label: string }[] = [
 
 export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
-  const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
+  const [selectedLayerId, setSelectedLayerId] = useState<string>('');
   const [zoom, setZoom] = useState(1);
 
   // AI Generation state
@@ -441,7 +436,7 @@ export const CollageStudio: React.FC = () => {
                 )}
                 {/* Reset */}
                 <button
-                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId('fabric-3'); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
+                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId(''); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
                   className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
                   title="Reset canvas and start over"
                 >
