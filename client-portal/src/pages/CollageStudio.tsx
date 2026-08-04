@@ -35,8 +35,12 @@ const DEFAULT_LAYERS: FabricLayer[] = [
   { id: 'fabric-3', name: 'Center Bloom', color: '#ec4899', pattern: 'solid', x: 200, y: 160, width: 60, height: 60, rotation: 0, opacity: 1, zIndex: 3 },
 ];
 
-const CANVAS_WIDTH = 500;
-const CANVAS_HEIGHT = 500;
+const getCanvasSize = (bs: number) => {
+    if (bs <= 8) return { width: 400, height: 400 };
+    if (bs <= 12) return { width: 500, height: 500 };
+    if (bs <= 18) return { width: 600, height: 600 };
+    return { width: 700, height: 700 };
+  };
 
 const TOOLS: { id: CollageTool; icon: React.ReactNode; label: string }[] = [
   { id: 'select', icon: <MousePointer2 className="h-3.5 w-3.5" />, label: 'Select' },
@@ -181,16 +185,17 @@ export const CollageStudio: React.FC = () => {
   };
 
 
-  // Canvas height based on block size (for collage generation)
-  const getCanvasHeight = () => {
-    if (blockSize <= 8) return 400;
-    if (blockSize <= 12) return 500;
-    if (blockSize <= 18) return 600;
-    return 700;
-  };
-  const handleConvertToQuilt = () => {
+  // Canvas size getter (kept for backward compatibility in JSX)
+  const getCanvasHeight = () => getCanvasSize(blockSize).height;
+  const [isConvertingToQuilt, setIsConvertingToQuilt] = useState(false);
+  const handleConvertToQuilt = async () => {
+    setIsConvertingToQuilt(true);
+    // Deliberate reveal: brief pause then fade transition
+    await new Promise(resolve => setTimeout(resolve, 600));
     setShowArtworkPreview(false);
     applyAiResult();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    setIsConvertingToQuilt(false);
   };
   const handleExportPng = async () => {
     if (!canvasRef.current) return;
@@ -247,11 +252,12 @@ export const CollageStudio: React.FC = () => {
         const source = layers.find(l => l.id === layerId);
         if (!source) return;
         // Mirror position across center
-        const mirroredX = CANVAS_WIDTH - source.x - source.width;
-        const mirroredY = CANVAS_HEIGHT - source.y - source.height;
+        const canvas = getCanvasSize(blockSize);
+        const mirroredX = canvas.width - source.x - source.width;
+        const mirroredY = canvas.height - source.y - source.height;
         updateLayer(layerId, {
-          x: Math.max(0, Math.min(CANVAS_WIDTH - source.width, mirroredX)),
-          y: Math.max(0, Math.min(CANVAS_HEIGHT - source.height, mirroredY)),
+          x: Math.max(0, Math.min(canvas.width - source.width, mirroredX)),
+          y: Math.max(0, Math.min(canvas.height - source.height, mirroredY)),
           rotation: -source.rotation,
         });
         break;
@@ -986,11 +992,21 @@ export const CollageStudio: React.FC = () => {
               </button>
               <button
                 onClick={handleConvertToQuilt}
-                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group"
+                disabled={isConvertingToQuilt}
+                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group disabled:opacity-80 disabled:cursor-wait"
               >
-                <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
-                Convert to Quilt
-                <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                {isConvertingToQuilt ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path fill="currentColor" className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Converting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
+                    Convert to Quilt
+                    <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                  </>
+                )}
               </button>
             </div>
           </div>

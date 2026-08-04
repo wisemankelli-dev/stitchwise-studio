@@ -1036,7 +1036,8 @@ class ApiClient {
           body: JSON.stringify({ prompt, ...options })
         });
         if (!response.ok) throw new Error('AI collage generation failed');
-        return await response.json();
+        const json = await response.json();
+        return json.data ?? json;
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
