@@ -144,11 +144,20 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
         const fabricInches = (gridSize || DEFAULT_GRID_SIZE) / fc;
 
         // ── Priority 0: Procedural subject pattern (no AI) ──────────────────
-        // Fast path for known subjects that render with mathematical shapes.
-        const proceduralPattern = generateSubjectPattern(
-          prompt,
-          gridSize || DEFAULT_GRID_SIZE,
-        );
+        // Fast path is intentionally limited to bare subject names. A prompt
+        // such as "a yellow sunflower" contains a creative qualifier and
+        // must reach the image model so the preview reflects the user's idea.
+        const proceduralSubjectNames = new Set([
+          "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
+          "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
+          "peony", "bouquet", "flower bouquet", "pink flower",
+        ]);
+        const normalizedPrompt = prompt.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").replace(/\\s+/g, " ").trim();
+        const promptWithoutArticles = normalizedPrompt.replace(/^(?:a|an|the)\\s+/, "");
+        const useProcedural = proceduralSubjectNames.has(promptWithoutArticles);
+        const proceduralPattern = useProcedural
+          ? generateSubjectPattern(prompt, gridSize || DEFAULT_GRID_SIZE)
+          : null;
         if (proceduralPattern) {
           console.error(JSON.stringify({
             event: "procedural_pattern_generated",
@@ -241,24 +250,14 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
             return;
           }
 
-          // A single needlepoint artwork — never a repeating pattern.
-          // One recognizable subject centered, filling the frame.
-          const styleHints = [
-            "a single needlepoint artwork, one complete composition",
-            "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
-            "hand-drawn by a professional needlepoint artist, heirloom quality",
-            "one clear subject centered and filling the entire frame",
-            "clean well-defined shapes with smooth color regions ideal for thread conversion",
-            "elegant balanced composition, thoughtful use of negative space",
-            "not clip art, not flat vector, not AI-generated style, not photorealistic",
-          ].join(", ");
-          const framingHints = "white background, no borders, no frames, no text, no labels";
-          const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
-
+          // Pass the user's prompt unchanged. The image service owns the
+          // style defaults (flat illustration and clean regions suitable for
+          // thread conversion); adding needlepoint wording here conflicts
+          // with those defaults and distorts descriptive prompts.
           console.error(JSON.stringify({
             event: "ai_prompt_sent",
             originalPrompt: prompt,
-            finalPrompt: enhancedPrompt,
+            finalPrompt: prompt,
           }));
 
           // ── Provider chain: Leonardo → DALL-E → Stability ────────────
@@ -267,20 +266,20 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
           // Stability is last resort — bills even on failures (credit burn risk).
 
           // Step 1: Try Leonardo AI (primary)
-          const leonardoResult = await generateImageFromText(enhancedPrompt, negativePrompt, userId);
+          const leonardoResult = await generateImageFromText(prompt, negativePrompt, userId);
 
           if (leonardoResult?.url) {
             previewUrl = leonardoResult.url;
             pattern = await imageUrlToStitchGrid(leonardoResult.url, gridSize, maxColors);
           } else {
             // Step 2: Fall back to DALL-E
-            const dalleResult = await generateImageWithDallE(enhancedPrompt);
+            const dalleResult = await generateImageWithDallE(prompt);
             if (dalleResult?.buffer) {
               previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
               pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
             } else {
               // Step 3: Last resort — Stability AI
-              const stabilityResult = await generateImageWithStability(enhancedPrompt, negativePrompt, userId);
+              const stabilityResult = await generateImageWithStability(prompt, negativePrompt, userId);
               if (stabilityResult?.buffer) {
                 previewUrl = `data:image/png;base64,${stabilityResult.buffer.toString("base64")}`;
                 pattern = await imageBufferToStitchGrid(stabilityResult.buffer, gridSize, maxColors);
