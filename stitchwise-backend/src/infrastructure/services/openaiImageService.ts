@@ -60,7 +60,7 @@ export async function generateImageWithDallE(
     : `${prompt}, ${defaultStyle}`;
 
   // Try model names in order: gpt-image-1 primary (this key has access), then dall-e-3
-  const models = ["gpt-image-1", "dall-e-3"];
+  const models = ["gpt-image-1", "gpt-image-2"];
   let lastError: string | null = null;
 
   for (const model of models) {
@@ -71,23 +71,32 @@ export async function generateImageWithDallE(
         originalPrompt: prompt,
       }));
 
-      // Use URL response (b64_json is deprecated for newer models)
+      // Request b64_json — gpt-image-1 returns base64, not a URL
       const response = await client.images.generate({
         model,
         prompt: enhancedPrompt,
         n: 1,
         size: "1024x1024",
+        response_format: "b64_json",
       });
 
+      let buffer: Buffer;
       const imageUrl = response.data?.[0]?.url;
-      if (!imageUrl) continue;
+      const b64Json = (response.data?.[0] as any)?.b64_json;
 
-      // Download the image
-      const dlResponse = await axios.get(imageUrl, {
-        responseType: "arraybuffer",
-        timeout: 30_000,
-      });
-      const buffer = Buffer.from(dlResponse.data);
+      if (imageUrl) {
+        // Download the image from a URL (dall-e-3 path — kept for compatibility)
+        const dlResponse = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 30_000,
+        });
+        buffer = Buffer.from(dlResponse.data);
+      } else if (b64Json) {
+        // gpt-image-1 / gpt-image-2 return b64_json
+        buffer = Buffer.from(b64Json, "base64");
+      } else {
+        continue;
+      }
 
       logAICall({
         timestamp: new Date().toISOString(),
@@ -100,7 +109,10 @@ export async function generateImageWithDallE(
         promptPreview: prompt.slice(0, 100),
       });
 
-      return { url: imageUrl, buffer };
+      // Convert buffer to a data URL for the caller
+      const mimeType = "image/png";
+      const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+      return { url: dataUrl, buffer };
     } catch (err: any) {
       lastError = err?.message || String(err);
       const errorBody = err?.response?.data || err?.error || 'no details';
