@@ -4,7 +4,7 @@ import { api, FabricLayer, AICollageResponse, CollageProject } from '../services
 import html2canvas from 'html2canvas';
 import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
-  RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
+  ArrowLeft, RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
   Flower2, Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
