@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
 import html2canvas from 'html2canvas';
-import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
+import { getFabricStyle } from '../utils/fabricTexture';
 import {
   ArrowLeft, RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
@@ -657,21 +657,28 @@ export const CollageStudio: React.FC = () => {
                             ? 'cursor-move'
                             : 'cursor-default'
                         }`}
-                        style={{
-                          left: layer.x,
-                          top: layer.y,
-                          width: layer.width,
-                          height: layer.height,
-                          transform: `rotate(${layer.rotation}deg)`,
-                          opacity: layer.opacity,
-                          zIndex: layer.zIndex,
-                          backgroundColor: layer.color,
-                          backgroundSize: layer.pattern === 'polka' ? '6px 6px' : layer.pattern === 'stripe' || layer.pattern === 'plaid' ? '' : '',
-                          borderRadius: layer.id === 'bg' ? '0' : '12px',
-                        }}
+                        style={(() => {
+                          const fab = getFabricStyle(layer.pattern, layer.color);
+                          return {
+                            left: layer.x,
+                            top: layer.y,
+                            width: layer.width,
+                            height: layer.height,
+                            transform: `rotate(${layer.rotation}deg)`,
+                            opacity: layer.opacity,
+                            zIndex: layer.zIndex,
+                            backgroundColor: fab.backgroundColor,
+                            backgroundImage: fab.backgroundImage,
+                            backgroundSize: fab.backgroundSize,
+                            boxShadow: fab.boxShadow,
+                            borderRadius: layer.id === 'bg' ? '0' : '3px',
+                            border: layer.id !== 'bg' ? '1px solid rgba(0,0,0,0.08)' : 'none',
+                          };
+                        })()}
                       >
-                        {layer.id !== 'bg' && (
-                          <div className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
+                        {/* Only show name label when this layer is selected */}
+                        {selectedLayerId === layer.id && layer.id !== 'bg' && (
+                          <div className="absolute -top-5 left-0 text-[8px] text-slate-400 font-medium whitespace-nowrap bg-white/90 px-1 py-0.5 rounded shadow-sm opacity-70 pointer-events-none">
                             {layer.name}
                           </div>
                         )}

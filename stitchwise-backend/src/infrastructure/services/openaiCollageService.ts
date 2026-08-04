@@ -111,7 +111,7 @@ export async function imageBufferToCollageLayers(
   imageBuffer: Buffer,
   gridSize: number = 32,
 ): Promise<CollageGenerationResult> {
-  const validSizes = [16, 24, 32, 48, 64];
+  const validSizes = [8, 10, 12, 16, 20, 24, 32, 48, 64];
   const size = validSizes.includes(gridSize) ? gridSize : 32;
 
   // Resize image using sharp
@@ -126,121 +126,111 @@ export async function imageBufferToCollageLayers(
 
   const pixels = new Uint8ClampedArray(data);
 
-  // Extract color regions from the grid
-  // Group adjacent cells by closest fabric color
-  const regionMap = new Map<string, { color: string; name: string; cells: Array<{ row: number; col: number }> }>();
+  // Flood-fill: group adjacent cells by coarse color, creating organic fabric-piece shapes
+  interface CellInfo { color: string; name: string; colorKey: string }
+  const cellGrid: CellInfo[][] = Array.from({ length: size }, () => []);
 
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
       const idx = (row * size + col) * 4;
-      const r = pixels[idx];
-      const g = pixels[idx + 1];
-      const b = pixels[idx + 2];
+      const r = pixels[idx], g = pixels[idx + 1], b = pixels[idx + 2];
       const fabric = closestFabricColor(r, g, b);
-      const key = `${Math.round(r / 24)}:${Math.round(g / 24)}:${Math.round(b / 24)}`;
-      if (regionMap.has(key)) {
-        regionMap.get(key)!.cells.push({ row, col });
-      } else {
-        regionMap.set(key, {
-          color: fabric.hex,
-          name: fabric.name,
-          cells: [{ row, col }],
-        });
+      const colorKey = `${Math.round(r / 64)}:${Math.round(g / 64)}:${Math.round(b / 64)}`;
+      cellGrid[row][col] = { color: fabric.hex, name: fabric.name, colorKey };
+    }
+  }
+
+  const visited: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+  const regions: Array<{ color: string; name: string; cells: Array<{ row: number; col: number }> }> = [];
+
+  const floodFill = (sr: number, sc: number, targetKey: string) => {
+    const cells: Array<{ row: number; col: number }> = [];
+    const stack = [[sr, sc]];
+    visited[sr][sc] = true;
+    while (stack.length > 0) {
+      const [r, c] = stack.pop()!;
+      cells.push({ row: r, col: c });
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < size && nc >= 0 && nc < size && !visited[nr][nc]) {
+          if (cellGrid[nr][nc].colorKey === targetKey) {
+            visited[nr][nc] = true;
+            stack.push([nr, nc]);
+          }
+        }
+      }
+    }
+    return cells;
+  };
+
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      if (!visited[row][col]) {
+        const cell = cellGrid[row][col];
+        const blobCells = floodFill(row, col, cell.colorKey);
+        regions.push({ color: cell.color, name: cell.name, cells: blobCells });
       }
     }
   }
 
-  // Convert regions to fabric layers
-  // Sort by cell count (descending) — largest regions become base layers
-  const sortedRegions = Array.from(regionMap.values()).sort(
-    (a, b) => b.cells.length - a.cells.length,
-  );
-
-  // Calculate canvas dimensions
-  const canvasWidth = 400;
-  const canvasHeight = 400;
-  const cellWidth = canvasWidth / size;
-  const cellHeight = canvasHeight / size;
+  // Convert regions to fabric layers — skip tiny ones, no merging
+  const canvasWidth = 400, canvasHeight = 400;
+  const cellW = canvasWidth / size, cellH = canvasHeight / size;
+  const MIN_CELLS = 6;
 
   const layers: CollageLayer[] = [];
   const fabricColorCount = new Map<string, { hex: string; name: string; count: number }>();
 
-  // Always start with a white base fabric layer
+  // White base
   layers.push({
-    id: 'bg',
-    name: 'Base Fabric',
-    color: '#ffffff',
-    pattern: 'solid',
-    x: 0,
-    y: 0,
-    width: canvasWidth,
-    height: canvasHeight,
-    rotation: 0,
-    opacity: 1,
-    zIndex: 0,
+    id: 'bg', name: 'Base Fabric', color: '#ffffff', pattern: 'solid',
+    x: 0, y: 0, width: canvasWidth, height: canvasHeight,
+    rotation: 0, opacity: 1, zIndex: 0,
   });
 
-  sortedRegions.forEach((region, index) => {
-    // Find bounding box of cells
-    const rows = region.cells.map((c) => c.row);
-    const cols = region.cells.map((c) => c.col);
-    const minRow = Math.min(...rows);
-    const maxRow = Math.max(...rows);
-    const minCol = Math.min(...cols);
-    const maxCol = Math.max(...cols);
+  // Sort largest first so big shapes are behind small details
+  const sorted = regions.sort((a, b) => b.cells.length - a.cells.length);
 
-    // Calculate position and size
-    const x = minCol * cellWidth;
-    const y = minRow * cellHeight;
-    const w = (maxCol - minCol + 1.2) * cellWidth;
-    const h = (maxRow - minRow + 1.2) * cellHeight;
+  sorted.forEach((region, index) => {
+    if (region.cells.length < MIN_CELLS) return;
 
-    // Skip very small regions
-    if (region.cells.length < 2) return;
+    const rows = region.cells.map(c => c.row);
+    const cols = region.cells.map(c => c.col);
+    const x = Math.min(...cols) * cellW;
+    const y = Math.min(...rows) * cellH;
+    const w = (Math.max(...cols) - Math.min(...cols) + 1.2) * cellW;
+    const h = (Math.max(...rows) - Math.min(...rows) + 1.2) * cellH;
 
     const texture = getRandomTexture();
 
     layers.push({
       id: uuidv4(),
-      name: `${region.name} Layer`,
+      name: region.name,
       color: region.color,
       pattern: texture.id,
       x: Math.round(x * 10) / 10,
       y: Math.round(y * 10) / 10,
       width: Math.round(w * 10) / 10,
       height: Math.round(h * 10) / 10,
-      rotation: 0,
-      opacity: 1,
+      rotation: 0, opacity: 1,
       zIndex: index + 1,
     });
 
-    // Track color usage
     const key = region.color;
     if (fabricColorCount.has(key)) {
       fabricColorCount.get(key)!.count++;
     } else {
-      fabricColorCount.set(key, {
-        hex: region.color,
-        name: region.name,
-        count: 1,
-      });
+      fabricColorCount.set(key, { hex: region.color, name: region.name, count: 1 });
     }
   });
 
-  // If no layers were generated (all regions too small), create a default layout
-  if (layers.length === 0) {
-    return generateMockCollageLayout(size);
-  }
-
-  const fabricColors = Array.from(fabricColorCount.values()).sort(
-    (a, b) => b.count - a.count,
-  );
+  if (layers.length <= 1) return generateMockCollageLayout(size);
 
   return {
     layers,
     gridSize: size,
     layerCount: layers.length,
-    fabricColors,
+    fabricColors: Array.from(fabricColorCount.values()).sort((a, b) => b.count - a.count),
   };
 }
 
