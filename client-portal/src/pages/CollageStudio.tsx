@@ -70,6 +70,8 @@ export const CollageStudio: React.FC = () => {
 
   // Save/Load state
   const [showAiBar, setShowAiBar] = useState(true);
+    const [blockSize, setBlockSize] = useState(12); // quilt block size in inches
+  const [showArtworkPreview, setShowArtworkPreview] = useState(false);
 
     const [collageName, setCollageName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -178,6 +180,18 @@ export const CollageStudio: React.FC = () => {
     setSavedProjects(prev => prev.filter(p => p.id !== id));
   };
 
+
+  // Canvas height based on block size (for collage generation)
+  const getCanvasHeight = () => {
+    if (blockSize <= 8) return 400;
+    if (blockSize <= 12) return 500;
+    if (blockSize <= 18) return 600;
+    return 700;
+  };
+  const handleConvertToQuilt = () => {
+    setShowArtworkPreview(false);
+    applyAiResult();
+  };
   const handleExportPng = async () => {
     if (!canvasRef.current) return;
     const canvas = await html2canvas(canvasRef.current, {
@@ -271,11 +285,15 @@ export const CollageStudio: React.FC = () => {
       );
     }, 100);
     try {
-      const result = await api.generateCollageFromText(promptInput);
+      const result = await api.generateCollageFromText(promptInput, { blockSize });
       clearInterval(interval);
       setGeneratorProgress(100);
-      setProgressPhase('Collage complete!');
+      setProgressPhase('Design generated!');
       setAiResult(result);
+      // Show artwork preview if artworkUrl is available (two-phase flow)
+      if (result.artworkUrl) {
+        setShowArtworkPreview(true);
+      }
     } catch (err: any) {
       clearInterval(interval);
       setAiError(err.message || 'AI collage generation failed.');
@@ -406,7 +424,7 @@ export const CollageStudio: React.FC = () => {
                 <span className="text-[10px] text-blush-500 font-semibold">{layers.length} layers</span>
                 {/* Apply to Canvas (when AI result active) */}
                 {aiResult && !isGenerating && (
-                  <button onClick={applyAiResult} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
+                  <button onClick={() => aiResult.artworkUrl ? setShowArtworkPreview(true) : applyAiResult()} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Apply
                   </button>
                 )}
@@ -524,6 +542,20 @@ export const CollageStudio: React.FC = () => {
                 <div className="w-full mb-3 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+                    {/* Block Size Selector */}
+                    <div className="flex items-center gap-1 bg-white rounded-lg border border-purple-200 px-2 py-1.5 shrink-0">
+                      <span className="text-[10px] text-slate-400 font-medium">Block:</span>
+                      <select
+                        value={blockSize}
+                        onChange={(e) => setBlockSize(Number(e.target.value))}
+                        className="text-xs font-semibold text-slate-700 bg-transparent border-none focus:ring-0 cursor-pointer"
+                        disabled={isGenerating}
+                      >
+                        {[6, 8, 10, 12, 16, 18, 20, 24].map(s => (
+                          <option key={s} value={s}>{s}"</option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       type="text"
                       value={promptInput}
@@ -579,7 +611,7 @@ export const CollageStudio: React.FC = () => {
               <div
                 ref={canvasRef}
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
-                style={{ height: '500px' }}
+                style={{ height: `${getCanvasHeight()}px` }}
               >
                 <div
                   className="absolute inset-0"
@@ -764,7 +796,7 @@ export const CollageStudio: React.FC = () => {
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                   <p className="text-[11px] text-emerald-800">
-                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. Click <strong>"Apply to Canvas"</strong> above to use them.
+                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. {aiResult.artworkUrl ? 'Preview your artwork and convert to quilt.' : 'Click <strong>"Apply to Canvas"</strong> above to use them.'}
                   </p>
                 </div>
               )}
@@ -910,6 +942,60 @@ export const CollageStudio: React.FC = () => {
         </div>
       </div>
 
+
+      {/* Artwork Preview Modal */}
+      {showArtworkPreview && aiResult?.artworkUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden border-4 border-blush-100" style={{ boxShadow: '0 0 0 4px #fce7f3, 0 0 0 8px #fbcfe8, 0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blush-500 to-purple-500 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-white" />
+                <span className="text-white font-bold text-sm">AI Artwork Preview</span>
+              </div>
+              <button onClick={() => setShowArtworkPreview(false)} className="text-white/80 hover:text-white">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {/* Artwork Image */}
+            <div className="p-6 bg-gradient-to-b from-blush-50 to-white">
+              <div className="relative rounded-2xl overflow-hidden border-2 border-blush-200 bg-white" style={{ boxShadow: 'inset 0 0 0 3px #fce7f3, 0 4px 12px rgba(244,114,182,0.15)' }}>
+                {/* Stitched border effect */}
+                <div className="absolute inset-0 pointer-events-none z-10" style={{
+                  backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 9px, rgba(244,114,182,0.12) 9px, rgba(244,114,182,0.12) 10px), repeating-linear-gradient(90deg, transparent, transparent 9px, rgba(244,114,182,0.12) 9px, rgba(244,114,182,0.12) 10px)',
+                }} />
+                <img
+                  src={aiResult.artworkUrl}
+                  alt="AI generated collage artwork"
+                  className="w-full object-contain max-h-[50vh]"
+                  style={{ imageRendering: 'auto' }}
+                />
+              </div>
+              {/* Caption */}
+              <p className="text-center text-xs text-slate-500 mt-3 italic">
+                "{promptInput}" — {aiResult.totalLayers - 1} fabric layers detected
+              </p>
+            </div>
+            {/* Actions */}
+            <div className="px-6 py-4 bg-blush-50/50 border-t border-blush-100 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowArtworkPreview(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-white border border-slate-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConvertToQuilt}
+                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group"
+              >
+                <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
+                Convert to Quilt
+                <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Share to Community Modal */}
       {showShareModal && (
         <ShareToCommunityModal
