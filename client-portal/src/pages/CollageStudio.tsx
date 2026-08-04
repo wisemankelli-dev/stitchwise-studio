@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
 import html2canvas from 'html2canvas';
@@ -136,6 +136,12 @@ export const CollageStudio: React.FC = () => {
       setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
     }
   };
+
+  // DEBUG: log layer changes
+  useEffect(() => {
+    console.log("DEBUG_LAYERS: count=", layers.length, "sample=", layers.slice(0, 2).map(l => ({ id: l.id, x: l.x, y: l.y, w: l.width, h: l.height, color: l.color })));
+    (window as any).__debugLayers = layers;
+  }, [layers]);
 
   // Save/Load/Export handlers
   const handleSaveCollage = async () => {
@@ -627,8 +633,8 @@ export const CollageStudio: React.FC = () => {
               </div>{/* Canvas Area */}
               <div
                 ref={canvasRef}
-                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
-                style={{ height: `${getCanvasHeight()}px` }}
+                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden w-full"
+                style={{ height: `${getCanvasHeight()}px`, minWidth: '500px' }}
               >
                 <div
                   className="absolute inset-0"
@@ -812,9 +818,14 @@ export const CollageStudio: React.FC = () => {
               {aiResult && !isGenerating && (
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                  <p className="text-[11px] text-emerald-800">
-                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. {aiResult.artworkUrl ? 'Preview your artwork and convert to quilt.' : 'Click <strong>"Apply to Canvas"</strong> above to use them.'}
-                  </p>
+                  <div>
+                    <p className="text-[11px] text-emerald-800">
+                      <strong>Success!</strong> {aiResult.totalLayers} layers applied to canvas.
+                    </p>
+                    <p className="text-[10px] text-emerald-600 mt-1">
+                      ✓ Canvas updated — scroll to see your quilt design
+                    </p>
+                  </div>
                 </div>
               )}
 
