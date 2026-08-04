@@ -69,7 +69,9 @@ export const CollageStudio: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Save/Load state
-  const [collageName, setCollageName] = useState('');
+  const [showAiBar, setShowAiBar] = useState(true);
+
+    const [collageName, setCollageName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedProjects, setSavedProjects] = useState<CollageProject[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
@@ -338,151 +340,43 @@ export const CollageStudio: React.FC = () => {
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
   return (
-    <div className="min-h-screen bg-floral-soft">
-      {/* Header */}
-      <div className="bg-white border-b border-blush-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link to="/dashboard" className="text-blush-500 hover:text-blush-600 transition-colors">
-                <Flower2 className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <Scissors className="h-5 w-5 text-blush-500 -rotate-45" />
-                  Collage Studio
-                </h1>
-                <p className="text-[10px] text-blush-400">Floral Fabric Collage Designer</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {aiResult && !isGenerating && (
-                <>
-                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
-                    <button
-                      onClick={() => setReplaceMode('replace')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
-                    </button>
-                    <button
-                      onClick={() => setReplaceMode('append')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
-                    </button>
-                  </div>
-                  <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3">
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Apply to Canvas
-                  </button>
-                </>
-              )}
-              {/* Save/Load/Export controls */}
-              <div className="flex items-center gap-2 relative">
-                {/* Name input */}
-                <input
-                  type="text"
-                  value={collageName}
-                  onChange={(e) => setCollageName(e.target.value)}
-                  placeholder="Project name..."
-                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
-                />
-                {/* Save */}
-                <button
-                  onClick={handleSaveCollage}
-                  disabled={isSaving}
-                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
-                >
-                  {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                {/* Load dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={handleLoadProjects}
-                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
-                  >
-                    <FolderOpen className="h-3.5 w-3.5 mr-1" />
-                    Load
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </button>
-                  {showLoadDropdown && (
-                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
-                      {savedProjects.length === 0 ? (
-                        <p className="p-3 text-[11px] text-slate-400 text-center">No saved projects yet</p>
-                      ) : (
-                        savedProjects.map(p => (
-                          <div
-                            key={p.id}
-                            onClick={() => handleLoadCollage(p.id)}
-                            className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
-                          >
-                            <span className="text-xs text-slate-700 truncate flex-1">
-                              {p.name}
-                              <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
-                            </span>
-                            <button
-                              onClick={(e) => handleDeleteCollage(p.id, e)}
-                              className="text-slate-300 hover:text-red-500 p-1"
-                              title="Delete project"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Export */}
-                <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  Export
-                </button>
-                {/* Share */}
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="btn-floral-primary text-xs py-1.5 px-3 bg-purple-500 hover:bg-purple-600"
-                >
-                  <Share2 className="h-3.5 w-3.5 mr-1" />
-                  Share
-                </button>
-              </div>
-              {/* Save message flash */}
-              {saveMessage && (
-                <p className={`text-[10px] px-2 py-0.5 rounded ${saveMessage.startsWith('Save failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                  {saveMessage}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+    <div className="bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden">
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
+        <svg className="w-full h-full"><defs><pattern id="cl-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
+          <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />
+          <circle cx="80" cy="80" r="16" fill="#f472b6" /><circle cx="80" cy="80" r="8" fill="#f9a8d4" />
+          <circle cx="130" cy="30" r="12" fill="#f472b6" /><circle cx="130" cy="130" r="10" fill="#f472b6" />
+        </pattern></defs><rect width="100%" height="100%" fill="url(#cl-floral)" /></svg>
       </div>
-
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left: Canvas (8 cols) */}
-          <div className="lg:col-span-8">
-            <div className="floral-card p-4">
-              {/* Canvas Toolbar */}
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5"><ZoomIn className="h-4 w-4" /></button>
-                  <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
-                  <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
-                  <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+      <div className="max-w-7xl mx-auto relative z-10">
+        <div className="mb-6 flex justify-between items-center">
+          <Link to="/dashboard" className="text-sm font-semibold text-slate-500 hover:text-blush-600 flex items-center gap-1.5 transition-colors">
+            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+          </Link>
+        </div>
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-x-2 rounded-full bg-blush-50/80 backdrop-blur-sm px-4 py-1 text-sm font-semibold leading-6 text-blush-600 ring-1 ring-inset ring-blush-100 mb-4">
+            <Scissors className="h-4 w-4 text-blush-500 -rotate-45" /> Collage Studio
+          </div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 sm:text-5xl">
+            StitchWise <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-400">Collage Quilt Designer</span>
+          </h1>
+          <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design beautiful fabric collage quilts layer by layer.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* LEFT PANEL — Canvas */}
+          <div className="lg:col-span-8 space-y-6">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
+              {/* ===== Merged Header + Toolbar Row ===== */}
+              <div className="w-full flex flex-wrap items-center gap-3 mb-3 border-b border-blush-100 pb-3">
+                {/* Title */}
+                <div className="shrink-0 mr-1">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
+                    <Layers className="h-4 w-4 text-blush-500" /> Collage Canvas
+                  </h3>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-blush-500">
-                  <Grid3X3 className="h-3.5 w-3.5" />
-                  <span>{layers.length} layers</span>
-                </div>
-              </div>
-
-              {/* Editing Tools Toolbar */}
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
-                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                {/* Tool Buttons */}
+                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
                   {TOOLS.map((tool) => (
                     <button
                       key={tool.id}
@@ -490,7 +384,7 @@ export const CollageStudio: React.FC = () => {
                         setActiveTool(tool.id);
                         if (tool.id !== 'mirror') setMirrorEnabled(false);
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
                         activeTool === tool.id
                           ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
                           : 'text-slate-500 hover:text-slate-700'
@@ -502,7 +396,161 @@ export const CollageStudio: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Zoom Controls */}
+                <div className="flex items-center gap-1 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                  <button onClick={() => setZoom(z => Math.max(0.3, z - 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomOut className="h-3.5 w-3.5" /></button>
+                  <span className="text-[10px] font-bold text-slate-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom(z => Math.min(3, z + 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomIn className="h-3.5 w-3.5" /></button>
+                </div>
+                {/* Layers count */}
+                <span className="text-[10px] text-blush-500 font-semibold">{layers.length} layers</span>
+                {/* Apply to Canvas (when AI result active) */}
+                {aiResult && !isGenerating && (
+                  <button onClick={applyAiResult} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Apply
+                  </button>
+                )}
+                {/* AI Toggle */}
+                <button
+                  onClick={() => setShowAiBar(!showAiBar)}
+                  className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                    showAiBar
+                      ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                      : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title="Toggle AI generation"
+                >
+                  <Sparkles className="h-3 w-3" /> AI
+                </button>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <input
+                    type="text"
+                    value={collageName}
+                    onChange={(e) => setCollageName(e.target.value)}
+                    placeholder="Project name..."
+                    className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
+                  />
+                  <button
+                    onClick={handleSaveCollage}
+                    disabled={isSaving}
+                    className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100 disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  </button>
+                  {/* Load dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={handleLoadProjects}
+                      className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100"
+                    >
+                      <FolderOpen className="h-3 w-3" />
+                      <ChevronDown className="h-2.5 w-2.5" />
+                    </button>
+                    {showLoadDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                        {savedProjects.length === 0 ? (
+                          <p className="p-3 text-[11px] text-slate-400 text-center">No saved projects yet</p>
+                        ) : (
+                          savedProjects.map(p => (
+                            <div
+                              key={p.id}
+                              onClick={() => handleLoadCollage(p.id)}
+                              className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                            >
+                              <span className="text-xs text-slate-700 truncate flex-1">
+                                {p.name}
+                                <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                              </span>
+                              <button
+                                onClick={(e) => handleDeleteCollage(p.id, e)}
+                                className="text-slate-300 hover:text-red-500 p-1"
+                                title="Delete project"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={handleExportPng} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
+                    <Download className="h-3 w-3" /> PNG
+                  </button>
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold flex items-center gap-1"
+                  >
+                    <Share2 className="h-3 w-3" /> Share
+                  </button>
+                </div>
+              </div>
+              {/* Save message flash */}
+              {saveMessage && (
+                <div className="w-full mb-3">
+                  <p className={`text-[10px] px-2 py-1 rounded ${saveMessage.startsWith('Save failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                    {saveMessage}
+                  </p>
+                </div>
+              )}
+              {/* ===== Replace/Append Row (when AI result active) ===== */}
+              {aiResult && !isGenerating && (
+                <div className="w-full flex items-center gap-2 mb-3 pb-2 border-b border-blush-100">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Apply Mode:</span>
+                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                    <button
+                      onClick={() => setReplaceMode('replace')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                        replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                      }`}
+                    >
+                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace All
+                    </button>
+                    <button
+                      onClick={() => setReplaceMode('append')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                        replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                      }`}
+                    >
+                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* ===== Collapsible AI Bar ===== */}
+              {showAiBar && (
+                <div className="w-full mb-3 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+                    <input
+                      type="text"
+                      value={promptInput}
+                      onChange={(e) => setPromptInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') triggerTextGeneration({ preventDefault: () => {} } as any); }}
+                      placeholder="Describe your collage design (e.g., 'a floral garden with roses and green leaves')"
+                      className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
+                      disabled={isGenerating}
+                    />
+                    <button
+                      onClick={() => triggerTextGeneration({ preventDefault: () => {} } as any)}
+                      disabled={!promptInput.trim() || isGenerating}
+                      className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0"
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {isGenerating ? (progressPhase + ' ' + generatorProgress + '%') : 'Generate'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* ===== Tool-Specific Controls Row ===== */}
+              <div className="w-full flex items-center justify-between mb-3 pb-2 border-b border-blush-100">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
                   {activeTool === 'mirror' && (
                     <button
                       onClick={() => setMirrorEnabled(!mirrorEnabled)}
@@ -527,9 +575,7 @@ export const CollageStudio: React.FC = () => {
                     <span className="text-[10px] text-slate-500 italic">Cycle colors on click</span>
                   )}
                 </div>
-              </div>
-
-              {/* Canvas Area */}
+              </div>{/* Canvas Area */}
               <div
                 ref={canvasRef}
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
@@ -602,10 +648,11 @@ export const CollageStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* Right: Inspector (4 cols) */}
-          <div className="lg:col-span-4 space-y-6">
+          
+          {/* RIGHT PANEL — Controls */}
+          <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:overflow-y-auto lg:max-h-[calc(100vh-7rem)]">
             {/* AI Generation Panel */}
-            <div className="floral-card p-5">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-blush-500" />
@@ -746,7 +793,7 @@ export const CollageStudio: React.FC = () => {
             </div>
 
             {/* Layers Panel */}
-            <div className="floral-card p-5">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Layers className="h-4 w-4 text-blush-500" />
@@ -786,7 +833,7 @@ export const CollageStudio: React.FC = () => {
 
             {/* Inspector Panel */}
             {selectedLayer && (
-              <div className="floral-card p-5 space-y-4">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Palette className="h-4 w-4 text-blush-500" />
                   {selectedLayer.name}
