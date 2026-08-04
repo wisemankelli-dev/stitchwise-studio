@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { api, QuiltBlockDesign, QuiltBlockShape } from '../services/api';
 import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
-  RotateCcw, ZoomIn, ZoomOut, Grid3X3,
+  ArrowLeft, ZoomIn, ZoomOut, Grid3X3,
   Palette, Download, Save, Trash2, Plus, Loader2,
-  Flower2, Square, Triangle, Minus,
+  Square, Triangle, Minus,
   Grid, LayoutGrid, FolderOpen, ChevronDown, Share2, CheckCircle2
 } from 'lucide-react';
 
