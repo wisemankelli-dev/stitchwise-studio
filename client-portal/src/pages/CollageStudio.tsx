@@ -566,7 +566,7 @@ export const CollageStudio: React.FC = () => {
                         className="text-xs font-semibold text-slate-700 bg-transparent border-none focus:ring-0 cursor-pointer"
                         disabled={isGenerating}
                       >
-                        {[6, 8, 10, 12, 16, 18, 20, 24].map(s => (
+                        {[12, 14, 16, 18, 20, 22, 24].map(s => (
                           <option key={s} value={s}>{s}"</option>
                         ))}
                       </select>
