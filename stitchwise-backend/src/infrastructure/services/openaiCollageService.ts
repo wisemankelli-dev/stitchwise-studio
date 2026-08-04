@@ -51,7 +51,8 @@ function createClient() {
  * Reuses the same approach as the embroidery service.
  */
 export async function generateCollageImage(prompt: string, negativePrompt?: string): Promise<OpenAIGenerationResponse> {
-  const result = await generateImageWithDallE(`fabric collage, quilt design, ${prompt}`, negativePrompt);
+  const artworkPrompt = `beautiful realistic artwork of ${prompt}; fabric collage quilt, thread-painted style, organic fabric shapes, painterly fabric art, realistic fabric portrait`;
+  const result = await generateImageWithDallE(artworkPrompt, negativePrompt);
   return result ? { id: "openai", url: result.url, buffer: result.buffer } : { id: "openai" };
 }
 /**
@@ -136,7 +137,7 @@ export async function imageBufferToCollageLayers(
       const g = pixels[idx + 1];
       const b = pixels[idx + 2];
       const fabric = closestFabricColor(r, g, b);
-      const key = fabric.hex;
+      const key = `${Math.round(r / 24)}:${Math.round(g / 24)}:${Math.round(b / 24)}`;
       if (regionMap.has(key)) {
         regionMap.get(key)!.cells.push({ row, col });
       } else {
@@ -176,8 +177,8 @@ export async function imageBufferToCollageLayers(
     // Calculate position and size
     const x = minCol * cellWidth;
     const y = minRow * cellHeight;
-    const w = (maxCol - minCol + 1) * cellWidth;
-    const h = (maxRow - minRow + 1) * cellHeight;
+    const w = (maxCol - minCol + 1.2) * cellWidth;
+    const h = (maxRow - minRow + 1.2) * cellHeight;
 
     // Skip very small regions
     if (region.cells.length < 2) return;

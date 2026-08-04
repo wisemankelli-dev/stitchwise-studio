@@ -57,6 +57,10 @@ export interface CollageGenerationResult {
   layers: CollageLayer[];
   /** Grid size used for quantization */
   gridSize: number;
+  /** Quilt block size in inches, when supplied by the designer */
+  blockSize?: number;
+  /** Original realistic artwork generated before quilt conversion */
+  artworkUrl?: string;
   /** Total number of layers */
   layerCount: number;
   /** Fabric color usage breakdown */
@@ -101,10 +105,12 @@ export interface ImageToCollageResponse {
 
 // ─── Zod Schemas ────────────────────────────────────────────────────────────
 
+export const COLLAGE_BLOCK_SIZES = [6, 8, 10, 12, 16, 18, 20, 24] as const;
 export const TextToCollageSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
+  blockSize: z.coerce.number().refine((value) => COLLAGE_BLOCK_SIZES.includes(value as typeof COLLAGE_BLOCK_SIZES[number]), "Unsupported block size").optional(),
   gridSize: z
-    .union([z.literal(16), z.literal(24), z.literal(32), z.literal(48), z.literal(64)])
+    .union([z.literal(16), z.literal(24), z.literal(32), z.literal(48), z.literal(64), z.literal(72), z.literal(80), z.literal(96)])
     .optional()
     .default(32),
   negativePrompt: z.string().max(500).optional(),

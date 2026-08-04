@@ -54,28 +54,27 @@ export function createAICollageRouter(): Router {
           });
           return;
         }
-        const { prompt, gridSize, negativePrompt } = parsed.data;
+        const { prompt, gridSize, blockSize, negativePrompt } = parsed.data;
+        const resolvedGridSize = blockSize ? Math.round(blockSize * 4) : gridSize;
 
-        // OpenAI is the sole image provider.
+        // Two phases: OpenAI artwork generation, then organic quilt conversion.
         const generation = await generateCollageImage(prompt, negativePrompt);
         if (generation?.url) {
           // Real AI generation — convert image to collage layers
-          const collage = await imageUrlToCollageLayers(generation.url, gridSize);
+          const collage = await imageUrlToCollageLayers(generation.url, resolvedGridSize);
           res.json({
             success: true,
             data: {
               ...collage,
               previewUrl: generation.url,
               prompt,
+              blockSize,
+              artworkUrl: generation.url,
             },
           });
         } else {
           res.status(502).json({ success: false, error: "OpenAI image generation returned no image" });
           return;
-          res.json({
-            success: true,
-            data: collage,
-          });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
