@@ -1036,7 +1036,8 @@ class ApiClient {
           body: JSON.stringify({ prompt, ...options })
         });
         if (!response.ok) throw new Error('AI collage generation failed');
-        return await response.json();
+        const raw = await response.json();
+        return raw.data || raw; // unwrap { success, data: { ... } } envelope
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
@@ -1240,7 +1241,8 @@ class ApiClient {
           body: formData,
         });
         if (!response.ok) throw new Error('AI image-to-collage generation failed');
-        return await response.json();
+        const raw = await response.json();
+        return raw.data || raw; // unwrap { success, data: { ... } } envelope
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
