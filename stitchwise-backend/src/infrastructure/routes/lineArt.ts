@@ -18,10 +18,26 @@ import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/typ
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithDallE } from "../services/openaiImageService";
 import {
-  isKnownSubject,
   generateSubjectPattern,
   renderPatternToPng,
 } from "../../domain/stitch/subjectPatternGenerator";
+
+// Procedural generation is reserved for bare subject names. Descriptive
+// prompts must reach OpenAI so the requested qualifiers are reflected in the
+// preview image.
+const PROCEDURAL_SUBJECT_NAMES = new Set([
+  "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
+  "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
+  "peony", "bouquet", "flower bouquet", "pink flower",
+]);
+function isBareProceduralSubject(prompt: string): boolean {
+  const normalized = prompt.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:a|an|the)\s+/, "");
+  return PROCEDURAL_SUBJECT_NAMES.has(normalized);
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -238,7 +254,7 @@ export function createLineArtRouter(): Router {
         }));
 
         // ── Procedural fast path: known subjects skip AI ─────────────────────
-        if (isKnownSubject(prompt)) {
+        if (isBareProceduralSubject(prompt)) {
           const pattern = generateSubjectPattern(prompt, DEFAULT_GRID_SIZE);
           if (pattern) {
             const pngBuffer = await renderPatternToPng(pattern.grid, pattern.gridSize);
@@ -347,7 +363,7 @@ export function createLineArtRouter(): Router {
         }));
 
         // ── Procedural fast path: known subjects skip image conversion ──────
-        if (prompt && isKnownSubject(prompt)) {
+        if (prompt && isBareProceduralSubject(prompt)) {
           const procedural = generateSubjectPattern(prompt, targetSize);
           if (procedural) {
             const dmcColorsWithSymbols = procedural.dmcColors.map((c, i) => ({
