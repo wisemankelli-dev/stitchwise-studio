@@ -7,7 +7,7 @@
  * The pipeline is model-agnostic: the AI generates artwork; the pattern engine
  * converts it deterministically to a stitch grid.
  *
- * Supports fallback to Stability AI when DALL-E is unavailable.
+ * Uses OpenAI/DALL-E as the sole image provider.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -15,7 +15,6 @@ import { z } from "zod";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generatePatternFromImage } from "../../domain/stitch/pipeline";
 import { generateImageWithDallE } from "../services/openaiImageService";
-import { generateImageWithStability } from "../services/stabilityAIService";
 
 export function createTextToImageRouter(): Router {
   const router = Router();
@@ -43,24 +42,7 @@ export function createTextToImageRouter(): Router {
         // Style hints for embroidery-suitable artwork
         const styleHints = "flat vector art, solid flat colors only, no gradients, no shading, no photorealistic details, clean simple shapes, clip art style, white background, suitable for cross-stitch embroidery pattern, needlepoint aesthetic";
 
-        // Try DALL-E first, fall back to Stability AI
-        const generateImage = async (p: string) => {
-          // Primary: DALL-E / gpt-image-1
-          const dalleResult = await generateImageWithDallE(p, styleHints);
-          if (dalleResult) return dalleResult;
-
-          // Fallback: Stability AI
-          console.error(JSON.stringify({
-            event: "text_to_image_fallback",
-            message: "DALL-E unavailable, falling back to Stability AI",
-          }));
-          const enhancedPrompt = `${p}, ${styleHints}`;
-          const stabilityResult = await generateImageWithStability(enhancedPrompt);
-          if (stabilityResult) return stabilityResult;
-
-          return null;
-        };
-
+        const generateImage = (p: string) => generateImageWithDallE(p, styleHints);
         const pattern = await generatePatternFromImage(
           prompt,
           gridSize,

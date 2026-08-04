@@ -8,7 +8,7 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/collageAI";
-import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt } from "../services/leonardoCollageService";
+import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt } from "../services/openaiCollageService";
 import { authenticate } from "../middleware/auth";
 
 const upload = multer({
@@ -34,7 +34,7 @@ export function createAICollageRouter(): Router {
    * POST /api/ai/collage/text-to-collage
    *
    * Generate a collage layout from a text description.
-   * Uses Leonardo AI to generate an image, then converts it to fabric layers.
+   * Uses OpenAI AI to generate an image, then converts it to fabric layers.
    * Falls back to smart mock generation when no API key is configured.
    *
    * Request body: { prompt: string, gridSize?: 16|24|32|48|64, negativePrompt?: string }
@@ -56,9 +56,9 @@ export function createAICollageRouter(): Router {
         }
         const { prompt, gridSize, negativePrompt } = parsed.data;
 
-        // Try Leonardo AI generation, fall back to mock
+        // OpenAI is the sole image provider.
         const generation = await generateCollageImage(prompt, negativePrompt);
-        if (generation.url && !generation.url.includes("placehold.co")) {
+        if (generation?.url) {
           // Real AI generation — convert image to collage layers
           const collage = await imageUrlToCollageLayers(generation.url, gridSize);
           res.json({
@@ -70,8 +70,8 @@ export function createAICollageRouter(): Router {
             },
           });
         } else {
-          // Mock mode — generate from prompt keywords
-          const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
+          res.status(502).json({ success: false, error: "OpenAI image generation returned no image" });
+          return;
           res.json({
             success: true,
             data: collage,

@@ -58,15 +58,6 @@ export interface ResizePatternRequest {
   gridSize: number;
 }
 
-// ─── Leonardo AI Types ──────────────────────────────────────────────────────
-
-/** Response from Leonardo AI image generation API. */
-export interface LeonardoGenerationResponse {
-  id: string;
-  url?: string;
-  createdAt: string;
-}
-
 // ─── Zod Schemas ────────────────────────────────────────────────────────────
 
 const gridSizeSchema = z

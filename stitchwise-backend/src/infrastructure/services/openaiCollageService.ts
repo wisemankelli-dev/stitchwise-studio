@@ -1,5 +1,5 @@
 /**
- * Leonardo AI Collage Service — Integration with the Leonardo AI image generation API
+ * OpenAI Collage Service — Integration with the OpenAI image generation API
  * for collage generation.
  *
  * Provides:
@@ -11,32 +11,33 @@ import axios from "axios";
 import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import type { CollageLayer, CollageGenerationResult } from "../../domain/ai/collageAI";
-import type { LeonardoGenerationResponse } from "../../domain/ai/embroideryAI";
+interface OpenAIGenerationResponse { id: string; url?: string; createdAt?: string; buffer?: Buffer; }
+import { generateImageWithDallE } from "./openaiImageService";
 import { closestFabricColor } from "../../domain/collage/fabricColors";
 import { getRandomTexture } from "../../domain/collage/fabricTextures";
 
-/** Leonardo AI API base URL. */
-const LEONARDO_API_BASE = "https://cloud.leonardo.ai/api/rest/v1";
-/** Default generation model (Leonardo Kino XL). */
-const DEFAULT_MODEL_ID = "6b645e3a-d64f-4541-a169-18177b1a9f11";
+/** OpenAI API base URL. */
+const UNUSED_API_BASE = "https://api.openai.com/v1";
+/** Default generation model (OpenAI Kino XL). */
+const DEFAULT_MODEL_ID = "gpt-image-1";
 /** Timeout for image generation requests (seconds). */
 const GENERATION_TIMEOUT_MS = 120_000;
 
 /**
- * Get the Leonardo API key from environment.
+ * Get the OpenAI API key from environment.
  * Falls back gracefully in development/testing.
  */
 function getApiKey(): string | null {
-  return process.env.LEONARDO_API_KEY || null;
+  return process.env.OPENAI_API_KEY || null;
 }
 
 /**
- * Create an authenticated axios instance for Leonardo API.
+ * Create an authenticated axios instance for OpenAI API.
  */
 function createClient() {
   const apiKey = getApiKey();
   return axios.create({
-    baseURL: LEONARDO_API_BASE,
+    baseURL: UNUSED_API_BASE,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
@@ -46,57 +47,15 @@ function createClient() {
 }
 
 /**
- * Generate an image from a text prompt using Leonardo AI.
+ * Generate an image from a text prompt using OpenAI.
  * Reuses the same approach as the embroidery service.
  */
-export async function generateCollageImage(
-  prompt: string,
-  negativePrompt?: string,
-): Promise<LeonardoGenerationResponse> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return getMockCollageGenerationResponse(prompt);
-  }
-  const client = createClient();
-  try {
-    const payload: Record<string, unknown> = {
-      height: 512,
-      width: 512,
-      modelId: DEFAULT_MODEL_ID,
-      prompt: `fabric collage, quilt design, ${prompt}`,
-      num_images: 1,
-      sd_version: "v2",
-      presetStyle: "DYNAMIC",
-      scheduler: "DPMSolverMultistep",
-      guidance_scale: 7,
-    };
-    if (negativePrompt) {
-      payload.negative_prompt = negativePrompt;
-    }
-    const response = await client.post("/generations", payload, {
-      timeout: GENERATION_TIMEOUT_MS,
-    });
-    const generationId = response.data.sdGenerationJob?.generationId;
-    if (!generationId) {
-      throw new Error("No generationId in Leonardo response");
-    }
-    const url = await pollForGeneration(client, generationId);
-    return {
-      id: generationId,
-      url,
-      createdAt: new Date().toISOString(),
-    };
-  } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 401) {
-      // Unauthorized — fall back to mock
-      return getMockCollageGenerationResponse(prompt);
-    }
-    throw err;
-  }
+export async function generateCollageImage(prompt: string, negativePrompt?: string): Promise<OpenAIGenerationResponse> {
+  const result = await generateImageWithDallE(`fabric collage, quilt design, ${prompt}`, negativePrompt);
+  return result ? { id: "openai", url: result.url, buffer: result.buffer } : { id: "openai" };
 }
-
 /**
- * Poll Leonardo API until the generation is complete.
+ * Poll OpenAI API until the generation is complete.
  */
 async function pollForGeneration(
   client: ReturnType<typeof createClient>,
@@ -112,7 +71,7 @@ async function pollForGeneration(
       if (url) return url;
     }
   }
-  throw new Error("Leonardo generation timed out");
+  throw new Error("OpenAI generation timed out");
 }
 
 /**
@@ -273,9 +232,9 @@ export async function imageBufferToCollageLayers(
 
 /**
  * Generate a realistic mock collage layout based on prompt keywords.
- * Used when no Leonardo API key is configured.
+ * Used when no OpenAI API key is configured.
  */
-function getMockCollageGenerationResponse(prompt: string): LeonardoGenerationResponse {
+function getMockCollageGenerationResponse(prompt: string): OpenAIGenerationResponse {
   return {
     id: `mock-collage-${Date.now()}`,
     url: `https://placehold.co/512x512/EEE/999?text=${encodeURIComponent(prompt.substring(0, 50))}`,

@@ -13,7 +13,7 @@ import { createApp } from "../app";
 import { FABRIC_COLORS, closestFabricColor, closestFabricColorFromHex } from "../domain/collage/fabricColors";
 import { FABRIC_TEXTURES, getRandomTexture } from "../domain/collage/fabricTextures";
 import { TextToCollageSchema, ImageToCollageSchema, DEFAULT_GRID_SIZE } from "../domain/ai/collageAI";
-import { generateCollageLayoutFromPrompt, generateMockCollageLayout } from "../infrastructure/services/leonardoCollageService";
+import { generateCollageLayoutFromPrompt, generateMockCollageLayout } from "../infrastructure/services/openaiCollageService";
 
 // ─── Fabric Color Tests ─────────────────────────────────────────────────────
 
