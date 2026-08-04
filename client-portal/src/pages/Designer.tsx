@@ -624,6 +624,9 @@ export const Designer: React.FC = () => {
   const [generatedArt, setGeneratedArt] = useState<string | null>(null);
   const [isTransposing, setIsTransposing] = useState(false);
 
+  // AI bar toggle
+  const [showAiBar, setShowAiBar] = useState(false);
+
   // Share to Community state
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
@@ -1207,7 +1210,7 @@ export const Designer: React.FC = () => {
         {/* ==================== EXISTING GRID EDITOR ==================== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* LEFT PANEL */}
-          <div className="lg:col-span-4 space-y-6">
+          <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:overflow-y-auto lg:max-h-[calc(100vh-7rem)]">
 
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-5">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -1240,7 +1243,7 @@ export const Designer: React.FC = () => {
             </div>
 
             {/* === CANVAS SIZE CONTROLS === */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Ruler className="h-5 w-5 text-blush-500" /> Canvas Size
               </h2>
@@ -1278,7 +1281,7 @@ export const Designer: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Preset Sizes</label>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {CANVAS_PRESETS.map((preset) => {
+                  {CANVAS_PRESETS.filter(p => !p.templateName).map((preset) => {
                     const stitchW = inchesToStitches(preset.inchW, fabricCount);
                     const stitchH = inchesToStitches(preset.inchH, fabricCount);
                     const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
@@ -1296,6 +1299,33 @@ export const Designer: React.FC = () => {
                         }`}
                       >
                         <div className="text-[10px] font-bold leading-tight">{preset.name}</div>
+                        <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                          {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 mt-3 pt-3 border-t border-blush-100">Templates</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {CANVAS_PRESETS.filter(p => p.templateName).map((preset) => {
+                    const stitchW = inchesToStitches(preset.inchW, fabricCount);
+                    const stitchH = inchesToStitches(preset.inchH, fabricCount);
+                    const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
+                    return (
+                      <button
+                        key={preset.name}
+                        onClick={() => {
+                          setActivePreset(preset);
+                          applyResize(stitchW, stitchH);
+                        }}
+                        className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
+                          isActive
+                            ? 'bg-blush-500 text-white border-blush-500 shadow-sm'
+                            : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold leading-tight">{preset.name.replace('Template: ', '')}</div>
                         <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
                           {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
                         </div>
@@ -1347,7 +1377,7 @@ export const Designer: React.FC = () => {
             </div>
 
             {stitchData && stitchData.dmcPalette.length > 0 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100">
                 <DmcLegend palette={stitchData.dmcPalette} />
                 <div className="mt-3 pt-3 border-t border-blush-100 text-[10px] text-slate-500 space-y-0.5">
                   <p>Total stitches: <span className="font-bold text-blush-600">{stitchData.totalStitches}</span></p>
@@ -1368,7 +1398,7 @@ export const Designer: React.FC = () => {
             />
 
             {/* === MATERIAL ESTIMATOR === */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Ruler className="h-5 w-5 text-blush-500" /> Material Estimator
               </h2>
@@ -1447,22 +1477,47 @@ export const Designer: React.FC = () => {
 
           {/* RIGHT PANEL */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
-              <div className="w-full flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-blush-100 pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <Layers className="h-5 w-5 text-blush-500" /> Embroidery Canvas
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
+              {/* ===== Merged Header + Toolbar Row ===== */}
+              <div className="w-full flex flex-wrap items-center gap-3 mb-3 border-b border-blush-100 pb-3">
+                {/* Title */}
+                <div className="shrink-0 mr-1">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
+                    <Layers className="h-4 w-4 text-blush-500" /> Embroidery Canvas
                   </h3>
-                  <p className="text-xs text-slate-500">Upload an image or click cells to paint your pattern.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
-                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomOut className="h-4 w-4" /></button>
-                    <span className="text-[10px] font-bold text-slate-600 w-8 text-center">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomIn className="h-4 w-4" /></button>
+                {/* Tool Buttons */}
+                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                  {TOOLS.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={() => {
+                        setActiveTool(tool.id);
+                        if (tool.id !== 'clone') setCloneSource(null);
+                        if (tool.id !== 'mirror') setMirrorEnabled(false);
+                        if (tool.id !== 'paint') setSelectedShape(null);
+                      }}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                        activeTool === tool.id
+                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      title={tool.label}
+                    >
+                      {tool.icon}
+                      <span className="hidden sm:inline">{tool.label}</span>
+                    </button>
+                  ))}
+                </div>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="p-1 rounded hover:bg-white text-slate-500"><ZoomOut className="h-3.5 w-3.5" /></button>
+                    <span className="text-[10px] font-bold text-slate-600 w-7 text-center">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1 rounded hover:bg-white text-slate-500"><ZoomIn className="h-3.5 w-3.5" /></button>
                   </div>
-                  <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
-                    <RotateCcw className="h-3.5 w-3.5" /> Reset
+                  <button onClick={handleClearGrid} className="p-1.5 rounded hover:bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100">
+                    <RotateCcw className="h-3 w-3" /> Reset
                   </button>
                   <input
                     ref={fileInputRef}
@@ -1475,7 +1530,7 @@ export const Designer: React.FC = () => {
                   <select
                     value={numColors}
                     onChange={(e) => setNumColors(Number(e.target.value))}
-                    className="rounded-lg border border-blush-100 text-[10px] font-bold text-slate-600 px-1.5 py-2 bg-white"
+                    className="rounded border border-blush-100 text-[10px] font-bold text-slate-600 px-1 py-1.5 bg-white"
                     title="Number of colors"
                   >
                     <option value={5}>5 colors</option>
@@ -1486,40 +1541,40 @@ export const Designer: React.FC = () => {
                   </select>
                   <label
                     htmlFor="image-upload"
-                    className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                    className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-all ${
                       isProcessingImage
                         ? 'bg-blush-100 text-blush-400 cursor-wait'
                         : 'bg-blush-500 hover:bg-blush-600 text-white'
                     }`}
                   >
                     {isProcessingImage ? (
-                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                     ) : (
-                      <Upload className="h-3.5 w-3.5" />
+                      <Upload className="h-3 w-3" />
                     )}
-                    {isProcessingImage ? 'Processing...' : 'Upload Image'}
+                    {isProcessingImage ? 'Processing...' : 'Upload'}
                   </label>
-                  <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
-                    <Download className="h-3.5 w-3.5" /> Export PDF
+                  <button onClick={handleExportPdf} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
+                    <Download className="h-3 w-3" /> PDF
                   </button>
                   <button
                     onClick={() => setShowShareModal(true)}
-                    className="p-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold flex items-center gap-1.5"
+                    className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold flex items-center gap-1"
                   >
-                    <Share2 className="h-3.5 w-3.5" /> Share
+                    <Share2 className="h-3 w-3" /> Share
                   </button>
                   {referenceImage && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setShowReference(!showReference)}
-                        className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
                           showReference
                             ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
                             : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
                         }`}
                         title={showReference ? 'Hide reference image' : 'Show reference image'}
                       >
-                        <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
+                        <Eye className={`h-3 w-3 ${showReference ? '' : 'opacity-50'}`} />
                         Ref
                       </button>
                       <input
@@ -1528,16 +1583,99 @@ export const Designer: React.FC = () => {
                         max="50"
                         value={Math.round(referenceOpacity * 100)}
                         onChange={(e) => setReferenceOpacity(Number(e.target.value) / 100)}
-                        className="w-14 h-1.5 accent-pink-500 cursor-pointer"
+                        className="w-12 h-1 accent-pink-500 cursor-pointer"
                         title={`Reference opacity: ${Math.round(referenceOpacity * 100)}%`}
                       />
                     </div>
                   )}
+                  {/* AI Toggle */}
+                  <button
+                    onClick={() => setShowAiBar(!showAiBar)}
+                    className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                      showAiBar
+                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                    title="Toggle AI generation"
+                  >
+                    <Sparkles className="h-3 w-3" /> AI
+                  </button>
                 </div>
               </div>
 
-              {/* AI Prompt Bar */}
-              <div className="w-full mb-4 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
+              {/* ===== Tool-Specific Controls Row ===== */}
+              <div className="w-full flex items-center justify-end mb-3 pb-2 border-b border-blush-100">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {activeTool === 'mirror' && (
+                    <button
+                      onClick={() => setMirrorEnabled(!mirrorEnabled)}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
+                        mirrorEnabled ? 'bg-blush-500 text-white shadow-sm' : 'bg-blush-50 text-slate-500 border border-blush-100'
+                      }`}
+                    >
+                      <FlipHorizontal className="h-3 w-3 inline mr-1" />
+                      {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
+                    </button>
+                  )}
+                  {activeTool === 'clone' && cloneSource && (
+                    <span className="text-[10px] font-bold text-blush-600 bg-blush-50 px-2 py-1 rounded">
+                      Source: ({cloneSource.row},{cloneSource.col}) — click to paste
+                    </span>
+                  )}
+                  {activeTool === 'eyedropper' && (
+                    <span className="text-[10px] text-slate-500 italic">Click a cell to pick its color</span>
+                  )}
+                  {activeTool === 'paint' && (
+                    <span className="text-[10px] text-slate-500 italic">Click & drag to paint</span>
+                  )}
+                  {activeTool === 'erase' && (
+                    <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
+                  )}
+                  {activeTool === 'half' && (
+                    <span className="text-[10px] text-slate-500 italic">Click to cycle: empty → ½ → full</span>
+                  )}
+                  {activeTool === 'alphabet' && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input type="text" value={alphabetText}
+                        onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
+                        placeholder="TYPE TEXT"
+                        className="w-24 rounded border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
+                        maxLength={12}
+                      />
+                      <select value={selectedFontId}
+                        onChange={(e) => setSelectedFontId(e.target.value)}
+                        className="rounded border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
+                      >
+                        {FONTS.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400">R:</span>
+                        <input type="number" value={placeRow}
+                          onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridHeight - 1, Number(e.target.value))))}
+                          className="w-10 rounded border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridHeight - 1} />
+                        <span className="text-[10px] text-slate-400">C:</span>
+                        <input type="number" value={placeCol}
+                          onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridWidth - 1, Number(e.target.value))))}
+                          className="w-10 rounded border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridWidth - 1} />
+                      </div>
+                      <button onClick={handlePlaceText} disabled={!alphabetText.trim()}
+                        className="rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-2.5 py-1 disabled:opacity-50 transition-all">
+                        <Type className="h-3 w-3 inline mr-1" /> Place
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleClearGrid}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0 ml-2"
+                  title="Clear entire grid and start over"
+                >
+                  <Trash2 className="h-3 w-3" /> Clear Grid
+                </button>
+              </div>
+              {/* ===== Collapsible AI Bar ===== */}
+              {showAiBar && (
+                <div className="w-full mb-3 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
                   <input
@@ -1621,100 +1759,8 @@ export const Designer: React.FC = () => {
                     <span>{aiStats.backstitch} backstitch</span>
                   </div>
                 )}
-              </div>
-
-              {/* Toolbar */}
-              <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100 relative z-10">
-                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
-                  {TOOLS.map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => {
-                        setActiveTool(tool.id);
-                        if (tool.id !== 'clone') setCloneSource(null);
-                        if (tool.id !== 'mirror') setMirrorEnabled(false);
-                        if (tool.id !== 'paint') setSelectedShape(null);
-                      }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-                        activeTool === tool.id
-                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                      title={tool.label}
-                    >
-                      {tool.icon}
-                      <span className="hidden sm:inline">{tool.label}</span>
-                    </button>
-                  ))}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleClearGrid}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1"
-                    title="Clear entire grid and start over"
-                  >
-                    <Trash2 className="h-3 w-3" /> Clear Grid
-                  </button>
-                  {activeTool === 'mirror' && (
-                    <button
-                      onClick={() => setMirrorEnabled(!mirrorEnabled)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
-                        mirrorEnabled ? 'bg-blush-500 text-white shadow-sm' : 'bg-blush-50 text-slate-500 border border-blush-100'
-                      }`}
-                    >
-                      <FlipHorizontal className="h-3 w-3 inline mr-1" />
-                      {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
-                    </button>
-                  )}
-                  {activeTool === 'clone' && cloneSource && (
-                    <span className="text-[10px] font-bold text-blush-600 bg-blush-50 px-2 py-1 rounded-lg">
-                      Source: ({cloneSource.row},{cloneSource.col}) — click to paste
-                    </span>
-                  )}
-                  {activeTool === 'eyedropper' && (
-                    <span className="text-[10px] text-slate-500 italic">Click a cell to pick its color</span>
-                  )}
-                  {activeTool === 'paint' && (
-                    <span className="text-[10px] text-slate-500 italic">Click & drag to paint</span>
-                  )}
-                  {activeTool === 'erase' && (
-                    <span className="text-[10px] text-slate-500 italic">Click or drag to erase</span>
-                  )}
-                  {activeTool === 'half' && (
-                    <span className="text-[10px] text-slate-500 italic">Click to cycle: empty → ½ → full</span>
-                  )}
-                  {activeTool === 'alphabet' && (
-                    <div className="flex items-center gap-3">
-                      <input type="text" value={alphabetText}
-                        onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
-                        placeholder="TYPE TEXT"
-                        className="w-28 rounded-lg border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
-                        maxLength={12}
-                      />
-                      <select value={selectedFontId}
-                        onChange={(e) => setSelectedFontId(e.target.value)}
-                        className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
-                      >
-                        {FONTS.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
-                      </select>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-slate-400">R:</span>
-                        <input type="number" value={placeRow}
-                          onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridHeight - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridHeight - 1} />
-                        <span className="text-[10px] text-slate-400">C:</span>
-                        <input type="number" value={placeCol}
-                          onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridWidth - 1, Number(e.target.value))))}
-                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridWidth - 1} />
-                      </div>
-                      <button onClick={handlePlaceText} disabled={!alphabetText.trim()}
-                        className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all">
-                        <Type className="h-3 w-3 inline mr-1" /> Place
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
 
               <div
                 ref={canvasRef}
