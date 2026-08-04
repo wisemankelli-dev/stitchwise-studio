@@ -17,6 +17,18 @@ export interface StitchGridData {
   totalStitches: number;
 }
 
+/** Template insert region (grid-scale coordinates). */
+export interface TemplateInsert {
+  type: 'circle' | 'silhouette' | 'rect';
+  x: number;
+  y: number;
+  diameter?: number; // for circle
+  width?: number; // for rect
+  height?: number; // for rect
+  points?: { x: number; y: number }[]; // for silhouette outline
+  svgPath?: string; // original SVG path
+}
+
 export interface StitchGridProps {
   data: StitchGridData;
   zoom: number;
@@ -42,6 +54,8 @@ export interface StitchGridProps {
   showReference?: boolean;
   /** Opacity of the reference image overlay (0.0 - 1.0, default: 0.20) */
   referenceOpacity?: number;
+  /** Template insert region — dims cells outside the region and draws boundary */
+  templateInsert?: TemplateInsert;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -179,6 +193,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   referenceImage,
   showReference = false,
   referenceOpacity = 0.20,
+  templateInsert,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -467,7 +482,81 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         }
       }
     }
-  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity]);
+
+    // ── Template insert region overlay ──
+    if (templateInsert && cellSize > 0) {
+      const isInsideRegion = (r: number, c: number): boolean => {
+        if (templateInsert.type === 'circle') {
+          const dia = templateInsert.diameter ?? 10;
+          const dx = c - templateInsert.x;
+          const dy = r - templateInsert.y;
+          return (dx * dx + dy * dy) <= (dia / 2) * (dia / 2);
+        }
+        if (templateInsert.type === 'rect') {
+          return c >= templateInsert.x && c < templateInsert.x + (templateInsert.width ?? 0) &&
+                 r >= templateInsert.y && r < templateInsert.y + (templateInsert.height ?? 0);
+        }
+        if (templateInsert.type === 'silhouette' && templateInsert.points && templateInsert.points.length > 2) {
+          const pts = templateInsert.points;
+          let inside = false;
+          for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const yi = pts[i].y, yj = pts[j].y;
+            if ((yi > r) !== (yj > r) && c < (pts[j].x - pts[i].x) * (r - yi) / (yj - yi) + pts[i].x) {
+              inside = !inside;
+            }
+          }
+          return inside;
+        }
+        return true;
+      };
+
+      // Dim cells outside the insert region
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      for (let r = 0; r < data.height; r++) {
+        for (let c = 0; c < data.width; c++) {
+          if (!isInsideRegion(r, c)) {
+            ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+
+      // Draw insert region boundary
+      ctx.strokeStyle = '#c084fc'; // purple-400
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+
+      if (templateInsert.type === 'circle') {
+        const dia = templateInsert.diameter ?? 10;
+        ctx.beginPath();
+        ctx.arc(
+          templateInsert.x * cellSize + cellSize / 2,
+          templateInsert.y * cellSize + cellSize / 2,
+          (dia / 2) * cellSize,
+          0, Math.PI * 2,
+        );
+        ctx.stroke();
+      } else if (templateInsert.type === 'rect') {
+        ctx.beginPath();
+        ctx.rect(
+          templateInsert.x * cellSize,
+          templateInsert.y * cellSize,
+          (templateInsert.width ?? 0) * cellSize,
+          (templateInsert.height ?? 0) * cellSize,
+        );
+        ctx.stroke();
+      } else if (templateInsert.type === 'silhouette' && templateInsert.points && templateInsert.points.length > 0) {
+        ctx.beginPath();
+        const pts = templateInsert.points;
+        ctx.moveTo(pts[0].x * cellSize + cellSize / 2, pts[0].y * cellSize + cellSize / 2);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x * cellSize + cellSize / 2, pts[i].y * cellSize + cellSize / 2);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity, templateInsert]);
 
   // ── Redraw on changes ──
 

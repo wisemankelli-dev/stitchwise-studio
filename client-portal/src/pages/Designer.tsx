@@ -329,9 +329,24 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
 ];
 
+/** Template insert region definition (fractional coords relative to canvas size). */
+export interface InsertRegionDef {
+  type: 'circle' | 'silhouette' | 'rect';
+  centerXFrac?: number;
+  centerYFrac?: number;
+  diamFrac?: number;
+  xFrac?: number;
+  yFrac?: number;
+  wFrac?: number;
+  hFrac?: number;
+  svgPath?: string;
+  svgViewBoxW?: number;
+  svgViewBoxH?: number;
+}
+
 /** Canvas size presets defined as physical dimensions (inches).
  *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches). */
-interface CanvasPreset { name: string; inchW: number; inchH: number; }
+interface CanvasPreset { name: string; inchW: number; inchH: number; templateName?: string; insertRegion?: InsertRegionDef; }
 const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Bag Charm', inchW: 2, inchH: 2 },
   { name: 'Ornament', inchW: 3, inchH: 3 },
@@ -341,7 +356,65 @@ const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Stocking', inchW: 5, inchH: 8 },
   { name: 'Large Pillow', inchW: 8, inchH: 8 },
   { name: 'Wall Hanging', inchW: 8, inchH: 16 },
+  // Template presets with insert regions
+  { name: 'Template: Ornament', inchW: 8, inchH: 8, templateName: 'ornament', insertRegion: { type: 'circle', centerXFrac: 0.5, centerYFrac: 0.5, diamFrac: 5/8 } },
+  { name: 'Template: Stocking', inchW: 8, inchH: 8, templateName: 'stocking', insertRegion: { type: 'silhouette', svgPath: 'M112 10 L112 28 L112 45 L112 63 L112 80 L112 98 L112 115 L112 133 L112 150 L112 168 L112 185 L112 232 L112 250 L183 267 L112 285 L112 302 L194 320 L112 337 L112 355 L202 372 L287 389 L239 372 L287 354 L287 337 L171 319 L287 302 L287 284 L179 267 L287 249 L287 232 L287 184 L287 167 L287 149 L287 132 L287 114 L287 97 L287 79 L287 62 L287 44 L287 27 Z', svgViewBoxW: 400, svgViewBoxH: 400 } },
+  { name: 'Template: Belt', inchW: 30, inchH: 2, templateName: 'belt', insertRegion: { type: 'rect', xFrac: 1/30, yFrac: 0, wFrac: 28/30, hFrac: 1.0 } },
 ];
+
+/** Parse an SVG path (just M/L commands) into normalized x,y points. */
+function parseSvgPathToPoints(svgPath: string, vbW: number, vbH: number): { x: number; y: number }[] {
+  const tokens = svgPath.match(/[MLZ]|[\d.]+/g);
+  if (!tokens) return [];
+  const points: { x: number; y: number }[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const cmd = tokens[i++];
+    if (cmd === 'M' || cmd === 'L') {
+      const px = parseFloat(tokens[i++]);
+      const py = parseFloat(tokens[i++]);
+      points.push({ x: px / vbW, y: py / vbH });
+    } else if (cmd === 'Z') {
+      break;
+    }
+  }
+  return points;
+}
+
+/** Compute a TemplateInsert (grid-scale) from a CanvasPreset's insertRegion + grid dimensions. */
+function computeTemplateInsert(
+  preset: CanvasPreset,
+  gridW: number,
+  gridH: number,
+): import('../components/StitchGrid').TemplateInsert | undefined {
+  const def = preset.insertRegion;
+  if (!def) return undefined;
+
+  if (def.type === 'circle' && def.centerXFrac != null) {
+    const cx = def.centerXFrac * gridW;
+    const cy = (def.centerYFrac ?? 0.5) * gridH;
+    const dia = (def.diamFrac ?? 0.5) * Math.max(gridW, gridH);
+    return { type: 'circle', x: cx, y: cy, diameter: dia };
+  }
+
+  if (def.type === 'rect' && def.xFrac != null) {
+    return {
+      type: 'rect',
+      x: def.xFrac * gridW,
+      y: (def.yFrac ?? 0) * gridH,
+      width: (def.wFrac ?? 1) * gridW,
+      height: (def.hFrac ?? 1) * gridH,
+    };
+  }
+
+  if (def.type === 'silhouette' && def.svgPath && def.svgViewBoxW && def.svgViewBoxH) {
+    const normPoints = parseSvgPathToPoints(def.svgPath, def.svgViewBoxW, def.svgViewBoxH);
+    const scaled = normPoints.map(p => ({ x: p.x * gridW, y: p.y * gridH }));
+    return { type: 'silhouette', x: 0, y: 0, width: gridW, height: gridH, points: scaled, svgPath: def.svgPath };
+  }
+
+  return undefined;
+}
 
 /** Compute stitch count from physical inches and fabric count, clamped to [6, 200] */
 function inchesToStitches(inches: number, fabricCount: number): number {
@@ -496,8 +569,13 @@ export const Designer: React.FC = () => {
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
   
-  // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
-  const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
+  // Active preset tracking — when set, fabric count changes recalc grid
+  const [activePreset, setActivePreset] = useState<CanvasPreset | null>(null);
+
+  // Computed template insert region for the active preset (grid-scale coords)
+  const templateInsert = activePreset?.insertRegion
+    ? computeTemplateInsert(activePreset, gridWidth, gridHeight)
+    : undefined;
 
 
   // Utility: stitches to inches based on fabric count
@@ -874,7 +952,15 @@ export const Designer: React.FC = () => {
     setAiStats(null);
     setGeneratedArt(null);
     try {
-      const data = await api.generateArt(aiPrompt.trim());
+      // Include template context in the prompt when a template is active
+      let prompt = aiPrompt.trim();
+      if (templateInsert) {
+        const shapeLabel = templateInsert.type === 'circle' ? 'circular ornament'
+          : templateInsert.type === 'silhouette' ? 'stocking-shaped design'
+          : 'narrow belt design';
+        prompt = `Embroidery design for a ${shapeLabel} template: ${prompt}. The design should fit within the ${shapeLabel} area.`;
+      }
+      const data = await api.generateArt(prompt);
       setGeneratedArt(data.imageDataUrl);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to generate art';
@@ -882,7 +968,7 @@ export const Designer: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating]);
+  }, [aiPrompt, isGenerating, templateInsert]);
 
   const handleTranspose = useCallback(async () => {
     if (!generatedArt || isTransposing) return;
@@ -949,15 +1035,18 @@ export const Designer: React.FC = () => {
     const colorNames: Record<string, string> = {};
     for (const c of COLORS) colorNames[c.hex] = c.name;
     exportPatternToPdf({
-      patternName: 'StitchWise Pattern',
+      patternName: activePreset?.templateName 
+        ? `${activePreset.name} Pattern` 
+        : 'StitchWise Pattern',
       grid,
       gridWidth,
       gridHeight,
       fabricCount,
       colorNames,
       cellFractions,
+      insertRegion: templateInsert,
     });
-  }, [grid, gridWidth, gridHeight, fabricCount, cellFractions]);
+  }, [grid, gridWidth, gridHeight, fabricCount, cellFractions, templateInsert, activePreset]);
 
   // Canvas resize logic
   const hasStitchesOutside = (newW: number, newH: number): boolean => {
@@ -1135,7 +1224,7 @@ export const Designer: React.FC = () => {
                       <button
                         key={preset.name}
                         onClick={() => {
-                          setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+                          setActivePreset(preset);
                           requestResize(stitchW, stitchH);
                         }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
@@ -1587,6 +1676,7 @@ export const Designer: React.FC = () => {
                       referenceImage={referenceImage}
                       showReference={showReference}
                       referenceOpacity={referenceOpacity}
+                      templateInsert={templateInsert}
                     />
                 </div>
               </div>
