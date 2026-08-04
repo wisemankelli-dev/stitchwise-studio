@@ -51,7 +51,8 @@ function createClient() {
  * Reuses the same approach as the embroidery service.
  */
 export async function generateCollageImage(prompt: string, negativePrompt?: string): Promise<OpenAIGenerationResponse> {
-  const result = await generateImageWithDallE(`fabric collage, quilt design, ${prompt}`, negativePrompt);
+  const artworkPrompt = `beautiful realistic artwork of ${prompt}; fabric collage quilt, thread-painted style, organic fabric shapes, painterly fabric art, realistic fabric portrait`;
+  const result = await generateImageWithDallE(artworkPrompt, negativePrompt);
   return result ? { id: "openai", url: result.url, buffer: result.buffer } : { id: "openai" };
 }
 /**
