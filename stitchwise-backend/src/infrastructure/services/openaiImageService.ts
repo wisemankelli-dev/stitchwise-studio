@@ -59,7 +59,7 @@ export async function generateImageWithDallE(
     ? `${prompt}, ${styleHints}`
     : `${prompt}, ${defaultStyle}`;
 
-  // Try model names in order: gpt-image-1 primary (this key has access), then dall-e-3
+  // Try model names in order: gpt-image-1 primary, gpt-image-2 fallback (both confirmed working)
   const models = ["gpt-image-1", "gpt-image-2"];
   let lastError: string | null = null;
 
