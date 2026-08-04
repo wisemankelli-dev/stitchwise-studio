@@ -71,13 +71,12 @@ export async function generateImageWithDallE(
         originalPrompt: prompt,
       }));
 
-      // Request b64_json — gpt-image-1 returns base64, not a URL
+      // Use URL response (b64_json not supported by gpt-image-1/2)
       const response = await client.images.generate({
         model,
         prompt: enhancedPrompt,
         n: 1,
         size: "1024x1024",
-        response_format: "b64_json",
       });
 
       let buffer: Buffer;
@@ -85,14 +84,14 @@ export async function generateImageWithDallE(
       const b64Json = (response.data?.[0] as any)?.b64_json;
 
       if (imageUrl) {
-        // Download the image from a URL (dall-e-3 path — kept for compatibility)
+        // Download the image from the returned URL
         const dlResponse = await axios.get(imageUrl, {
           responseType: "arraybuffer",
           timeout: 30_000,
         });
         buffer = Buffer.from(dlResponse.data);
       } else if (b64Json) {
-        // gpt-image-1 / gpt-image-2 return b64_json
+        // Some models return b64_json
         buffer = Buffer.from(b64Json, "base64");
       } else {
         continue;
