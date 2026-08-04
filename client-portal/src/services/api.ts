@@ -1037,7 +1037,12 @@ class ApiClient {
         });
         if (!response.ok) throw new Error('AI collage generation failed');
         const raw = await response.json();
-        return raw.data || raw; // unwrap { success, data: { ... } } envelope
+        const data = raw.data || raw;
+        return {
+          ...data,
+          success: raw.success ?? data.success ?? true,
+          totalLayers: data.totalLayers ?? data.layerCount ?? 0,
+        };
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
@@ -1242,7 +1247,12 @@ class ApiClient {
         });
         if (!response.ok) throw new Error('AI image-to-collage generation failed');
         const raw = await response.json();
-        return raw.data || raw; // unwrap { success, data: { ... } } envelope
+        const data = raw.data || raw;
+        return {
+          ...data,
+          success: raw.success ?? data.success ?? true,
+          totalLayers: data.totalLayers ?? data.layerCount ?? 0,
+        };
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
