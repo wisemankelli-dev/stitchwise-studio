@@ -358,23 +358,85 @@ const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Wall Hanging', inchW: 8, inchH: 16 },
   // Template presets with insert regions
   { name: 'Template: Ornament', inchW: 8, inchH: 8, templateName: 'ornament', insertRegion: { type: 'circle', centerXFrac: 0.5, centerYFrac: 0.5, diamFrac: 5/8 } },
-  { name: 'Template: Stocking', inchW: 8, inchH: 8, templateName: 'stocking', insertRegion: { type: 'silhouette', svgPath: 'M112 10 L112 28 L112 45 L112 63 L112 80 L112 98 L112 115 L112 133 L112 150 L112 168 L112 185 L112 232 L112 250 L183 267 L112 285 L112 302 L194 320 L112 337 L112 355 L202 372 L287 389 L239 372 L287 354 L287 337 L171 319 L287 302 L287 284 L179 267 L287 249 L287 232 L287 184 L287 167 L287 149 L287 132 L287 114 L287 97 L287 79 L287 62 L287 44 L287 27 Z', svgViewBoxW: 400, svgViewBoxH: 400 } },
+  { name: 'Template: Stocking', inchW: 8, inchH: 8, templateName: 'stocking', insertRegion: { type: 'silhouette', svgPath: 'M110 45 Q200 45 290 45 L290 75 Q280 120 260 180 Q250 230 290 270 Q310 290 300 315 Q280 340 210 340 Q150 340 85 310 Q65 290 70 255 Q75 220 95 170 Q100 130 110 75 Z', svgViewBoxW: 400, svgViewBoxH: 400 } },
   { name: 'Template: Belt', inchW: 30, inchH: 2, templateName: 'belt', insertRegion: { type: 'rect', xFrac: 1/30, yFrac: 0, wFrac: 28/30, hFrac: 1.0 } },
 ];
 
-/** Parse an SVG path (just M/L commands) into normalized x,y points. */
+/** Parse an SVG path into normalized x,y points, approximating curves with line segments. */
 function parseSvgPathToPoints(svgPath: string, vbW: number, vbH: number): { x: number; y: number }[] {
-  const tokens = svgPath.match(/[MLZ]|[\d.]+/g);
+  const tokens = svgPath.match(/[MLQCZmlqcz]|[\d.]+/g);
   if (!tokens) return [];
   const points: { x: number; y: number }[] = [];
+  let cx = 0, cy = 0; // current point
   let i = 0;
+
+  function addPoint(x: number, y: number) {
+    points.push({ x: x / vbW, y: y / vbH });
+  }
+
+  // Flatten a cubic bezier into line segments
+  function cubicTo(ax: number, ay: number, bx: number, by: number, ex: number, ey: number) {
+    const steps = 16;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const u = 1 - t;
+      const px = u*u*u*cx + 3*u*u*t*ax + 3*u*t*t*bx + t*t*t*ex;
+      const py = u*u*u*cy + 3*u*u*t*ay + 3*u*t*t*by + t*t*t*ey;
+      addPoint(px, py);
+    }
+    cx = ex; cy = ey;
+  }
+
+  // Flatten a quadratic bezier into line segments
+  function quadTo(ax: number, ay: number, ex: number, ey: number) {
+    const steps = 12;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const u = 1 - t;
+      const px = u*u*cx + 2*u*t*ax + t*t*ex;
+      const py = u*u*cy + 2*u*t*ay + t*t*ey;
+      addPoint(px, py);
+    }
+    cx = ex; cy = ey;
+  }
+
   while (i < tokens.length) {
     const cmd = tokens[i++];
-    if (cmd === 'M' || cmd === 'L') {
-      const px = parseFloat(tokens[i++]);
-      const py = parseFloat(tokens[i++]);
-      points.push({ x: px / vbW, y: py / vbH });
-    } else if (cmd === 'Z') {
+    if (cmd === 'M') {
+      cx = parseFloat(tokens[i++]);
+      cy = parseFloat(tokens[i++]);
+      addPoint(cx, cy);
+    } else if (cmd === 'm') {
+      cx += parseFloat(tokens[i++]);
+      cy += parseFloat(tokens[i++]);
+      addPoint(cx, cy);
+    } else if (cmd === 'L') {
+      cx = parseFloat(tokens[i++]);
+      cy = parseFloat(tokens[i++]);
+      addPoint(cx, cy);
+    } else if (cmd === 'l') {
+      cx += parseFloat(tokens[i++]);
+      cy += parseFloat(tokens[i++]);
+      addPoint(cx, cy);
+    } else if (cmd === 'C') {
+      const ax = parseFloat(tokens[i++]), ay = parseFloat(tokens[i++]);
+      const bx = parseFloat(tokens[i++]), by = parseFloat(tokens[i++]);
+      const ex = parseFloat(tokens[i++]), ey = parseFloat(tokens[i++]);
+      cubicTo(ax, ay, bx, by, ex, ey);
+    } else if (cmd === 'c') {
+      const ax = cx + parseFloat(tokens[i++]), ay = cy + parseFloat(tokens[i++]);
+      const bx = cx + parseFloat(tokens[i++]), by = cy + parseFloat(tokens[i++]);
+      const ex = cx + parseFloat(tokens[i++]), ey = cy + parseFloat(tokens[i++]);
+      cubicTo(ax, ay, bx, by, ex, ey);
+    } else if (cmd === 'Q') {
+      const ax = parseFloat(tokens[i++]), ay = parseFloat(tokens[i++]);
+      const ex = parseFloat(tokens[i++]), ey = parseFloat(tokens[i++]);
+      quadTo(ax, ay, ex, ey);
+    } else if (cmd === 'q') {
+      const ax = cx + parseFloat(tokens[i++]), ay = cy + parseFloat(tokens[i++]);
+      const ex = cx + parseFloat(tokens[i++]), ey = cy + parseFloat(tokens[i++]);
+      quadTo(ax, ay, ex, ey);
+    } else if (cmd === 'Z' || cmd === 'z') {
       break;
     }
   }
