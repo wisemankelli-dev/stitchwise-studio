@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
+import { api, FabricLayer, AICollageResponse, CollageProject, ShowcaseEntry } from '../services/api';
 import html2canvas from 'html2canvas';
 import { getFabricStyle } from '../utils/fabricTexture';
+import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
-  ArrowLeft, RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
+  ArrowLeft, ZoomIn, ZoomOut, Layers,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Flower2, Sparkles, UploadCloud, Loader2,
+  Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
   FolderOpen, ChevronDown, Share2
@@ -1019,12 +1020,12 @@ export const CollageStudio: React.FC = () => {
           projectType="collage"
           defaultTitle={collageName}
           onClose={() => setShowShareModal(false)}
-          onSuccess={(entry) => {
+          onSuccess={(entry: ShowcaseEntry) => {
             setShowShareModal(false);
             setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
             setTimeout(() => setShareMessage(null), 4000);
           }}
-          onError={(msg) => {
+          onError={(msg: string) => {
             setShareMessage(msg);
             setTimeout(() => setShareMessage(null), 4000);
           }}
