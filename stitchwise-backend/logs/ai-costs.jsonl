@@ -16,3 +16,6 @@
 {"timestamp":"2026-08-04T13:23:32.421Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"butterfly on a branch, centered, fills the frame, clean illustration, white background"}
 {"timestamp":"2026-08-04T13:23:44.938Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"a flower, centered, fills the frame, clean illustration, white background"}
 {"timestamp":"2026-08-04T14:01:15.097Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"fabric collage, quilt design, Grey heron"}
+{"timestamp":"2026-08-04T15:16:47.045Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"fabric collage, quilt design, Red Rooster"}
+{"timestamp":"2026-08-04T15:21:13.610Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"fabric collage, quilt design, a sunflower"}
+{"timestamp":"2026-08-04T15:23:00.627Z","provider":"openai","model":"gpt-image-1","status":"success","estimatedCost":0.04,"durationMs":0,"promptPreview":"beautiful realistic artwork of sunflower; fabric collage quilt, thread-painted style, organic fabric"}

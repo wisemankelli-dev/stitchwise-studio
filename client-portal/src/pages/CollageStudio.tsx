@@ -293,6 +293,24 @@ export const CollageStudio: React.FC = () => {
       // Show artwork preview if artworkUrl is available (two-phase flow)
       if (result.artworkUrl) {
         setShowArtworkPreview(true);
+      } else if (result.layers) {
+        // Fallback: apply layers directly (backend may not support two-phase yet)
+        // Use result directly — React hasn't flushed setAiResult yet
+        if (replaceMode === 'replace') {
+          setLayers(result.layers);
+          setSelectedLayerId(result.layers[result.layers.length - 1]?.id || 'bg');
+        } else {
+          const maxZ = layers.reduce((max, l) => Math.max(max, l.zIndex), 0);
+          const newLayers = result.layers.filter((l: any) => l.id !== 'bg').map((l: any) => ({
+            ...l,
+            id: `ai-${Date.now()}-${l.id}`,
+            zIndex: maxZ + l.zIndex + 1,
+            x: l.x + 20,
+            y: l.y + 20,
+          }));
+          setLayers(prev => [...prev, ...newLayers]);
+          setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
+        }
       }
     } catch (err: any) {
       clearInterval(interval);
