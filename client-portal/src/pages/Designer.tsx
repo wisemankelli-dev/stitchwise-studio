@@ -625,7 +625,7 @@ export const Designer: React.FC = () => {
   const [isTransposing, setIsTransposing] = useState(false);
 
   // AI bar toggle
-  const [showAiBar, setShowAiBar] = useState(false);
+  const [showAiBar, setShowAiBar] = useState(true);
 
   // Share to Community state
   const [showShareModal, setShowShareModal] = useState(false);
