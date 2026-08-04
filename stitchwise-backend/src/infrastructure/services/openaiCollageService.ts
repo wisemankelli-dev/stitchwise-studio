@@ -135,7 +135,7 @@ export async function imageBufferToCollageLayers(
       const idx = (row * size + col) * 4;
       const r = pixels[idx], g = pixels[idx + 1], b = pixels[idx + 2];
       const fabric = closestFabricColor(r, g, b);
-      const colorKey = `${Math.round(r / 64)}:${Math.round(g / 64)}:${Math.round(b / 64)}`;
+      const colorKey = `${Math.round(r / 96)}:${Math.round(g / 96)}:${Math.round(b / 96)}`;
       cellGrid[row][col] = { color: fabric.hex, name: fabric.name, colorKey };
     }
   }
@@ -176,7 +176,7 @@ export async function imageBufferToCollageLayers(
   // Convert regions to fabric layers — skip tiny ones, no merging
   const canvasWidth = 400, canvasHeight = 400;
   const cellW = canvasWidth / size, cellH = canvasHeight / size;
-  const MIN_CELLS = 6;
+  const MIN_CELLS = 3;
 
   const layers: CollageLayer[] = [];
   const fabricColorCount = new Map<string, { hex: string; name: string; count: number }>();

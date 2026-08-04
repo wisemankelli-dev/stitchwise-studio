@@ -55,8 +55,8 @@ export function createAICollageRouter(): Router {
           return;
         }
         const { prompt, gridSize, blockSize, negativePrompt } = parsed.data;
-        // Grid for flood-fill — coarser grid = fewer, bigger fabric pieces
-        const resolvedGridSize = 12;
+        // Grid for flood-fill — balance between detail and region size
+        const resolvedGridSize = 16;
 
         // Two phases: OpenAI artwork generation, then organic quilt conversion.
         const generation = await generateCollageImage(prompt, negativePrompt);
