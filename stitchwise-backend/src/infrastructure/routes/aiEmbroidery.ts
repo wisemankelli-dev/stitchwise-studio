@@ -137,11 +137,19 @@ export function createAIEmbroideryRouter(): Router {
         const fabricInches = (gridSize || DEFAULT_GRID_SIZE) / fc;
 
         // ── Priority 0: Procedural subject pattern (no AI) ──────────────────
-        // Fast path for known subjects that render with mathematical shapes.
-        const proceduralPattern = generateSubjectPattern(
-          prompt,
-          gridSize || DEFAULT_GRID_SIZE,
-        );
+        // Only bare known subject names use the procedural fast path. Any
+        // qualifier (for example, "yellow" in "a yellow sunflower") must
+        // reach OpenAI for an image preview.
+        const proceduralSubjectNames = new Set([
+          "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
+          "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
+          "peony", "bouquet", "flower bouquet", "pink flower",
+        ]);
+        const normalizedPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+        const promptWithoutArticles = normalizedPrompt.replace(/^(?:a|an|the)\s+/, "");
+        const proceduralPattern = proceduralSubjectNames.has(promptWithoutArticles)
+          ? generateSubjectPattern(prompt, gridSize || DEFAULT_GRID_SIZE)
+          : null;
         if (proceduralPattern) {
           console.error(JSON.stringify({
             event: "procedural_pattern_generated",
@@ -237,28 +245,16 @@ export function createAIEmbroideryRouter(): Router {
             return;
           }
 
-          // A single needlepoint artwork — never a repeating pattern.
-          // One recognizable subject centered, filling the frame.
-          const styleHints = [
-            "a single needlepoint artwork, one complete composition",
-            "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
-            "hand-drawn by a professional needlepoint artist, heirloom quality",
-            "one clear subject centered and filling the entire frame",
-            "clean well-defined shapes with smooth color regions ideal for thread conversion",
-            "elegant balanced composition, thoughtful use of negative space",
-            "not clip art, not flat vector, not AI-generated style, not photorealistic",
-          ].join(", ");
-          const framingHints = "white background, no borders, no frames, no text, no labels";
-          const enhancedPrompt = `${prompt}, ${styleHints}, ${framingHints}`;
-
+          // The image service applies its own flat-illustration defaults.
+          // Keep the user's description intact so qualifiers reach OpenAI.
           console.error(JSON.stringify({
             event: "ai_prompt_sent",
             originalPrompt: prompt,
-            finalPrompt: enhancedPrompt,
+            finalPrompt: prompt,
           }));
 
           // OpenAI DALL-E (sole provider)
-          const dalleResult = await generateImageWithDallE(enhancedPrompt, undefined, userId);
+          const dalleResult = await generateImageWithDallE(prompt, undefined, userId);
           if (dalleResult?.buffer) {
             previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
             pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
