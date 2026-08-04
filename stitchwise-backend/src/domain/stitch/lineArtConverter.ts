@@ -121,7 +121,7 @@ function sobelEdgeDetection(
 
 /**
  * Invert the image if it's predominantly dark.
- * Stability AI often generates images that are mostly dark with light elements.
+ * OpenAI AI often generates images that are mostly dark with light elements.
  * Sobel expects the opposite: light background with dark outlines.
  * If >50% of pixels have luminance < 128, flip R, G, B to (255 - value).
  */

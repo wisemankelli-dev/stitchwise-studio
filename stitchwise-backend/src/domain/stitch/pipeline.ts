@@ -3,11 +3,11 @@
  *
  * Provides a clean separation between image generation (any AI model)
  * and stitch grid conversion. The pipeline normalizes any image source
- * (DALL-E, Stability AI, SVG rendering, file upload) into raw RGBA pixels,
+ * (DALL-E, OpenAI AI, SVG rendering, file upload) into raw RGBA pixels,
  * then deterministically converts them to a stitch grid.
  *
  * Architecture:
- *   generatePatternFromImage() — calls DALL-E/Stability, downloads PNG
+ *   generatePatternFromImage() — calls DALL-E/OpenAI, downloads PNG
  *       ↓
  *   imageToStitchGrid()      — normalizes image to gridSize×gridSize, extracts pixels
  *       ↓
@@ -266,7 +266,7 @@ export async function svgToStitchGrid(
  * the resulting PNG, and converts it through the standard stitch pipeline.
  *
  * The `generateImage` callback abstraction makes this model-agnostic:
- * swap DALL-E for Stability AI, Leonardo, or any other generator without
+ * swap DALL-E for OpenAI AI, OpenAI, or any other generator without
  * touching the stitch conversion logic.
  *
  * @param prompt - Text description of the desired pattern

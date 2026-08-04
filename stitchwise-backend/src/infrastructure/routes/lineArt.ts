@@ -209,7 +209,7 @@ export function createLineArtRouter(): Router {
    * The caller shows the art to the user; if they approve, they call
    * /api/ai/transpose-to-pattern to convert it to a stitch grid.
    *
-   * Pipeline: Stability AI primary → DALL-E fallback
+   * Pipeline: OpenAI AI primary → DALL-E fallback
    *
    * Request body: { prompt: string }
    * Response: { imageDataUrl, pipeline }
