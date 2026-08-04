@@ -416,9 +416,9 @@ function computeTemplateInsert(
   return undefined;
 }
 
-/** Compute stitch count from physical inches and fabric count, clamped to [6, 200] */
+/** Compute stitch count from physical inches and fabric count, clamped to [6, 420] */
 function inchesToStitches(inches: number, fabricCount: number): number {
-  return Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
+  return Math.max(6, Math.min(420, Math.round(inches * fabricCount)));
 }
 
 /** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
@@ -1225,7 +1225,7 @@ export const Designer: React.FC = () => {
                         key={preset.name}
                         onClick={() => {
                           setActivePreset(preset);
-                          requestResize(stitchW, stitchH);
+                          applyResize(stitchW, stitchH);
                         }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
                           isActive
@@ -1253,12 +1253,12 @@ export const Designer: React.FC = () => {
                       type="number"
                       value={gridWidth}
                       onChange={(e) => {
-                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        const v = Math.max(6, Math.min(420, Number(e.target.value) || 6));
                         setActivePreset(null);
                         requestResize(v, gridHeight);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
-                      min={6} max={200}
+                      min={6} max={420}
                     />
                   </div>
                   <span className="text-slate-300 font-bold">×</span>
@@ -1268,12 +1268,12 @@ export const Designer: React.FC = () => {
                       type="number"
                       value={gridHeight}
                       onChange={(e) => {
-                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
+                        const v = Math.max(6, Math.min(420, Number(e.target.value) || 6));
                         setActivePreset(null);
                         requestResize(gridWidth, v);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
-                      min={6} max={200}
+                      min={6} max={420}
                     />
                   </div>
                 </div>
@@ -1562,7 +1562,7 @@ export const Designer: React.FC = () => {
               </div>
 
               {/* Toolbar */}
-              <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+              <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100 relative z-10">
                 <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
                   {TOOLS.map((tool) => (
                     <button

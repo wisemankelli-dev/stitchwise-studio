@@ -511,7 +511,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       };
 
       // Dim cells outside the insert region
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fillStyle = 'rgba(252, 231, 243, 0.55)';
       for (let r = 0; r < data.height; r++) {
         for (let c = 0; c < data.width; c++) {
           if (!isInsideRegion(r, c)) {
@@ -521,7 +521,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       }
 
       // Draw insert region boundary
-      ctx.strokeStyle = '#c084fc'; // purple-400
+      ctx.strokeStyle = '#f472b6'; // blush-400
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
 
