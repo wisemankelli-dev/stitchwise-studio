@@ -15,6 +15,20 @@ import { createApp } from "../app";
 import { closestDmcColor, rgbToHex, hexToRgb, DMC_COLORS } from "../domain/stitch/dmcColors";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import { TextToPatternSchema, ImageToPatternSchema } from "../domain/ai/embroideryAI";
+import { shouldUseProceduralPattern } from "../infrastructure/routes/aiEmbroidery";
+
+describe("AI prompt routing", () => {
+  it("uses procedural generation for bare supported subjects", () => {
+    expect(shouldUseProceduralPattern("sunflower")).toBe(true);
+    expect(shouldUseProceduralPattern("A sunflower")).toBe(true);
+  });
+
+  it("sends descriptive subjects to OpenAI", () => {
+    expect(shouldUseProceduralPattern("a yellow sunflower")).toBe(false);
+    expect(shouldUseProceduralPattern("sunflower in a vase")).toBe(false);
+    expect(shouldUseProceduralPattern("a watercolor rose")).toBe(false);
+  });
+});
 
 // ─── DMC Color Tests ────────────────────────────────────────────────────────
 

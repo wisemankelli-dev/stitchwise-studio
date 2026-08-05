@@ -36,6 +36,20 @@ import {
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
 import { checkAIRateLimit } from "../services/aiRateLimiter";
 
+/** Subjects that can be rendered deterministically without an image-generation call. */
+export const PROCEDURAL_SUBJECT_NAMES = new Set([
+  "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
+  "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
+  "peony", "bouquet", "flower bouquet", "pink flower",
+]);
+
+/** Return true only for a bare supported subject, optionally preceded by an article. */
+export function shouldUseProceduralPattern(prompt: string): boolean {
+  const normalized = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const withoutArticle = normalized.replace(/^(?:a|an|the)\s+/, "");
+  return PROCEDURAL_SUBJECT_NAMES.has(withoutArticle);
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
@@ -140,14 +154,7 @@ export function createAIEmbroideryRouter(): Router {
         // Only bare known subject names use the procedural fast path. Any
         // qualifier (for example, "yellow" in "a yellow sunflower") must
         // reach OpenAI for an image preview.
-        const proceduralSubjectNames = new Set([
-          "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
-          "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
-          "peony", "bouquet", "flower bouquet", "pink flower",
-        ]);
-        const normalizedPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-        const promptWithoutArticles = normalizedPrompt.replace(/^(?:a|an|the)\s+/, "");
-        const proceduralPattern = proceduralSubjectNames.has(promptWithoutArticles)
+        const proceduralPattern = shouldUseProceduralPattern(prompt)
           ? generateSubjectPattern(prompt, gridSize || DEFAULT_GRID_SIZE)
           : null;
         if (proceduralPattern) {
