@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
 import {
   createCheckoutSession,
+  createPortalSession,
   constructWebhookEvent,
   extractCheckoutData,
 } from "../services/stripeClient";
@@ -23,10 +24,13 @@ export function createPaymentRouter(prisma: PrismaClient): Router {
     async (req: Request, res: Response) => {
       try {
         const user = (req as any).user;
-        const { tier } = req.body as { tier?: string };
+        const { tier: requestedTier } = req.body as { tier?: string };
+        const tier = requestedTier === "Pro Crafter" ? "PRO"
+          : requestedTier === "Design Studio" ? "STUDIO"
+          : requestedTier;
 
         if (!tier || !["PRO", "STUDIO"].includes(tier)) {
-          res.status(400).json({ error: "Invalid tier. Must be 'PRO' or 'STUDIO'" });
+          res.status(400).json({ error: "Invalid tier. Must be 'PRO', 'STUDIO', 'Pro Crafter', or 'Design Studio'" });
           return;
         }
 
@@ -57,6 +61,36 @@ export function createPaymentRouter(prisma: PrismaClient): Router {
       } catch (err) {
         console.error({ event: "create_checkout_error", error: String(err) });
         res.status(500).json({ error: "Failed to create checkout session" });
+      }
+    },
+  );
+
+  /**
+   * POST /api/payments/create-portal-session
+   * Creates a Stripe Billing Portal session for the authenticated user.
+   */
+  router.post(
+    "/payments/create-portal-session",
+    authenticate,
+    async (req: Request, res: Response) => {
+      try {
+        const user = (req as any).user;
+        const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
+        if (!dbUser) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        if (!dbUser.stripeCustomerId) {
+          res.status(400).json({ error: "No Stripe customer found for this user" });
+          return;
+        }
+        const baseUrl = process.env.BASE_URL || "https://stitchwisestudio.com";
+        const returnUrl = req.body?.returnUrl || `${baseUrl}/pricing`;
+        const url = await createPortalSession(dbUser.stripeCustomerId, returnUrl);
+        res.json({ url });
+      } catch (err) {
+        console.error({ event: "create_portal_error", error: String(err) });
+        res.status(500).json({ error: "Failed to create billing portal session" });
       }
     },
   );
