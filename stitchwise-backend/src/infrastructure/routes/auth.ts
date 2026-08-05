@@ -40,7 +40,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
 
       // Generate token
-      const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
+      const token = jwt.sign({ userId: user.id, email: user.email, tier: user.tier }, JWT_SECRET, {
         expiresIn: TOKEN_EXPIRY,
       });
 
@@ -82,7 +82,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
 
       // Generate token
-      const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
+      const token = jwt.sign({ userId: user.id, email: user.email, tier: user.tier }, JWT_SECRET, {
         expiresIn: TOKEN_EXPIRY,
       });
 
