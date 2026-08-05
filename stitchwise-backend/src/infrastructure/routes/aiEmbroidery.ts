@@ -28,6 +28,7 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
+import { aiRateLimit } from "../middleware/aiRateLimit";
 import {
   DEFAULT_FABRIC_COUNT,
   AVAILABLE_FABRIC_COUNTS,
@@ -126,6 +127,7 @@ export function createAIEmbroideryRouter(): Router {
   router.post(
     "/ai/embroidery/text-to-pattern",
     optionalAuth,
+    aiRateLimit,
     async (req: Request, res: Response) => {
       try {
         const parsed = TextToPatternSchema.safeParse(req.body);
@@ -307,6 +309,7 @@ export function createAIEmbroideryRouter(): Router {
   router.post(
     "/ai/embroidery/image-to-pattern",
     optionalAuth,
+    aiRateLimit,
     upload.single("file"),
     async (req: Request, res: Response) => {
       try {

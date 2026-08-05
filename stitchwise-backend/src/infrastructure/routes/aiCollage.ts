@@ -11,6 +11,7 @@ import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/colla
 import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt } from "../services/openaiCollageService";
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
+import { aiRateLimit, getAIUsage } from "../middleware/aiRateLimit";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -31,6 +32,11 @@ const upload = multer({
 export function createAICollageRouter(): Router {
   const router = Router();
 
+  router.get("/ai/usage", authenticate, (req: Request, res: Response) => {
+    const user = (req as any).user as { userId: string; tier?: string };
+    res.json(getAIUsage(user.userId, user.tier));
+  });
+
   /**
    * POST /api/ai/collage/text-to-collage
    *
@@ -44,6 +50,7 @@ export function createAICollageRouter(): Router {
   router.post(
     "/ai/collage/text-to-collage",
     authenticate,
+    aiRateLimit,
     async (req: Request, res: Response) => {
       try {
         const parsed = TextToCollageSchema.safeParse(req.body);
@@ -97,6 +104,7 @@ export function createAICollageRouter(): Router {
   router.post(
     "/ai/collage/image-to-collage",
     authenticate,
+    aiRateLimit,
     upload.single("file"),
     async (req: Request, res: Response) => {
       try {
