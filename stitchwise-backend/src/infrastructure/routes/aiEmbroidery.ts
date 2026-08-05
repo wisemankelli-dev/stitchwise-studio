@@ -28,14 +28,13 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
-import { aiRateLimit } from "../middleware/aiRateLimit";
 import {
   DEFAULT_FABRIC_COUNT,
   AVAILABLE_FABRIC_COUNTS,
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
-import { checkAIRateLimit } from "../services/aiRateLimiter";
+import { aiRateLimit } from "../middleware/aiRateLimit";
 
 /** Subjects that can be rendered deterministically without an image-generation call. */
 export const PROCEDURAL_SUBJECT_NAMES = new Set([
@@ -223,7 +222,7 @@ export function createAIEmbroideryRouter(): Router {
         let pattern: PatternResult | null = null;
 
         let previewUrl: string | undefined;
-        let rateLimit: { remaining: number; limit: number; resetAt: string } | undefined;
+        
 
         if (matchedShape) {
           // Only use Shape Library when the prompt is JUST the shape name
@@ -237,23 +236,7 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
-          // ── Rate limit check ──────────────────────────────────────────
-          const userId = (req as any).user?.id;
-          const userTier = (req as any).user?.subscriptionTier || "anonymous";
-          rateLimit = checkAIRateLimit(userId, userTier);
-          if (!rateLimit.allowed) {
-            res.status(429).json({
-              success: false,
-              error: "Daily AI generation limit reached",
-              rateLimit: {
-                limit: rateLimit.limit,
-                remaining: 0,
-                resetAt: rateLimit.resetAt,
-              },
-            });
-            return;
-          }
-
+          const userId = (req as any).user?.userId;
           // The image service applies its own flat-illustration defaults.
           // Keep the user's description intact so qualifiers reach OpenAI.
           console.error(JSON.stringify({
@@ -281,11 +264,6 @@ export function createAIEmbroideryRouter(): Router {
           processingTimeMs: 0,
           fabric: { count: fc, inches: +fabricInches.toFixed(2) },
           previewUrl,
-          rateLimit: {
-            remaining: rateLimit?.remaining,
-            limit: rateLimit?.limit,
-            resetAt: rateLimit?.resetAt,
-          },
         }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
