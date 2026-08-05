@@ -1218,6 +1218,12 @@ class ApiClient {
     return {
       success: true,
       layers,
+      regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
+        number: i + 1,
+        suggestedColor: l.name,
+        suggestedHex: l.color,
+        x: l.x, y: l.y, width: l.width, height: l.height,
+      })),
       canvasWidth: 500,
       canvasHeight: 500,
       promptUsed: prompt,
@@ -1315,6 +1321,12 @@ class ApiClient {
     return {
       success: true,
       layers,
+      regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
+        number: i + 1,
+        suggestedColor: l.name,
+        suggestedHex: l.color,
+        x: l.x, y: l.y, width: l.width, height: l.height,
+      })),
       canvasWidth: 500,
       canvasHeight: 500,
       promptUsed: `Image: ${file.name}`,
@@ -1928,10 +1940,22 @@ export interface FabricLayer {
   zIndex: number;
 }
 
+/** A numbered outline region for the printable quilt pattern */
+export interface PatternRegion {
+  number: number;
+  suggestedColor: string;
+  suggestedHex: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** Response from AI collage generation */
 export interface AICollageResponse {
   success: boolean;
   layers: FabricLayer[];
+  regions: PatternRegion[];
   canvasWidth: number;
   canvasHeight: number;
   promptUsed?: string;

@@ -40,6 +40,26 @@ export interface CollageLayer {
   zIndex: number;
 }
 
+// ─── Pattern Region (outline mode) ───────────────────────────────────────────
+
+/** A numbered outline region for the printable quilt pattern. */
+export interface PatternRegion {
+  /** Region number (1-based, for the color key) */
+  number: number;
+  /** Suggested fabric color name */
+  suggestedColor: string;
+  /** Suggested hex color */
+  suggestedHex: string;
+  /** Bounding box x */
+  x: number;
+  /** Bounding box y */
+  y: number;
+  /** Bounding box width */
+  width: number;
+  /** Bounding box height */
+  height: number;
+}
+
 // ─── Fabric Color Usage ─────────────────────────────────────────────────────
 
 /** A fabric color used in the collage with count information. */
@@ -53,8 +73,10 @@ export interface FabricColorUsage {
 
 /** Complete collage generation result. */
 export interface CollageGenerationResult {
-  /** Array of fabric layers */
+  /** Array of fabric layers (colored mode) */
   layers: CollageLayer[];
+  /** Outline pattern regions for printable quilt pattern */
+  regions: PatternRegion[];
   /** Grid size used for quantization */
   gridSize: number;
   /** Quilt block size in inches, when supplied by the designer */

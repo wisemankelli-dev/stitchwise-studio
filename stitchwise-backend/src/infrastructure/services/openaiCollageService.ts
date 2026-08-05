@@ -10,7 +10,7 @@
 import axios from "axios";
 import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
-import type { CollageLayer, CollageGenerationResult } from "../../domain/ai/collageAI";
+import type { CollageLayer, CollageGenerationResult, PatternRegion } from "../../domain/ai/collageAI";
 interface OpenAIGenerationResponse { id: string; url?: string; createdAt?: string; buffer?: Buffer; }
 import { generateImageWithDallE } from "./openaiImageService";
 import { closestFabricColor } from "../../domain/collage/fabricColors";
@@ -173,12 +173,13 @@ export async function imageBufferToCollageLayers(
     }
   }
 
-  // Convert regions to fabric layers — skip tiny ones, no merging
+  // Convert regions to fabric layers AND pattern regions
   const canvasWidth = 400, canvasHeight = 400;
   const cellW = canvasWidth / size, cellH = canvasHeight / size;
   const MIN_CELLS = 3;
 
   const layers: CollageLayer[] = [];
+  const patternRegions: PatternRegion[] = [];
   const fabricColorCount = new Map<string, { hex: string; name: string; count: number }>();
 
   // White base
@@ -188,11 +189,13 @@ export async function imageBufferToCollageLayers(
     rotation: 0, opacity: 1, zIndex: 0,
   });
 
-  // Sort largest first so big shapes are behind small details
+  // Sort largest first
   const sorted = regions.sort((a, b) => b.cells.length - a.cells.length);
+  let regionNumber = 0;
 
   sorted.forEach((region, index) => {
     if (region.cells.length < MIN_CELLS) return;
+    regionNumber++;
 
     const rows = region.cells.map(c => c.row);
     const cols = region.cells.map(c => c.col);
@@ -216,6 +219,16 @@ export async function imageBufferToCollageLayers(
       zIndex: index + 1,
     });
 
+    patternRegions.push({
+      number: regionNumber,
+      suggestedColor: region.name,
+      suggestedHex: region.color,
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      width: Math.round(w * 10) / 10,
+      height: Math.round(h * 10) / 10,
+    });
+
     const key = region.color;
     if (fabricColorCount.has(key)) {
       fabricColorCount.get(key)!.count++;
@@ -228,6 +241,7 @@ export async function imageBufferToCollageLayers(
 
   return {
     layers,
+    regions: patternRegions,
     gridSize: size,
     layerCount: layers.length,
     fabricColors: Array.from(fabricColorCount.values()).sort((a, b) => b.count - a.count),
@@ -262,6 +276,12 @@ export function generateMockCollageLayout(gridSize: number = 32): CollageGenerat
   }));
   return {
     layers,
+    regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
+      number: i + 1,
+      suggestedColor: l.name,
+      suggestedHex: l.color,
+      x: l.x, y: l.y, width: l.width, height: l.height,
+    })),
     gridSize,
     layerCount: layers.length,
     fabricColors,
@@ -284,6 +304,12 @@ export function generateCollageLayoutFromPrompt(
   }));
   return {
     layers,
+    regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
+      number: i + 1,
+      suggestedColor: l.name,
+      suggestedHex: l.color,
+      x: l.x, y: l.y, width: l.width, height: l.height,
+    })),
     gridSize,
     layerCount: layers.length,
     fabricColors,

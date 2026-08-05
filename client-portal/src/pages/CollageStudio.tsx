@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, FabricLayer, AICollageResponse, CollageProject, ShowcaseEntry } from '../services/api';
+import { api, FabricLayer, PatternRegion, AICollageResponse, CollageProject, ShowcaseEntry } from '../services/api';
 import html2canvas from 'html2canvas';
 import { getFabricStyle } from '../utils/fabricTexture';
 import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
@@ -10,7 +10,7 @@ import {
   Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
-  FolderOpen, ChevronDown, Share2
+  FolderOpen, ChevronDown, Share2, Eye
 } from 'lucide-react';
 
 type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
@@ -79,6 +79,10 @@ export const CollageStudio: React.FC = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
 
+  // Pattern mode (outline + color key) vs colored fabric view
+  const [patternRegions, setPatternRegions] = useState<PatternRegion[]>([]);
+  const [viewMode, setViewMode] = useState<'pattern' | 'colored'>('pattern');
+
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
@@ -115,6 +119,12 @@ export const CollageStudio: React.FC = () => {
 
   const applyAiResult = () => {
     if (!aiResult?.layers) return;
+
+    // Set pattern regions from AI result (for outline view)
+    if (aiResult.regions && aiResult.regions.length > 0) {
+      setPatternRegions(aiResult.regions);
+      setViewMode('pattern');
+    }
 
     if (replaceMode === 'replace') {
       setLayers(aiResult.layers);
@@ -437,7 +447,7 @@ export const CollageStudio: React.FC = () => {
                 )}
                 {/* Reset */}
                 <button
-                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId(''); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
+                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId(''); setPatternRegions([]); setViewMode('pattern'); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
                   className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
                   title="Reset canvas and start over"
                 >
@@ -623,81 +633,164 @@ export const CollageStudio: React.FC = () => {
                   )}
                 </div>
               </div>{/* Canvas Area */}
-              <div
-                ref={canvasRef}
-                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden w-full"
-                style={{ height: `${getCanvasHeight()}px`, minWidth: '500px' }}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    backgroundImage: 'linear-gradient(#fce7f3 1px, transparent 1px), linear-gradient(90deg, #fce7f3 1px, transparent 1px)',
-                    backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                    transform: `scale(${zoom})`,
-                    transformOrigin: 'center center',
-                  }}
-                >
-                  {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
-                    const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
-                    const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
-                    const isPickTool = activeTool === 'eyedropper' && layer.id !== 'bg';
-                    const isPaintTool = activeTool === 'paint';
-                    const isMirrorTool = activeTool === 'mirror' && mirrorEnabled && layer.id !== 'bg';
-                    const isInteractable = isEraseTool || isCloneTool || isPickTool || isPaintTool || isMirrorTool;
-
-                    return (
-                      <div
-                        key={layer.id}
-                        onClick={() => handleCanvasClick(layer.id)}
-                        className={`absolute transition-shadow duration-200 ${
-                          selectedLayerId === layer.id && activeTool === 'select'
-                            ? 'ring-2 ring-blush-500 ring-offset-2'
-                            : isInteractable
-                            ? 'cursor-pointer hover:ring-2 hover:ring-blush-400 hover:ring-offset-1'
-                            : activeTool === 'select' || activeTool === 'mirror'
-                            ? 'cursor-move'
-                            : 'cursor-default'
-                        }`}
-                        style={(() => {
-                          const fab = getFabricStyle(layer.pattern, layer.color);
-                          return {
-                            left: layer.x,
-                            top: layer.y,
-                            width: layer.width,
-                            height: layer.height,
-                            transform: `rotate(${layer.rotation}deg)`,
-                            opacity: layer.opacity,
-                            zIndex: layer.zIndex,
-                            backgroundColor: fab.backgroundColor,
-                            backgroundImage: fab.backgroundImage,
-                            backgroundSize: fab.backgroundSize,
-                            boxShadow: fab.boxShadow,
-                            borderRadius: layer.id === 'bg' ? '0' : '3px',
-                            border: layer.id !== 'bg' ? '1px solid rgba(0,0,0,0.08)' : 'none',
-                          };
-                        })()}
-                      >
-                        {/* Only show name label when this layer is selected */}
-                        {selectedLayerId === layer.id && layer.id !== 'bg' && (
-                          <div className="absolute -top-5 left-0 text-[8px] text-slate-400 font-medium whitespace-nowrap bg-white/90 px-1 py-0.5 rounded shadow-sm opacity-70 pointer-events-none">
-                            {layer.name}
-                          </div>
-                        )}
-                        {/* Tool indicator badge */}
-                        {isEraseTool && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
-                            <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
-                          </div>
-                        )}
-                        {isCloneTool && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
-                            <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+              {/* View toggle */}
+              {patternRegions.length > 0 && (
+                <div className="w-full flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">View:</span>
+                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                    <button
+                      onClick={() => setViewMode('pattern')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${viewMode === 'pattern' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Eye className="h-3 w-3 inline mr-0.5" /> Pattern
+                    </button>
+                    <button
+                      onClick={() => setViewMode('colored')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${viewMode === 'colored' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Palette className="h-3 w-3 inline mr-0.5" /> Colored
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-400 ml-auto">{patternRegions.length} pieces</span>
                 </div>
+              )}
+              <div className="flex gap-3">
+                {/* Main canvas */}
+                <div
+                  ref={canvasRef}
+                  className={`relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden ${patternRegions.length > 0 ? 'flex-1' : 'w-full'}`}
+                  style={{ height: `${getCanvasHeight()}px`, minWidth: patternRegions.length > 0 ? '350px' : '500px' }}
+                >
+                  {/* Pattern View: outlines + numbers */}
+                  {viewMode === 'pattern' && patternRegions.length > 0 && (
+                    <div className="absolute inset-0" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
+                      {/* Grid lines */}
+                      <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} preserveAspectRatio="none">
+                        {patternRegions.map((r) => (
+                          <g key={r.number}>
+                            <rect
+                              x={r.x} y={r.y}
+                              width={r.width} height={r.height}
+                              fill="white"
+                              stroke="#333"
+                              strokeWidth="1.5"
+                              rx="2"
+                            />
+                            <text
+                              x={r.x + r.width / 2}
+                              y={r.y + r.height / 2}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fontSize={Math.max(8, Math.min(r.width, r.height) * 0.4)}
+                              fontWeight="bold"
+                              fill="#333"
+                              fontFamily="monospace"
+                            >
+                              {r.number}
+                            </text>
+                          </g>
+                        ))}
+                      </svg>
+                      {/* Base white background */}
+                    </div>
+                  )}
+
+                  {/* Colored View: fabric layers */}
+                  {(viewMode === 'colored' || patternRegions.length === 0) && (
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: 'linear-gradient(#fce7f3 1px, transparent 1px), linear-gradient(90deg, #fce7f3 1px, transparent 1px)',
+                        backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'center center',
+                      }}
+                    >
+                      {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
+                        const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
+                        const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
+                        const isPickTool = activeTool === 'eyedropper' && layer.id !== 'bg';
+                        const isPaintTool = activeTool === 'paint';
+                        const isMirrorTool = activeTool === 'mirror' && mirrorEnabled && layer.id !== 'bg';
+                        const isInteractable = isEraseTool || isCloneTool || isPickTool || isPaintTool || isMirrorTool;
+
+                        return (
+                          <div
+                            key={layer.id}
+                            onClick={() => handleCanvasClick(layer.id)}
+                            className={`absolute transition-shadow duration-200 ${
+                              selectedLayerId === layer.id && activeTool === 'select'
+                                ? 'ring-2 ring-blush-500 ring-offset-2'
+                                : isInteractable
+                                ? 'cursor-pointer hover:ring-2 hover:ring-blush-400 hover:ring-offset-1'
+                                : activeTool === 'select' || activeTool === 'mirror'
+                                ? 'cursor-move'
+                                : 'cursor-default'
+                            }`}
+                            style={(() => {
+                              const fab = getFabricStyle(layer.pattern, layer.color);
+                              return {
+                                left: layer.x,
+                                top: layer.y,
+                                width: layer.width,
+                                height: layer.height,
+                                transform: `rotate(${layer.rotation}deg)`,
+                                opacity: layer.opacity,
+                                zIndex: layer.zIndex,
+                                backgroundColor: fab.backgroundColor,
+                                backgroundImage: fab.backgroundImage,
+                                backgroundSize: fab.backgroundSize,
+                                boxShadow: fab.boxShadow,
+                                borderRadius: layer.id === 'bg' ? '0' : '3px',
+                                border: layer.id !== 'bg' ? '1px solid rgba(0,0,0,0.08)' : 'none',
+                              };
+                            })()}
+                          >
+                            {selectedLayerId === layer.id && layer.id !== 'bg' && (
+                              <div className="absolute -top-5 left-0 text-[8px] text-slate-400 font-medium whitespace-nowrap bg-white/90 px-1 py-0.5 rounded shadow-sm opacity-70 pointer-events-none">
+                                {layer.name}
+                              </div>
+                            )}
+                            {isEraseTool && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
+                                <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
+                              </div>
+                            )}
+                            {isCloneTool && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
+                                <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Color Key Sidebar (pattern mode) */}
+                {viewMode === 'pattern' && patternRegions.length > 0 && (
+                  <div className="w-52 shrink-0 bg-white rounded-2xl border border-blush-200 p-3 max-h-[500px] overflow-y-auto">
+                    <h4 className="text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1">
+                      <Palette className="h-3.5 w-3.5 text-blush-500" /> Color Guide
+                    </h4>
+                    <p className="text-[9px] text-slate-400 mb-2">Suggested fabric colors for each numbered piece:</p>
+                    <div className="space-y-1">
+                      {patternRegions.map((r) => (
+                        <div key={r.number} className="flex items-center gap-2 text-[10px]">
+                          <span className="w-5 h-5 rounded border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-600 shrink-0 bg-slate-50">
+                            {r.number}
+                          </span>
+                          <span
+                            className="w-4 h-4 rounded-full border border-slate-300 shrink-0"
+                            style={{ backgroundColor: r.suggestedHex }}
+                          />
+                          <span className="text-slate-600 font-medium truncate">{r.suggestedColor}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
