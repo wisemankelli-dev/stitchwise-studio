@@ -1335,6 +1335,23 @@ class ApiClient {
     };
   }
 
+  /** Export a collage pattern as a printable PDF */
+  async exportCollagePdf(
+    name: string,
+    blockSize: number,
+    regions: PatternRegion[],
+    canvasWidth?: number,
+    canvasHeight?: number,
+  ): Promise<Blob> {
+    const response = await fetch(`${this.apiBaseUrl}/ai/collage/export-pdf`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ name, blockSize, regions, canvasWidth, canvasHeight }),
+    });
+    if (!response.ok) throw new Error('Failed to generate PDF');
+    return response.blob();
+  }
+
   // ==================== MARKETPLACE API ====================
 
   /**

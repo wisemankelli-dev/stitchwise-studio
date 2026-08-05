@@ -216,6 +216,31 @@ export const CollageStudio: React.FC = () => {
     link.click();
   };
 
+  const handleExportPdf = async () => {
+    if (patternRegions.length === 0) return;
+    try {
+      setSaveMessage('Generating PDF...');
+      const blob = await api.exportCollagePdf(
+        collageName || 'Collage Pattern',
+        blockSize,
+        patternRegions,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${(collageName || 'collage_pattern').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSaveMessage('PDF downloaded!');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (err) {
+      setSaveMessage('PDF export failed');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+
   const handleCanvasClick = (layerId: string) => {
     switch (activeTool) {
       case 'erase': {
@@ -521,6 +546,14 @@ export const CollageStudio: React.FC = () => {
                   </div>
                   <button onClick={handleExportPng} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
                     <Download className="h-3 w-3" /> PNG
+                  </button>
+                  <button
+                    onClick={handleExportPdf}
+                    disabled={patternRegions.length === 0}
+                    className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1 disabled:opacity-50"
+                    title="Export as printable PDF pattern"
+                  >
+                    <Scissors className="h-3 w-3" /> PDF
                   </button>
                   <button
                     onClick={() => setShowShareModal(true)}

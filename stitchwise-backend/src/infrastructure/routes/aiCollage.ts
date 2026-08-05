@@ -9,6 +9,7 @@ import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/collageAI";
 import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt } from "../services/openaiCollageService";
+import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
 
 const upload = multer({
@@ -134,6 +135,36 @@ export function createAICollageRouter(): Router {
       }
     },
   );
+
+  // POST /api/ai/collage/export-pdf — Export collage pattern as printable PDF
+  router.post("/collage/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const { name, blockSize, regions, canvasWidth, canvasHeight } = req.body;
+
+      if (!regions || !Array.isArray(regions) || regions.length === 0) {
+        res.status(400).json({ success: false, error: "No pattern regions provided" });
+        return;
+      }
+
+      const pdfBuffer = await generateCollagePatternPdf({
+        name: name || "Collage Pattern",
+        blockSize: blockSize || 12,
+        regions,
+        canvasWidth: canvasWidth || 400,
+        canvasHeight: canvasHeight || 400,
+      });
+
+      const safeName = (name || "collage_pattern").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({ event: "collage_pdf_export_error", error: message });
+      res.status(500).json({ success: false, error: message });
+    }
+  });
 
   return router;
 }
