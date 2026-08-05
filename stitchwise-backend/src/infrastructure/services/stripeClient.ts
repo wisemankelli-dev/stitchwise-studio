@@ -16,8 +16,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder"
 // STUDIO: https://dashboard.stripe.com/test/products/prod_xxx
 const PRICE_IDS: Record<string, string | undefined> = {
   HOBBYIST: undefined,  // Free tier — no checkout needed
-  PRO: "price_1Tl8m5ReYrEZNTjj8LRkjXva",
-  STUDIO: "price_1Tl8mXReYrEZNTjj0m7TzPgD",
+  PRO: process.env.STRIPE_PRICE_PRO || undefined,
+  STUDIO: process.env.STRIPE_PRICE_STUDIO || undefined,
 };
 
 /** Amounts in cents for each tier (used if creating prices dynamically). */
@@ -69,6 +69,19 @@ async function ensurePrice(tier: string): Promise<string> {
   return price.id;
 }
 
+/**
+ * Creates a Stripe Checkout Session for a subscription.
+ */
+export async function createPortalSession(
+  customerId: string,
+  returnUrl: string,
+): Promise<string> {
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: returnUrl,
+  });
+  return session.url;
+}
 /**
  * Creates a Stripe Checkout Session for a subscription.
  */
