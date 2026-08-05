@@ -44,6 +44,12 @@ async function ensurePrice(tier: string): Promise<string> {
       description: tier === "PRO"
         ? "Unlimited AI generations, machine embroidery exports"
         : "Commercial licenses, multi-user accounts, bulk processing",
+      tax_code: "txcd_10000000", // General - electronically supplied services
+    });
+  } else if (!product.tax_code) {
+    // Ensure existing product has a tax code
+    product = await stripe.products.update(product.id, {
+      tax_code: "txcd_10000000",
     });
   }
 
