@@ -1,4 +1,5 @@
 import express from "express";
+import path from "node:path";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
@@ -76,6 +77,15 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api/patterns", createPatternPersistenceRouter(prisma));
   app.use("/api/patterns", createPatternEditorRouter(prisma));
   app.use("/api/patterns", createPatternExportRouter(prisma));
+
+  // SPA static serving — mirrors the deployed bundle: serve dist/client with a
+  // fallback to index.html for non-API routes (CLIENT_DIR is set by serve.ts).
+  const clientDir =
+    process.env.CLIENT_DIR || path.join(__dirname, "..", "..", "dist", "client");
+  app.use(express.static(clientDir));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
+  });
 
   // Global error handler
   app.use(

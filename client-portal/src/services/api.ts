@@ -1133,7 +1133,10 @@ class ApiClient {
           success: true,
           layers: Array.isArray(data?.layers) ? data.layers : [],
           pieces: Array.isArray(data?.pieces) ? data.pieces : undefined,
-          referenceArt: data?.artworkUrl || data?.previewUrl || undefined,
+          // referenceImage is the exact full art the pieces were cut from (normalized
+          // outlines are relative to it) — use it as the primary reference; fall back
+          // to the preview/artwork URLs for older backend responses.
+          referenceArt: data?.referenceImage || data?.artworkUrl || data?.previewUrl || undefined,
           canvasWidth: data?.canvasWidth ?? 500,
           canvasHeight: data?.canvasHeight ?? 500,
           promptUsed: prompt,
