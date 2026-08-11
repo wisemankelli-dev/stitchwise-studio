@@ -73,7 +73,7 @@ export function createLineArtRouter(): Router {
         // Parse optional parameters
         const gridSize = parseInt(req.body?.gridSize ?? String(DEFAULT_GRID_SIZE), 10);
         const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-        const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
+        const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
 
         const edgeThreshold = parseInt(req.body?.edgeThreshold ?? "50", 10);
         const threshold = Math.max(10, Math.min(150, isNaN(edgeThreshold) ? 50 : edgeThreshold));

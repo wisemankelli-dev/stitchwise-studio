@@ -393,7 +393,7 @@ export function createAIEmbroideryRouter(): Router {
     (req: Request, res: Response) => {
       const { shape, gridSize } = req.body;
       const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-      const gs = validSizes.includes(Number(gridSize)) ? Number(gridSize) : DEFAULT_GRID_SIZE;
+      const gs = Number(gridSize) >= 8 && Number(gridSize) <= 200 ? Number(gridSize) : DEFAULT_GRID_SIZE;
 
       try {
         const pattern = generateShape(shape || "", gs);
