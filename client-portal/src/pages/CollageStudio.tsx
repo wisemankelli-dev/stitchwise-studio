@@ -28,7 +28,7 @@ const FABRIC_COLORS = [
 ];
 
 const DEFAULT_LAYERS: FabricLayer[] = [
-  { id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
+  { id: 'bg', name: 'Base Fabric', color: '#ffffff', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
 ];
 
 const CANVAS_WIDTH = 500;

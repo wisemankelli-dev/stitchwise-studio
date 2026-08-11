@@ -1158,7 +1158,7 @@ class ApiClient {
     const layers: FabricLayer[] = [];
 
     // Always start with a base fabric
-    const bgColor = isVintage ? '#fef3c7' : isFloral ? '#fce7f3' : isNature ? '#f0fdf4' : isAbstract ? '#f5f3ff' : '#ffffff';
+    const bgColor = '#ffffff'; // base fabric is always white
     layers.push({
       id: 'bg', name: 'Base Fabric', color: bgColor, pattern: 'solid',
       x: 100, y: 100, width: 400, height: 400, rotation: 0, opacity: 1, zIndex: 0,
@@ -1359,7 +1359,7 @@ class ApiClient {
 
     // Base fabric
     layers.push({
-      id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid',
+      id: 'bg', name: 'Base Fabric', color: '#ffffff', pattern: 'solid',
       x: 100, y: 100, width: 400, height: 400, rotation: 0, opacity: 1, zIndex: 0,
     });
 
