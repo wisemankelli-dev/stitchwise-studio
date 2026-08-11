@@ -69,6 +69,31 @@ export interface FabricColorUsage {
   count: number; // Number of layers using this color
 }
 
+// ─── Scrapbook Piece ────────────────────────────────────────────────────────
+
+/**
+ * A single scrapbook-style collage piece.
+ *
+ * Scrapbook pieces are cutouts of the actual art image: each piece carries
+ * the real art pixels inside its outline, with transparency outside the mask.
+ * The customer arranges these pieces on the block like a fabric scrapbook
+ * (reference: collagequilter.com).
+ */
+export interface CollagePiece {
+  /** Unique identifier for the piece */
+  id: string;
+  /** Human-readable label (e.g. "Piece 1") */
+  label: string;
+  /** Simplified outline polygon as [x, y] points normalized 0-1 (image-relative) */
+  outline: Array<[number, number]>;
+  /** Normalized bounding box (0-1) of the piece within the full art image */
+  bounds: { x: number; y: number; width: number; height: number };
+  /** Dominant fabric color of the piece as hex */
+  color: string;
+  /** Data-URL PNG of the piece: original art pixels inside the shape, transparent outside */
+  image: string;
+}
+
 // ─── Collage Generation Result ──────────────────────────────────────────────
 
 /** Complete collage generation result. */
@@ -91,6 +116,10 @@ export interface CollageGenerationResult {
   previewUrl?: string;
   /** Original prompt used (for text-to-collage) */
   prompt?: string;
+  /** Scrapbook pieces — cutouts of the actual art image (scrapbook flow) */
+  pieces?: CollagePiece[];
+  /** Full art image as a data-URL PNG (reference for the piece tray) */
+  referenceImage?: string;
 }
 
 // ─── Request / Response Types ───────────────────────────────────────────────

@@ -8,7 +8,7 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/collageAI";
-import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt } from "../services/openaiCollageService";
+import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt, attachMockPiecesToCollage } from "../services/openaiCollageService";
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
 import { aiRateLimit, getAIUsage } from "../middleware/aiRateLimit";
@@ -80,7 +80,9 @@ export function createAICollageRouter(): Router {
         } catch (err) {
           console.warn({ event: "collage_ai_fallback", error: String(err) });
           const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
-          res.json({ success: true, data: collage });
+          // Mock fallback still produces scrapbook pieces (rendered mock art cutouts).
+          const withPieces = await attachMockPiecesToCollage(collage);
+          res.json({ success: true, data: withPieces });
           return;
         }
         if (generation?.url) {

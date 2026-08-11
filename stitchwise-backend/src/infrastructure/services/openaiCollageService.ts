@@ -10,11 +10,12 @@
 import axios from "axios";
 import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
-import type { CollageLayer, CollageGenerationResult, PatternRegion } from "../../domain/ai/collageAI";
+import type { CollageLayer, CollageGenerationResult, PatternRegion, CollagePiece } from "../../domain/ai/collageAI";
 interface OpenAIGenerationResponse { id: string; url?: string; createdAt?: string; buffer?: Buffer; }
 import { generateImageWithDallE } from "./openaiImageService";
 import { closestFabricColor } from "../../domain/collage/fabricColors";
 import { getRandomTexture } from "../../domain/collage/fabricTextures";
+import { segmentImageIntoPieces } from "./collagePieceSegmentation";
 
 /** OpenAI API base URL. */
 const UNUSED_API_BASE = "https://api.openai.com/v1";
@@ -236,7 +237,27 @@ export async function imageBufferToCollageLayers(
     }
   });
 
-  if (layers.length <= 1) return generateMockCollageLayout(size);
+  if (layers.length <= 1) {
+    const fallback = generateMockCollageLayout(size);
+    // Even the fallback path segments the real uploaded art into pieces.
+    try {
+      const seg = await segmentImageIntoPieces(imageBuffer);
+      return { ...fallback, pieces: seg.pieces, referenceImage: seg.referenceImage };
+    } catch {
+      return fallback;
+    }
+  }
+
+  // Scrapbook pieces — cutouts of the actual art image (owner direction).
+  let pieces: CollagePiece[] | undefined;
+  let referenceImage: string | undefined;
+  try {
+    const seg = await segmentImageIntoPieces(imageBuffer);
+    pieces = seg.pieces;
+    referenceImage = seg.referenceImage;
+  } catch (err) {
+    console.warn({ event: "collage_piece_segmentation_failed", error: String(err) });
+  }
 
   return {
     layers,
@@ -244,6 +265,8 @@ export async function imageBufferToCollageLayers(
     gridSize: size,
     layerCount: layers.length,
     fabricColors: Array.from(fabricColorCount.values()).sort((a, b) => b.count - a.count),
+    pieces,
+    referenceImage,
   };
 }
 
@@ -314,6 +337,55 @@ export function generateCollageLayoutFromPrompt(
     fabricColors,
     prompt,
   };
+}
+
+/**
+ * Render the mock layout's layers as a raster artwork image (SVG → PNG),
+ * then segment it into real scrapbook cutout pieces.
+ *
+ * Used by the no-API-key fallback so the scrapbook piece flow works end to
+ * end even in mock mode: the pieces are cutouts of the rendered mock art.
+ */
+export async function attachMockPiecesToCollage(
+  collage: CollageGenerationResult,
+  size: number = 512,
+): Promise<CollageGenerationResult> {
+  try {
+    const artwork = await renderMockArtworkSvg(collage.layers, size);
+    const seg = await segmentImageIntoPieces(artwork);
+    return { ...collage, pieces: seg.pieces, referenceImage: seg.referenceImage };
+  } catch (err) {
+    console.warn({ event: "mock_piece_attachment_failed", error: String(err) });
+    return collage;
+  }
+}
+
+/**
+ * Rasterize a set of collage layers into a PNG buffer (SVG render).
+ * Draws each non-background layer as a rotated rounded rectangle so the
+ * mock artwork visually matches the generated layout.
+ */
+async function renderMockArtworkSvg(
+  layers: CollageLayer[],
+  size: number,
+): Promise<Buffer> {
+  const parts: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 400 400">`,
+    `<rect x="0" y="0" width="400" height="400" fill="#ffffff"/>`,
+  ];
+  for (const layer of layers) {
+    if (layer.id === 'bg') continue;
+    const cx = layer.x + layer.width / 2;
+    const cy = layer.y + layer.height / 2;
+    parts.push(
+      `<g transform="translate(${cx},${cy}) rotate(${layer.rotation || 0})">` +
+      `<rect x="${-layer.width / 2}" y="${-layer.height / 2}" width="${layer.width}" height="${layer.height}" ` +
+      `rx="${Math.min(18, layer.width / 4)}" fill="${layer.color}"/>` +
+      `</g>`,
+    );
+  }
+  parts.push(`</svg>`);
+  return sharp(Buffer.from(parts.join(""))).png().toBuffer();
 }
 
 /**
