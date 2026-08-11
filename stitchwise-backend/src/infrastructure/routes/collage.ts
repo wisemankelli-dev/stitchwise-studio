@@ -136,29 +136,50 @@ export function createCollageRouter(repo: CollageRepo): Router {
   });
 
   // Frontend adapter routes (the SPA uses /api/collage rather than /projects).
+  // Maps a stored project row (data JSON column) to the frontend-shaped object,
+  // so the SPA receives layers/pieces/referenceArt instead of raw JSON.
+  const toCollageFrontend = (p: any) => {
+    let layers: any[] = [];
+    let pieces: any;
+    let referenceArt: any;
+    try {
+      const parsed = JSON.parse(p.data || "{}");
+      layers = parsed.layers || [];
+      pieces = parsed.pieces;
+      referenceArt = parsed.referenceArt;
+    } catch (e) {
+      layers = [];
+    }
+    return { id: p.id, name: p.name, layers, pieces, referenceArt, createdAt: p.createdAt, updatedAt: p.updatedAt };
+  };
   router.get("/collage", authenticate, async (req: Request, res: Response) => {
     try {
-      const projects = await repo.listProjectsByUser((req as any).user.userId);
-      res.json({ projects });
+      const user = (req as any).user;
+      const projects = await repo.listProjectsByUser(user.userId);
+      res.json({ projects: projects.map(toCollageFrontend) });
     } catch (err) {
-      console.error({ event: "list_collage_adapter_error", error: String(err) });
+      console.error({ event: "list_collage_projects_error", error: String(err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
   router.post("/collage", authenticate, async (req: Request, res: Response) => {
     try {
-      const { name, layers } = req.body ?? {};
-      if (typeof name !== "string" || !name.trim() || !Array.isArray(layers)) {
-        res.status(400).json({ error: "Validation failed" });
+      const body = req.body ?? {};
+      if (!body.name || !Array.isArray(body.layers)) {
+        res.status(400).json({ error: "Validation failed", details: [{ message: "name and layers[] are required" }] });
         return;
       }
+      const user = (req as any).user;
       const project = await repo.createProject({
-        name: name.trim(), data: JSON.stringify({ layers }), width: 300, height: 300,
-        userId: (req as any).user.userId,
+        name: body.name,
+        data: JSON.stringify({ layers: body.layers, pieces: body.pieces, referenceArt: body.referenceArt }),
+        width: 300,
+        height: 300,
+        userId: user.userId,
       });
-      res.status(201).json(project);
+      res.status(201).json(toCollageFrontend(project));
     } catch (err) {
-      console.error({ event: "create_collage_adapter_error", error: String(err) });
+      console.error({ event: "create_collage_project_error", error: String(err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -166,18 +187,19 @@ export function createCollageRouter(repo: CollageRepo): Router {
     try {
       const project = await repo.getProject(req.params.id);
       if (!project) { res.status(404).json({ error: "Collage project not found" }); return; }
-      if (project.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; }
-      res.json({ project });
+      const user = (req as any).user;
+      if (project.userId !== user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      res.json({ project: toCollageFrontend(project) });
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
   router.delete("/collage/:id", authenticate, async (req: Request, res: Response) => {
     try {
       const project = await repo.getProject(req.params.id);
       if (!project) { res.status(404).json({ error: "Collage project not found" }); return; }
-      if (project.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      const user = (req as any).user;
+      if (project.userId !== user.userId) { res.status(403).json({ error: "Access denied" }); return; }
       await repo.deleteProject(req.params.id); res.status(204).send();
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
-
   return router;
 }

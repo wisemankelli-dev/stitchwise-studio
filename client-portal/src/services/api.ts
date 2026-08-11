@@ -1126,7 +1126,20 @@ class ApiClient {
           body: JSON.stringify({ prompt, ...options })
         });
         if (!response.ok) throw new Error('AI collage generation failed');
-        return await response.json();
+        const json = await response.json();
+        // Backend wraps the result in { success, data: CollageGenerationResult } — unwrap it
+        const data = json?.data && typeof json.data === 'object' ? json.data : json;
+        return {
+          success: true,
+          layers: Array.isArray(data?.layers) ? data.layers : [],
+          pieces: Array.isArray(data?.pieces) ? data.pieces : undefined,
+          referenceArt: data?.artworkUrl || data?.previewUrl || undefined,
+          canvasWidth: data?.canvasWidth ?? 500,
+          canvasHeight: data?.canvasHeight ?? 500,
+          promptUsed: prompt,
+          processingTimeMs: data?.processingTimeMs ?? 0,
+          totalLayers: Array.isArray(data?.layers) ? data.layers.length : 0,
+        };
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
@@ -1889,16 +1902,16 @@ class ApiClient {
   // ==================== COLLAGE PERSISTENCE ====================
   private collageStore: CollageProject[] = [];
 
-  async saveCollage(name: string, layers: FabricLayer[]): Promise<CollageProject> {
+  async saveCollage(name: string, layers: FabricLayer[], pieces?: PlacedCollagePiece[], referenceArt?: string): Promise<CollageProject> {
     const id = `collage-${Date.now()}`;
     const now = new Date().toISOString();
-    const project: CollageProject = { id, name, layers, createdAt: now, updatedAt: now };
+    const project: CollageProject = { id, name, layers, pieces, referenceArt, createdAt: now, updatedAt: now };
     if (this.isLiveBackend) {
       try {
         const res = await fetch(`${this.apiBaseUrl}/collage`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ name, layers }),
+          body: JSON.stringify({ name, layers, pieces, referenceArt }),
         });
         if (res.ok) return await res.json();
       } catch { /* fall through to mock */ }
@@ -2006,6 +2019,33 @@ export interface FabricLayer {
   zIndex: number;
 }
 
+/** A scrapbook piece — a cutout of the actual art image (transparent outside the outline). */
+export interface CollagePiece {
+  id: string;
+  label: string;
+  /** Normalized outline points (0..1 relative to the piece bounds), e.g. [[0.1,0.1],[0.9,0.1],...] */
+  outline: [number, number][];
+  /** Bounding box of the piece within the reference art, normalized (0..1) */
+  bounds: { x: number; y: number; width: number; height: number };
+  /** Representative fabric/art color */
+  color: string;
+  /** data-URL PNG with transparency — the art clipped to the piece shape */
+  image: string;
+}
+
+/** A piece instance placed on the scrapbook canvas. */
+export interface PlacedCollagePiece {
+  instanceId: string;
+  pieceId: string;
+  /** Copy of the source piece so saved projects round-trip standalone */
+  piece: CollagePiece;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  zIndex: number;
+}
+
 /** Response from AI collage generation */
 export interface AICollageResponse {
   success: boolean;
@@ -2015,6 +2055,10 @@ export interface AICollageResponse {
   promptUsed?: string;
   processingTimeMs: number;
   totalLayers: number;
+  /** Scrapbook pieces (cutouts of the actual art image) — present when the backend segmentation pipeline emits them */
+  pieces?: CollagePiece[];
+  /** Reference art image (data-URL or URL) the pieces were cut from */
+  referenceArt?: string;
 }
 
 // ── Collage Persistence ──────────────────────────────
@@ -2022,6 +2066,8 @@ export interface CollageProject {
   id: string;
   name: string;
   layers: FabricLayer[];
+  pieces?: PlacedCollagePiece[];
+  referenceArt?: string;
   createdAt: string;
   updatedAt: string;
 }

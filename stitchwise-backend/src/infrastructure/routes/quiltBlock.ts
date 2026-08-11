@@ -195,27 +195,65 @@ export function createQuiltBlockRouter(repo: QuiltBlockRepo): Router {
   });
 
   // Frontend adapter routes (the SPA uses /api/quilt-blocks).
+  // Maps a stored project row (data JSON column) to the frontend-shaped object.
+  const toQuiltFrontend = (p: any) => {
+    let shapes: any[] = [];
+    try {
+      shapes = JSON.parse(p.data || "{}").shapes || [];
+    } catch (e) {
+      shapes = [];
+    }
+    return { id: p.id, name: p.name, shapes, blockSize: p.blockSize ?? 12, createdAt: p.createdAt, updatedAt: p.updatedAt };
+  };
   router.get("/quilt-blocks", authenticate, async (req: Request, res: Response) => {
-    try { res.json({ blocks: await repo.listProjectsByUser((req as any).user.userId) }); }
-    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+    try {
+      const user = (req as any).user;
+      const projects = await repo.listProjectsByUser(user.userId);
+      res.json({ blocks: projects.map(toQuiltFrontend) });
+    } catch (err) {
+      console.error({ event: "list_quilt_block_projects_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
   router.post("/quilt-blocks", authenticate, async (req: Request, res: Response) => {
     try {
-      const { name, shapes, blockSize } = req.body ?? {};
-      if (typeof name !== "string" || !name.trim() || !Array.isArray(shapes)) { res.status(400).json({ error: "Validation failed" }); return; }
-      const size = typeof blockSize === "number" ? blockSize : 12;
-      const project = await repo.createProject({ name: name.trim(), data: JSON.stringify({ shapes }), blockSize: size, gridRows: 4, gridCols: 4, userId: (req as any).user.userId });
-      res.status(201).json(project);
-    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+      const body = req.body ?? {};
+      if (!body.name || !Array.isArray(body.shapes)) {
+        res.status(400).json({ error: "Validation failed", details: [{ message: "name and shapes[] are required" }] });
+        return;
+      }
+      const user = (req as any).user;
+      const project = await repo.createProject({
+        name: body.name,
+        data: JSON.stringify({ shapes: body.shapes }),
+        blockSize: typeof body.blockSize === "number" ? body.blockSize : 12,
+        gridRows: 8,
+        gridCols: 8,
+        userId: user.userId,
+      });
+      res.status(201).json(toQuiltFrontend(project));
+    } catch (err) {
+      console.error({ event: "create_quilt_block_project_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
   router.get("/quilt-blocks/:id", authenticate, async (req: Request, res: Response) => {
-    try { const block = await repo.getProject(req.params.id); if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; } if (block.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; } res.json({ block }); }
-    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+    try {
+      const block = await repo.getProject(req.params.id);
+      if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; }
+      const user = (req as any).user;
+      if (block.userId !== user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      res.json({ block: toQuiltFrontend(block) });
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
   router.delete("/quilt-blocks/:id", authenticate, async (req: Request, res: Response) => {
-    try { const block = await repo.getProject(req.params.id); if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; } if (block.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; } await repo.deleteProject(req.params.id); res.status(204).send(); }
-    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+    try {
+      const block = await repo.getProject(req.params.id);
+      if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; }
+      const user = (req as any).user;
+      if (block.userId !== user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      await repo.deleteProject(req.params.id); res.status(204).send();
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
-
   return router;
 }

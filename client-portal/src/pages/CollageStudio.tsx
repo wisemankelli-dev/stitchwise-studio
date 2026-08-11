@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
+import { api, FabricLayer, AICollageResponse, CollageProject, CollagePiece, PlacedCollagePiece } from '../services/api';
 import html2canvas from 'html2canvas';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
@@ -8,7 +8,7 @@ import {
   Flower2, Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
-  FolderOpen, ChevronDown
+  FolderOpen, ChevronDown, FileText, Move, GripVertical
 } from 'lucide-react';
 
 type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
@@ -71,6 +71,15 @@ export const CollageStudio: React.FC = () => {
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const pieceSpaceRef = useRef<HTMLDivElement>(null);
+
+  // Scrapbook piece workspace state (owner direction: cutout pieces of the actual art image)
+  const [availablePieces, setAvailablePieces] = useState<CollagePiece[]>([]);
+  const [placedPieces, setPlacedPieces] = useState<PlacedCollagePiece[]>([]);
+  const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  const [referenceArt, setReferenceArt] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const [trayDragId, setTrayDragId] = useState<string | null>(null);
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
 
@@ -110,10 +119,20 @@ export const CollageStudio: React.FC = () => {
     setSelectedLayerId('bg');
     setAiResult(null);
     setAiError(null);
+    setAvailablePieces([]);
+    setPlacedPieces([]);
+    setSelectedPieceId(null);
+    setReferenceArt(null);
   };
 
   const applyAiResult = () => {
     if (!aiResult?.layers) return;
+
+    // Scrapbook piece flow: if the backend emitted cutout pieces, adopt them instead of layers.
+    if (aiResult.pieces && aiResult.pieces.length > 0) {
+      adoptPiecesFromResult(aiResult);
+      return;
+    }
 
     if (replaceMode === 'replace') {
       setLayers(aiResult.layers);
@@ -138,7 +157,12 @@ export const CollageStudio: React.FC = () => {
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      const project = await api.saveCollage(name, layers);
+      const project = await api.saveCollage(
+        name,
+        layers,
+        placedPieces.length > 0 ? placedPieces : undefined,
+        referenceArt ?? undefined
+      );
       setCollageName('');
       setSavedProjects(prev => [project, ...prev.filter(p => p.id !== project.id)]);
       setSaveMessage(`Saved "${project.name}"!`);
@@ -163,6 +187,13 @@ export const CollageStudio: React.FC = () => {
     if (project) {
       setLayers(project.layers);
       setSelectedLayerId(project.layers[project.layers.length - 1]?.id || 'bg');
+      // Restore scrapbook piece workspace state when the project has pieces.
+      if (project.pieces && project.pieces.length > 0) {
+        setPlacedPieces(project.pieces);
+        setAvailablePieces(project.pieces.map(p => p.piece));
+        setSelectedPieceId(null);
+      }
+      if (project.referenceArt) setReferenceArt(project.referenceArt);
       setSaveMessage(`Loaded "${project.name}"`);
       setTimeout(() => setSaveMessage(null), 2000);
     }
@@ -185,6 +216,132 @@ export const CollageStudio: React.FC = () => {
     link.download = `${collageName.trim() || 'collage'}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
+  };
+
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const h = hex.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
+  };
+
+  /** PDF export: outline pattern with numbered cutout pieces + color guide + reference art. */
+  const handleExportPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const title = (collageName.trim() || 'collage').replace(/\s+/g, '-');
+      const pieces = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
+        instanceId: `tray-${i}`, pieceId: piece.id, piece, x: 40 + i * 24, y: 40 + i * 24, scale: 1, rotation: 0, zIndex: i,
+      }));
+      const hasPieces = pieces.length > 0;
+
+      // Page 1: Title + layout diagram with numbered pieces
+      doc.setFontSize(16);
+      doc.setTextColor(139, 92, 118);
+      doc.text('Collage Quilt Pattern', 20, 20);
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`${hasPieces ? pieces.length : 0} pieces · Block ${12}"" × ${12}""`, 20, 28);
+
+      if (hasPieces) {
+        // Draw a scaled layout diagram: canvas 500x500 → ~160mm box
+        const boxX = 25, boxY = 38, boxMm = 160;
+        const scale = boxMm / 500;
+        doc.setDrawColor(220, 200, 210);
+        doc.rect(boxX, boxY, boxMm, boxMm);
+        pieces.forEach((p, i) => {
+          const w = Math.max(40, p.piece.bounds.width * 500) * p.scale;
+          const h = Math.max(40, p.piece.bounds.height * 500) * p.scale;
+          const cx = boxX + p.x * scale;
+          const cy = boxY + p.y * scale;
+          const rad = (p.rotation * Math.PI) / 180;
+          const outline = (p.piece.outline || []).map(([ox, oy]) => {
+            // rotate + translate outline points
+            const rx = ox * w * Math.cos(rad) - oy * h * Math.sin(rad);
+            const ry = ox * w * Math.sin(rad) + oy * h * Math.cos(rad);
+            return [cx + rx, cy + ry] as [number, number];
+          });
+          if (outline.length >= 3) {
+            const [r, g, b] = hexToRgb(p.piece.color || '#f472b6');
+            doc.setFillColor(r, g, b);
+            doc.setDrawColor(120, 90, 110);
+            doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
+            // remainder as lines
+            for (let k = 2; k < outline.length; k++) {
+              doc.line(outline[k - 1][0], outline[k - 1][1], outline[k][0], outline[k][1]);
+            }
+            doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
+            // number label
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            const cxr = outline.reduce((s, pt) => s + pt[0], 0) / outline.length;
+            const cyr = outline.reduce((s, pt) => s + pt[1], 0) / outline.length;
+            doc.text(String(i + 1), cxr, cyr);
+          }
+        });
+      }
+
+      // Page 2: Reference art (if any)
+      if (referenceArt) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.setTextColor(139, 92, 118);
+        doc.text('Reference Art', 20, 20);
+        try {
+          const img = new window.Image();
+          img.src = referenceArt;
+          await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
+          const aspect = img.width && img.height ? img.height / img.width : 1;
+          const wMm = 150;
+          const hMm = wMm * aspect;
+          doc.addImage(referenceArt, 'PNG', 30, 30, wMm, Math.min(hMm, 200));
+        } catch { /* image may not embed */ }
+      }
+
+      // Page 2/3: Cutting guide with numbered piece outlines + colors
+      if (hasPieces) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.setTextColor(139, 92, 118);
+        doc.text('Piece Cutting Guide', 20, 20);
+        const keyY = 32;
+        pieces.forEach((p, i) => {
+          const row = Math.floor(i / 2);
+          const col = i % 2;
+          const px = 20 + col * 95;
+          const py = keyY + row * 62;
+          // outline preview (scaled to ~34mm box)
+          const box = 34;
+          const w = Math.max(40, p.piece.bounds.width * 500) * p.scale;
+          const h = Math.max(40, p.piece.bounds.height * 500) * p.scale;
+          const s = Math.min(box / w, box / h);
+          const ox = px + (box - w * s) / 2;
+          const oy = py + (box - h * s) / 2;
+          const outline = (p.piece.outline || []).map(([ox2, oy2]) => [ox + ox2 * w * s, oy + oy2 * h * s] as [number, number]);
+          if (outline.length >= 3) {
+            const [r, g, b] = hexToRgb(p.piece.color || '#f472b6');
+            doc.setFillColor(r, g, b);
+            doc.setDrawColor(120, 90, 110);
+            doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
+            for (let k = 2; k < outline.length; k++) doc.line(outline[k - 1][0], outline[k - 1][1], outline[k][0], outline[k][1]);
+            doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
+          }
+          doc.setFontSize(10);
+          doc.setTextColor(60, 60, 60);
+          doc.text(`#${i + 1} ${p.piece.label || 'Piece'}`, px + box + 6, py + 8);
+          doc.setFontSize(8);
+          doc.setTextColor(130, 130, 130);
+          doc.text(`${p.piece.color || ''} · ${Math.round(w)}×${Math.round(h)}px`, px + box + 6, py + 16);
+        });
+      }
+
+      doc.save(`${title}.pdf`);
+      setSaveMessage('PDF exported!');
+      setTimeout(() => setSaveMessage(null), 2500);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      setSaveMessage('PDF export failed');
+      setTimeout(() => setSaveMessage(null), 2500);
+    }
   };
 
   const handleCanvasClick = (layerId: string) => {
@@ -246,6 +403,143 @@ export const CollageStudio: React.FC = () => {
     }
   };
 
+  // === Scrapbook piece workspace (cutout pieces of the actual art image) ===
+  /** Build a CSS clip-path polygon from a piece's normalized outline (0..1 coords). */
+  const outlineClipPath = (outline: [number, number][]): string => {
+    if (!outline || outline.length < 3) return 'none';
+    return `polygon(${outline.map(([x, y]) => `${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`).join(',')})`;
+  };
+
+  /** Adopt pieces + reference art from an AI response (text or image generation). */
+  const adoptPiecesFromResult = (result: AICollageResponse | null) => {
+    if (result?.pieces && result.pieces.length > 0) {
+      setAvailablePieces(result.pieces);
+      if (result.referenceArt) setReferenceArt(result.referenceArt);
+      // Auto-place each piece once near the center of the canvas, slightly cascaded.
+      const placed: PlacedCollagePiece[] = result.pieces.map((piece, i) => {
+        const w = Math.max(40, piece.bounds.width * 500);
+        const h = Math.max(40, piece.bounds.height * 500);
+        const cols = Math.ceil(Math.sqrt(result.pieces!.length));
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        return {
+          instanceId: `placed-${Date.now()}-${i}`,
+          pieceId: piece.id,
+          piece,
+          x: 40 + col * (w + 16),
+          y: 40 + row * (h + 16),
+          scale: 1,
+          rotation: 0,
+          zIndex: i + 1,
+        };
+      });
+      setPlacedPieces(placed);
+      setSelectedPieceId(null);
+    }
+  };
+
+  const addPieceToCanvas = (piece: CollagePiece) => {
+    const w = Math.max(40, piece.bounds.width * 500);
+    const h = Math.max(40, piece.bounds.height * 500);
+    const instance: PlacedCollagePiece = {
+      instanceId: `placed-${Date.now()}`,
+      pieceId: piece.id,
+      piece,
+      x: Math.max(0, Math.min(CANVAS_WIDTH - w, 20 + Math.random() * 60)),
+      y: Math.max(0, Math.min(CANVAS_HEIGHT - h, 20 + Math.random() * 60)),
+      scale: 1,
+      rotation: 0,
+      zIndex: placedPieces.length + 1,
+    };
+    setPlacedPieces(prev => [...prev, instance]);
+    setSelectedPieceId(instance.instanceId);
+  };
+
+  const updatePlacedPiece = (instanceId: string, updates: Partial<PlacedCollagePiece>) => {
+    setPlacedPieces(prev => prev.map(p => p.instanceId === instanceId ? { ...p, ...updates } : p));
+  };
+
+  const removePlacedPiece = (instanceId: string) => {
+    setPlacedPieces(prev => prev.filter(p => p.instanceId !== instanceId));
+    if (selectedPieceId === instanceId) setSelectedPieceId(null);
+  };
+
+  const duplicatePlacedPiece = (instanceId: string) => {
+    const src = placedPieces.find(p => p.instanceId === instanceId);
+    if (!src) return;
+    const copy: PlacedCollagePiece = {
+      ...src,
+      instanceId: `placed-${Date.now()}`,
+      x: src.x + 24,
+      y: src.y + 24,
+      zIndex: placedPieces.length + 1,
+    };
+    setPlacedPieces(prev => [...prev, copy]);
+    setSelectedPieceId(copy.instanceId);
+  };
+
+  const bringPieceToFront = (instanceId: string) => {
+    const maxZ = placedPieces.reduce((m, p) => Math.max(m, p.zIndex), 0);
+    updatePlacedPiece(instanceId, { zIndex: maxZ + 1 });
+  };
+
+  /** Canvas mouse handlers for dragging placed pieces. */
+  const pieceSpaceRect = (): DOMRect | null => pieceSpaceRef.current?.getBoundingClientRect() ?? canvasRef.current?.getBoundingClientRect() ?? null;
+
+  const handlePiecePointerDown = (e: React.PointerEvent, instanceId: string) => {
+    if (activeTool !== 'select') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedPieceId(instanceId);
+    const rect = pieceSpaceRect();
+    if (!rect) return;
+    const px = (e.clientX - rect.left) / (rect.width / 500);
+    const py = (e.clientY - rect.top) / (rect.height / 500);
+    const placed = placedPieces.find(p => p.instanceId === instanceId);
+    if (!placed) return;
+    setDragState({ id: instanceId, offsetX: px - placed.x, offsetY: py - placed.y });
+  };
+
+  const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    if (!dragState) return;
+    const rect = pieceSpaceRect();
+    if (!rect) return;
+    const px = (e.clientX - rect.left) / (rect.width / 500);
+    const py = (e.clientY - rect.top) / (rect.height / 500);
+    updatePlacedPiece(dragState.id, { x: px - dragState.offsetX, y: py - dragState.offsetY });
+  };
+
+  const handleCanvasPointerUp = () => {
+    setDragState(null);
+  };
+
+  /** Drop a piece from the tray onto the canvas. */
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const pieceId = e.dataTransfer.getData('text/piece-id');
+    const piece = availablePieces.find(p => p.id === pieceId);
+    if (!piece) return;
+    const rect = pieceSpaceRect();
+    if (!rect) return;
+    const w = Math.max(40, piece.bounds.width * 500);
+    const h = Math.max(40, piece.bounds.height * 500);
+    const px = (e.clientX - rect.left) / (rect.width / 500) - w / 2;
+    const py = (e.clientY - rect.top) / (rect.height / 500) - h / 2;
+    const instance: PlacedCollagePiece = {
+      instanceId: `placed-${Date.now()}`,
+      pieceId: piece.id,
+      piece,
+      x: Math.max(0, Math.min(CANVAS_WIDTH - w, px)),
+      y: Math.max(0, Math.min(CANVAS_HEIGHT - h, py)),
+      scale: 1,
+      rotation: 0,
+      zIndex: placedPieces.length + 1,
+    };
+    setPlacedPieces(prev => [...prev, instance]);
+    setSelectedPieceId(instance.instanceId);
+    setTrayDragId(null);
+  };
+
   // === Text-to-Collage ===
   const triggerTextGeneration = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,6 +567,7 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(100);
       setProgressPhase('Collage complete!');
       setAiResult(result);
+      adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
       setAiError(err.message || 'AI collage generation failed.');
@@ -311,6 +606,7 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(100);
       setProgressPhase('Collage complete!');
       setAiResult(result);
+      adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
       setAiError(err.message || 'Image collage generation failed.');
@@ -357,23 +653,25 @@ export const CollageStudio: React.FC = () => {
             <div className="flex items-center gap-2">
               {aiResult && !isGenerating && (
                 <>
-                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
-                    <button
-                      onClick={() => setReplaceMode('replace')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
-                    </button>
-                    <button
-                      onClick={() => setReplaceMode('append')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
-                    </button>
-                  </div>
+                  {!(aiResult.pieces && aiResult.pieces.length > 0) && (
+                    <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
+                      <button
+                        onClick={() => setReplaceMode('replace')}
+                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
+                      </button>
+                      <button
+                        onClick={() => setReplaceMode('append')}
+                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        <Plus className="h-3 w-3 inline mr-0.5" /> Append
+                      </button>
+                    </div>
+                  )}
                   <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3">
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Apply to Canvas
+                    {aiResult.pieces && aiResult.pieces.length > 0 ? 'Apply Pieces' : 'Apply to Canvas'}
                   </button>
                 </>
               )}
@@ -436,10 +734,16 @@ export const CollageStudio: React.FC = () => {
                   )}
                 </div>
                 {/* Export */}
-                <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  Export
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    PNG
+                  </button>
+                  <button onClick={handleExportPdf} className="btn-floral-ghost text-xs py-1.5 px-3">
+                    <FileText className="h-3.5 w-3.5 mr-1" />
+                    PDF
+                  </button>
+                </div>
               </div>
               {/* Save message flash */}
               {saveMessage && (
@@ -475,7 +779,7 @@ export const CollageStudio: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-blush-500">
                   <Grid3X3 className="h-3.5 w-3.5" />
-                  <span>{layers.length} layers</span>
+                  <span>{placedPieces.length > 0 ? `${placedPieces.length} pieces · ` : ''}{layers.length} layers</span>
                 </div>
               </div>
 
@@ -533,8 +837,14 @@ export const CollageStudio: React.FC = () => {
                 ref={canvasRef}
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
                 style={{ height: '500px' }}
+                onPointerMove={handleCanvasPointerMove}
+                onPointerUp={handleCanvasPointerUp}
+                onPointerLeave={handleCanvasPointerUp}
+                onDragOver={(e) => { if (trayDragId) e.preventDefault(); }}
+                onDrop={handleCanvasDrop}
               >
                 <div
+                  ref={pieceSpaceRef}
                   className="absolute inset-0"
                   style={{
                     backgroundImage: 'linear-gradient(#fce7f3 1px, transparent 1px), linear-gradient(90deg, #fce7f3 1px, transparent 1px)',
@@ -543,6 +853,15 @@ export const CollageStudio: React.FC = () => {
                     transformOrigin: 'center center',
                   }}
                 >
+                  {/* Reference art overlay — faint guide behind pieces */}
+                  {referenceArt && placedPieces.length > 0 && (
+                    <img
+                      src={referenceArt}
+                      alt="Reference art"
+                      className="absolute inset-0 w-full h-full object-contain opacity-10 pointer-events-none select-none"
+                      draggable={false}
+                    />
+                  )}
                   {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
                     const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
                     const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
@@ -591,6 +910,53 @@ export const CollageStudio: React.FC = () => {
                         {isCloneTool && (
                           <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
                             <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Scrapbook cutout pieces (owner direction: pieces carry the art inside the shape) */}
+                  {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed) => {
+                    const w = Math.max(40, placed.piece.bounds.width * 500) * placed.scale;
+                    const h = Math.max(40, placed.piece.bounds.height * 500) * placed.scale;
+                    const isSelected = selectedPieceId === placed.instanceId && activeTool === 'select';
+                    return (
+                      <div
+                        key={placed.instanceId}
+                        onPointerDown={(e) => handlePiecePointerDown(e, placed.instanceId)}
+                        onDoubleClick={() => duplicatePlacedPiece(placed.instanceId)}
+                        className={`absolute ${activeTool === 'select' ? 'cursor-move' : 'cursor-default'}`}
+                        style={{
+                          left: placed.x,
+                          top: placed.y,
+                          width: w,
+                          height: h,
+                          transform: `rotate(${placed.rotation}deg)`,
+                          zIndex: 500 + placed.zIndex,
+                          filter: dragState?.id === placed.instanceId ? 'drop-shadow(0 4px 8px rgba(190,24,93,0.35))' : undefined,
+                        }}
+                      >
+                        {placed.piece.image ? (
+                          <img
+                            src={placed.piece.image}
+                            alt={placed.piece.label || 'piece'}
+                            draggable={false}
+                            className="w-full h-full select-none pointer-events-none"
+                            style={{ clipPath: outlineClipPath(placed.piece.outline) }}
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full border border-blush-400"
+                            style={{ backgroundColor: placed.piece.color, clipPath: outlineClipPath(placed.piece.outline) }}
+                          />
+                        )}
+                        {/* Selection ring + label */}
+                        {isSelected && (
+                          <div className="absolute inset-0 pointer-events-none">
+                            <div className="absolute inset-0 ring-2 ring-blush-500 rounded-sm" />
+                            <span className="absolute -top-5 left-0 text-[9px] font-bold text-white bg-blush-500 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              {placed.piece.label || 'Piece'}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -716,7 +1082,10 @@ export const CollageStudio: React.FC = () => {
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                   <p className="text-[11px] text-emerald-800">
-                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. Click <strong>"Apply to Canvas"</strong> above to use them.
+                    <strong>Success!</strong>{' '}
+                    {aiResult.pieces && aiResult.pieces.length > 0
+                      ? `${aiResult.pieces.length} scrapbook cutout pieces generated. Click "Apply to Canvas" above to arrange them.`
+                      : `${aiResult.totalLayers} layers generated. Click "Apply to Canvas" above to use them.`}
                   </p>
                 </div>
               )}
@@ -728,7 +1097,22 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
 
-              {aiResult && !isGenerating && aiResult.layers.length > 1 && (
+              {aiResult && !isGenerating && aiResult.pieces && aiResult.pieces.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-blush-100">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Generated Pieces ({aiResult.pieces.length})</p>
+                  <div className="space-y-1 max-h-28 overflow-y-auto">
+                    {aiResult.pieces.map((piece) => (
+                      <div key={piece.id} className="flex items-center gap-2 text-[10px] text-slate-600">
+                        <div className="w-3 h-3 rounded border border-blush-100 shrink-0" style={{ backgroundColor: piece.color }} />
+                        <span className="font-medium truncate">{piece.label}</span>
+                        <span className="text-slate-400 ml-auto">{Math.round(piece.bounds.width * 500)}×{Math.round(piece.bounds.height * 500)}px</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {aiResult && !isGenerating && aiResult.layers.length > 1 && !(aiResult.pieces && aiResult.pieces.length > 0) && (
                 <div className="mt-3 pt-3 border-t border-blush-100">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Generated Layers</p>
                   <div className="space-y-1 max-h-28 overflow-y-auto">
@@ -743,6 +1127,110 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Scrapbook Piece Tray */}
+            {availablePieces.length > 0 && (
+              <div className="floral-card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                    <Scissors className="h-4 w-4 text-blush-500 -rotate-45" />
+                    Scrapbook Pieces
+                  </h3>
+                  <span className="text-[10px] text-slate-400">{availablePieces.length} cutouts</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mb-3">
+                  Drag a piece onto the canvas (or click to add). Double-click a placed piece to duplicate it.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {availablePieces.map((piece) => (
+                    <div
+                      key={piece.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/piece-id', piece.id);
+                        e.dataTransfer.effectAllowed = 'copy';
+                        setTrayDragId(piece.id);
+                      }}
+                      onDragEnd={() => setTrayDragId(null)}
+                      onClick={() => addPieceToCanvas(piece)}
+                      className={`group relative aspect-square rounded-xl border overflow-hidden cursor-grab hover:ring-2 hover:ring-blush-400 transition-all bg-blush-50 ${
+                        trayDragId === piece.id ? 'opacity-60 ring-2 ring-blush-500' : ''
+                      }`}
+                      title={`${piece.label} — drag to canvas or click to add`}
+                    >
+                      {piece.image ? (
+                        <img
+                          src={piece.image}
+                          alt={piece.label || 'piece'}
+                          draggable={false}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                          style={{ clipPath: outlineClipPath(piece.outline) }}
+                        />
+                      ) : (
+                        <div className="w-full h-full" style={{ backgroundColor: piece.color, clipPath: outlineClipPath(piece.outline) }} />
+                      )}
+                      <span className="absolute bottom-0 inset-x-0 text-[8px] font-semibold text-white bg-slate-900/50 backdrop-blur-sm px-1 py-0.5 text-center truncate">
+                        {piece.label || 'Piece'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {referenceArt && (
+                  <div className="mt-3 pt-3 border-t border-blush-100">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Reference Art</p>
+                    <img src={referenceArt} alt="Reference art" className="w-full rounded-xl border border-blush-100 max-h-32 object-contain" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Selected Piece Inspector */}
+            {(() => {
+              const sel = placedPieces.find(p => p.instanceId === selectedPieceId);
+              if (!sel) return null;
+              return (
+                <div className="floral-card p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                      <Move className="h-4 w-4 text-blush-500" />
+                      {sel.piece.label || 'Piece'}
+                    </h3>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => duplicatePlacedPiece(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Duplicate">
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => bringPieceToFront(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Bring to front">
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => removePlacedPiece(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete piece">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Scale</label>
+                      <input type="range" min="20" max="300" value={Math.round(sel.scale * 100)}
+                        onChange={(e) => updatePlacedPiece(sel.instanceId, { scale: Number(e.target.value) / 100 })}
+                        className="w-full accent-blush-500" />
+                      <span className="text-[9px] text-slate-400">{Math.round(sel.scale * 100)}%</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Rotate</label>
+                      <input type="range" min="-180" max="180" value={Math.round(sel.rotation)}
+                        onChange={(e) => updatePlacedPiece(sel.instanceId, { rotation: Number(e.target.value) })}
+                        className="w-full accent-blush-500" />
+                      <span className="text-[9px] text-slate-400">{Math.round(sel.rotation)}°</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <div className="w-4 h-4 rounded border border-blush-100" style={{ backgroundColor: sel.piece.color }} />
+                    <span>{sel.piece.color} · {Math.round(Math.max(40, sel.piece.bounds.width * 500) * sel.scale)}×{Math.round(Math.max(40, sel.piece.bounds.height * 500) * sel.scale)}px</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Layers Panel */}
             <div className="floral-card p-5">
