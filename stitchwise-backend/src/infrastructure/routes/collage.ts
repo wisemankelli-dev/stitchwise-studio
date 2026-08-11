@@ -135,5 +135,49 @@ export function createCollageRouter(repo: CollageRepo): Router {
     }
   });
 
+  // Frontend adapter routes (the SPA uses /api/collage rather than /projects).
+  router.get("/collage", authenticate, async (req: Request, res: Response) => {
+    try {
+      const projects = await repo.listProjectsByUser((req as any).user.userId);
+      res.json({ projects });
+    } catch (err) {
+      console.error({ event: "list_collage_adapter_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  router.post("/collage", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { name, layers } = req.body ?? {};
+      if (typeof name !== "string" || !name.trim() || !Array.isArray(layers)) {
+        res.status(400).json({ error: "Validation failed" });
+        return;
+      }
+      const project = await repo.createProject({
+        name: name.trim(), data: JSON.stringify({ layers }), width: 300, height: 300,
+        userId: (req as any).user.userId,
+      });
+      res.status(201).json(project);
+    } catch (err) {
+      console.error({ event: "create_collage_adapter_error", error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  router.get("/collage/:id", authenticate, async (req: Request, res: Response) => {
+    try {
+      const project = await repo.getProject(req.params.id);
+      if (!project) { res.status(404).json({ error: "Collage project not found" }); return; }
+      if (project.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      res.json({ project });
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+  router.delete("/collage/:id", authenticate, async (req: Request, res: Response) => {
+    try {
+      const project = await repo.getProject(req.params.id);
+      if (!project) { res.status(404).json({ error: "Collage project not found" }); return; }
+      if (project.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; }
+      await repo.deleteProject(req.params.id); res.status(204).send();
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+
   return router;
 }
