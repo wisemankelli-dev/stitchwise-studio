@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
+import { describeAiGenerationError } from '../utils/aiGenerationErrors';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
@@ -870,7 +871,7 @@ export const Designer: React.FC = () => {
     setPollingStatus('');
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      setPollingStatus('Generating pattern…');
+      setPollingStatus('Generating your pattern — this can take up to a minute…');
 
       const data = await api.generatePatternFromText(aiPrompt.trim(), { gridSize, maxColors: 6 });
 
@@ -921,8 +922,7 @@ export const Designer: React.FC = () => {
       });
       setPollingStatus('');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to generate pattern';
-      setAiError(message);
+      setAiError(describeAiGenerationError(err, 'Failed to generate pattern. Please try again.'));
       setPollingStatus('');
     } finally {
       setIsGenerating(false);

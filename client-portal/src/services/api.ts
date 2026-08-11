@@ -264,6 +264,16 @@ class ApiClient {
   }
 
   /**
+   * Throws an Error carrying the HTTP status so pages can show honest,
+   * specific messages (e.g. "Please sign in to use AI generation" on 401).
+   */
+  private throwApiError(message: string, response: Response): never {
+    const err = new Error(message) as Error & { status?: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  /**
    * Authenticates user using email and password.
    */
   async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: User; error?: string }> {
@@ -937,7 +947,9 @@ class ApiClient {
     }
 
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Pattern generation failed (${response.status})`);
+    const err = new Error(errData.error || errData.message || `Pattern generation failed (${response.status})`) as Error & { status?: number };
+    err.status = response.status;
+    throw err;
   }
 
   /**
@@ -961,7 +973,9 @@ class ApiClient {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Job polling failed (${response.status})`);
+        const err = new Error(errData.error || `Job polling failed (${response.status})`) as Error & { status?: number };
+        err.status = response.status;
+        throw err;
       }
 
       const job: AIPatternJobResponse = await response.json();
@@ -1001,7 +1015,7 @@ class ApiClient {
           headers: this.getHeaders({}, true),
           body: formData,
         });
-        if (!response.ok) throw new Error('AI image-to-pattern generation failed');
+        if (!response.ok) this.throwApiError('AI image-to-pattern generation failed', response);
         return await response.json();
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
@@ -1119,13 +1133,19 @@ class ApiClient {
     options?: { gridSize?: number }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
+      // Guard: real gpt-image-1 generation is slow, but the UI must never look
+      // hung. If nothing settles within 90s, abort and let the page show an
+      // honest "took too long" message instead of an infinite spinner.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
       try {
         const response = await fetch(`${this.apiBaseUrl}/ai/collage/text-to-collage`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ prompt, ...options })
+          body: JSON.stringify({ prompt, ...options }),
+          signal: controller.signal,
         });
-        if (!response.ok) throw new Error('AI collage generation failed');
+        if (!response.ok) this.throwApiError('AI collage generation failed', response);
         const json = await response.json();
         // Backend wraps the result in { success, data: CollageGenerationResult } — unwrap it
         const data = json?.data && typeof json.data === 'object' ? json.data : json;
@@ -1144,6 +1164,7 @@ class ApiClient {
           totalLayers: Array.isArray(data?.layers) ? data.layers.length : 0,
         };
       } catch (err) {
+        clearTimeout(timeout);
         throw err instanceof Error ? err : new Error('Request failed');
       }
     }
@@ -1335,6 +1356,9 @@ class ApiClient {
     options?: { complexity?: 'simple' | 'moderate' | 'complex' }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
+      // Guard: the UI must never look hung — abort if nothing settles within 90s.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
       try {
         const formData = new FormData();
         formData.append('file', file);
@@ -1344,10 +1368,12 @@ class ApiClient {
           method: 'POST',
           headers: this.getHeaders({}, true),
           body: formData,
+          signal: controller.signal,
         });
-        if (!response.ok) throw new Error('AI image-to-collage generation failed');
+        if (!response.ok) this.throwApiError('AI image-to-collage generation failed', response);
         return await response.json();
       } catch (err) {
+        clearTimeout(timeout);
         throw err instanceof Error ? err : new Error('Request failed');
       }
     }

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api, FabricLayer, AICollageResponse, CollageProject, CollagePiece, PlacedCollagePiece } from '../services/api';
+import { describeAiGenerationError } from '../utils/aiGenerationErrors';
 import html2canvas from 'html2canvas';
 import {
   RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
@@ -570,7 +571,7 @@ export const CollageStudio: React.FC = () => {
       adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
-      setAiError(err.message || 'AI collage generation failed.');
+      setAiError(describeAiGenerationError(err, 'AI collage generation failed. Please try again.'));
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
     }
@@ -609,7 +610,7 @@ export const CollageStudio: React.FC = () => {
       adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
-      setAiError(err.message || 'Image collage generation failed.');
+      setAiError(describeAiGenerationError(err, 'Image collage generation failed. Please try again.'));
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
     }
@@ -1011,6 +1012,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
+                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take up to a minute…</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!promptInput.trim()}
@@ -1067,6 +1069,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
+                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take up to a minute…</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!uploadedFile}
