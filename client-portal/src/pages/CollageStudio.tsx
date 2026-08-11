@@ -1,16 +1,14 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { api, FabricLayer, PatternRegion, AICollageResponse, CollageProject, ShowcaseEntry } from '../services/api';
+import { api, FabricLayer, AICollageResponse, CollageProject } from '../services/api';
 import html2canvas from 'html2canvas';
-import { getFabricStyle } from '../utils/fabricTexture';
-import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
-  ArrowLeft, ZoomIn, ZoomOut, Layers,
+  RotateCcw, ZoomIn, ZoomOut, Layers, Grid3X3,
   Palette, Scissors, Download, Save, Trash2, Plus,
-  Sparkles, UploadCloud, Loader2,
+  Flower2, Sparkles, UploadCloud, Loader2,
   Image, Play, CheckCircle2, AlertTriangle, RefreshCw,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2,
-  FolderOpen, ChevronDown, Share2, Eye
+  FolderOpen, ChevronDown
 } from 'lucide-react';
 
 type CollageTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint';
@@ -29,7 +27,12 @@ const FABRIC_COLORS = [
   '#c4b5fd', '#fca5a5', '#d9f99d', '#fed7aa', '#e2e8f0',
 ];
 
-const DEFAULT_LAYERS: FabricLayer[] = [];
+const DEFAULT_LAYERS: FabricLayer[] = [
+  { id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
+  { id: 'fabric-1', name: 'Petal Shape', color: '#f9a8d4', pattern: 'polka', x: 150, y: 130, width: 120, height: 100, rotation: 15, opacity: 0.9, zIndex: 1 },
+  { id: 'fabric-2', name: 'Leaf Accent', color: '#86efac', pattern: 'stripe', x: 280, y: 180, width: 80, height: 60, rotation: -10, opacity: 0.8, zIndex: 2 },
+  { id: 'fabric-3', name: 'Center Bloom', color: '#ec4899', pattern: 'solid', x: 200, y: 160, width: 60, height: 60, rotation: 0, opacity: 1, zIndex: 3 },
+];
 
 const CANVAS_WIDTH = 500;
 const CANVAS_HEIGHT = 500;
@@ -45,7 +48,7 @@ const TOOLS: { id: CollageTool; icon: React.ReactNode; label: string }[] = [
 
 export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
-  const [selectedLayerId, setSelectedLayerId] = useState<string>('');
+  const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
   const [zoom, setZoom] = useState(1);
 
   // AI Generation state
@@ -65,24 +68,11 @@ export const CollageStudio: React.FC = () => {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Save/Load state
-  const [showAiBar, setShowAiBar] = useState(true);
-    const [blockSize, setBlockSize] = useState(12); // quilt block size in inches
-  const [showArtworkPreview, setShowArtworkPreview] = useState(false);
-
-    const [collageName, setCollageName] = useState('');
+  const [collageName, setCollageName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedProjects, setSavedProjects] = useState<CollageProject[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-
-  // Share to Community state
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
-
-  // Pattern mode (outline + color key) vs colored fabric view
-  const [patternRegions, setPatternRegions] = useState<PatternRegion[]>([]);
-  const [viewMode, setViewMode] = useState<'pattern' | 'colored'>('pattern');
-
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
@@ -120,12 +110,6 @@ export const CollageStudio: React.FC = () => {
   const applyAiResult = () => {
     if (!aiResult?.layers) return;
 
-    // Set pattern regions from AI result (for outline view)
-    if (aiResult.regions && aiResult.regions.length > 0) {
-      setPatternRegions(aiResult.regions);
-      setViewMode('pattern');
-    }
-
     if (replaceMode === 'replace') {
       setLayers(aiResult.layers);
       setSelectedLayerId(aiResult.layers[aiResult.layers.length - 1]?.id || 'bg');
@@ -142,12 +126,6 @@ export const CollageStudio: React.FC = () => {
       setSelectedLayerId(newLayers[newLayers.length - 1]?.id || 'bg');
     }
   };
-
-  // DEBUG: log layer changes
-  useEffect(() => {
-    console.log("DEBUG_LAYERS: count=", layers.length, "sample=", layers.slice(0, 2).map(l => ({ id: l.id, x: l.x, y: l.y, w: l.width, h: l.height, color: l.color })));
-    (window as any).__debugLayers = layers;
-  }, [layers]);
 
   // Save/Load/Export handlers
   const handleSaveCollage = async () => {
@@ -192,18 +170,6 @@ export const CollageStudio: React.FC = () => {
     setSavedProjects(prev => prev.filter(p => p.id !== id));
   };
 
-
-  // Canvas height based on block size (for collage generation)
-  const getCanvasHeight = () => {
-    if (blockSize <= 8) return 400;
-    if (blockSize <= 12) return 500;
-    if (blockSize <= 18) return 600;
-    return 700;
-  };
-  const handleConvertToQuilt = () => {
-    setShowArtworkPreview(false);
-    applyAiResult();
-  };
   const handleExportPng = async () => {
     if (!canvasRef.current) return;
     const canvas = await html2canvas(canvasRef.current, {
@@ -214,31 +180,6 @@ export const CollageStudio: React.FC = () => {
     link.download = `${collageName.trim() || 'collage'}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-  };
-
-  const handleExportPdf = async () => {
-    if (patternRegions.length === 0) return;
-    try {
-      setSaveMessage('Generating PDF...');
-      const blob = await api.exportCollagePdf(
-        collageName || 'Collage Pattern',
-        blockSize,
-        patternRegions,
-        CANVAS_WIDTH,
-        CANVAS_HEIGHT,
-      );
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = `${(collageName || 'collage_pattern').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-      link.href = url;
-      link.click();
-      URL.revokeObjectURL(url);
-      setSaveMessage('PDF downloaded!');
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch (err) {
-      setSaveMessage('PDF export failed');
-      setTimeout(() => setSaveMessage(null), 3000);
-    }
   };
 
   const handleCanvasClick = (layerId: string) => {
@@ -322,23 +263,13 @@ export const CollageStudio: React.FC = () => {
       );
     }, 100);
     try {
-      const result = await api.generateCollageFromText(promptInput, { blockSize });
+      const result = await api.generateCollageFromText(promptInput);
       clearInterval(interval);
       setGeneratorProgress(100);
-      setProgressPhase('Design generated!');
+      setProgressPhase('Collage complete!');
       setAiResult(result);
-      // Show artwork preview — user clicks "Convert to Quilt" to apply layers
-      if (result.artworkUrl) {
-        setShowArtworkPreview(true);
-      } else if (result.layers && result.layers.length > 0) {
-        // No artwork URL — apply layers directly as fallback
-        console.log("COLLAGE_FIX: direct apply", result.layers.length, "layers (no artwork)");
-        setLayers(result.layers);
-        setSelectedLayerId(result.layers[result.layers.length - 1]?.id || 'bg');
-      }
     } catch (err: any) {
       clearInterval(interval);
-      console.error("COLLAGE_FIX: generation failed:", err.message || err);
       setAiError(err.message || 'AI collage generation failed.');
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
@@ -401,43 +332,143 @@ export const CollageStudio: React.FC = () => {
   const handleRemoveFile = () => { setUploadedFile(null); setAiResult(null); };
 
   return (
-    <div className="bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
-        <svg className="w-full h-full"><defs><pattern id="cl-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
-          <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />
-          <circle cx="80" cy="80" r="16" fill="#f472b6" /><circle cx="80" cy="80" r="8" fill="#f9a8d4" />
-          <circle cx="130" cy="30" r="12" fill="#f472b6" /><circle cx="130" cy="130" r="10" fill="#f472b6" />
-        </pattern></defs><rect width="100%" height="100%" fill="url(#cl-floral)" /></svg>
-      </div>
-      <div className="max-w-7xl mx-auto relative z-10">
-        <div className="mb-6 flex justify-between items-center">
-          <Link to="/dashboard" className="text-sm font-semibold text-slate-500 hover:text-blush-600 flex items-center gap-1.5 transition-colors">
-            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-          </Link>
-        </div>
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-x-2 rounded-full bg-blush-50/80 backdrop-blur-sm px-4 py-1 text-sm font-semibold leading-6 text-blush-600 ring-1 ring-inset ring-blush-100 mb-4">
-            <Scissors className="h-4 w-4 text-blush-500 -rotate-45" /> Collage Studio
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 sm:text-5xl">
-            StitchWise <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-400">Collage Quilt Designer</span>
-          </h1>
-          <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design beautiful fabric collage quilts layer by layer.</p>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* LEFT PANEL — Canvas */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
-              {/* ===== Merged Header + Toolbar Row ===== */}
-              <div className="w-full flex flex-wrap items-center gap-3 mb-3 border-b border-blush-100 pb-3">
-                {/* Title */}
-                <div className="shrink-0 mr-1">
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-                    <Layers className="h-4 w-4 text-blush-500" /> Collage Canvas
-                  </h3>
+    <div className="min-h-screen bg-floral-soft">
+      {/* Header */}
+      <div className="bg-white border-b border-blush-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link to="/dashboard" className="text-blush-500 hover:text-blush-600 transition-colors">
+                <Flower2 className="h-5 w-5" />
+              </Link>
+              <div>
+                <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Scissors className="h-5 w-5 text-blush-500 -rotate-45" />
+                  Collage Studio
+                </h1>
+                <p className="text-[10px] text-blush-400">Floral Fabric Collage Designer</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {aiResult && !isGenerating && (
+                <>
+                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
+                    <button
+                      onClick={() => setReplaceMode('replace')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
+                    </button>
+                    <button
+                      onClick={() => setReplaceMode('append')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
+                    </button>
+                  </div>
+                  <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3">
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Apply to Canvas
+                  </button>
+                </>
+              )}
+              {/* Save/Load/Export controls */}
+              <div className="flex items-center gap-2 relative">
+                {/* Name input */}
+                <input
+                  type="text"
+                  value={collageName}
+                  onChange={(e) => setCollageName(e.target.value)}
+                  placeholder="Project name..."
+                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
+                />
+                {/* Save */}
+                <button
+                  onClick={handleSaveCollage}
+                  disabled={isSaving}
+                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+                {/* Load dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={handleLoadProjects}
+                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                    Load
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </button>
+                  {showLoadDropdown && (
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                      {savedProjects.length === 0 ? (
+                        <p className="p-3 text-[11px] text-slate-400 text-center">No saved projects yet</p>
+                      ) : (
+                        savedProjects.map(p => (
+                          <div
+                            key={p.id}
+                            onClick={() => handleLoadCollage(p.id)}
+                            className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                          >
+                            <span className="text-xs text-slate-700 truncate flex-1">
+                              {p.name}
+                              <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                            </span>
+                            <button
+                              onClick={(e) => handleDeleteCollage(p.id, e)}
+                              className="text-slate-300 hover:text-red-500 p-1"
+                              title="Delete project"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-                {/* Tool Buttons */}
-                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                {/* Export */}
+                <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export
+                </button>
+              </div>
+              {/* Save message flash */}
+              {saveMessage && (
+                <p className={`text-[10px] px-2 py-0.5 rounded ${saveMessage.startsWith('Save failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {saveMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left: Canvas (8 cols) */}
+          <div className="lg:col-span-8">
+            <div className="floral-card p-4">
+              {/* Canvas Toolbar */}
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5"><ZoomIn className="h-4 w-4" /></button>
+                  <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
+                  <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-blush-500">
+                  <Grid3X3 className="h-3.5 w-3.5" />
+                  <span>{layers.length} layers</span>
+                </div>
+              </div>
+
+              {/* Editing Tools Toolbar */}
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
                   {TOOLS.map((tool) => (
                     <button
                       key={tool.id}
@@ -445,7 +476,7 @@ export const CollageStudio: React.FC = () => {
                         setActiveTool(tool.id);
                         if (tool.id !== 'mirror') setMirrorEnabled(false);
                       }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
                         activeTool === tool.id
                           ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
                           : 'text-slate-500 hover:text-slate-700'
@@ -457,190 +488,7 @@ export const CollageStudio: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                {/* Zoom Controls */}
-                <div className="flex items-center gap-1 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                  <button onClick={() => setZoom(z => Math.max(0.3, z - 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomOut className="h-3.5 w-3.5" /></button>
-                  <span className="text-[10px] font-bold text-slate-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
-                  <button onClick={() => setZoom(z => Math.min(3, z + 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomIn className="h-3.5 w-3.5" /></button>
-                </div>
-                {/* Layers count */}
-                <span className="text-[10px] text-blush-500 font-semibold">{layers.length} layers</span>
-                {aiResult && !isGenerating && (
-                  <button onClick={() => aiResult.artworkUrl ? setShowArtworkPreview(true) : applyAiResult()} className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Apply
-                  </button>
-                )}
-                {/* Reset */}
-                <button
-                  onClick={() => { setLayers(DEFAULT_LAYERS); setSelectedLayerId(''); setPatternRegions([]); setViewMode('pattern'); setAiResult(null); setAiError(null); setShowArtworkPreview(false); }}
-                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
-                  title="Reset canvas and start over"
-                >
-                  <Trash2 className="h-3 w-3" /> Reset
-                </button>
-                {/* AI Toggle */}
-                <button
-                  onClick={() => setShowAiBar(!showAiBar)}
-                  className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
-                    showAiBar
-                      ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                      : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
-                  }`}
-                  title="Toggle AI generation"
-                >
-                  <Sparkles className="h-3 w-3" /> AI
-                </button>
-                {/* Action Buttons */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <input
-                    type="text"
-                    value={collageName}
-                    onChange={(e) => setCollageName(e.target.value)}
-                    placeholder="Project name..."
-                    className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
-                  />
-                  <button
-                    onClick={handleSaveCollage}
-                    disabled={isSaving}
-                    className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100 disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                  </button>
-                  {/* Load dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={handleLoadProjects}
-                      className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100"
-                    >
-                      <FolderOpen className="h-3 w-3" />
-                      <ChevronDown className="h-2.5 w-2.5" />
-                    </button>
-                    {showLoadDropdown && (
-                      <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
-                        {savedProjects.length === 0 ? (
-                          <p className="p-3 text-[11px] text-slate-400 text-center">No saved projects yet</p>
-                        ) : (
-                          savedProjects.map(p => (
-                            <div
-                              key={p.id}
-                              onClick={() => handleLoadCollage(p.id)}
-                              className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
-                            >
-                              <span className="text-xs text-slate-700 truncate flex-1">
-                                {p.name}
-                                <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
-                              </span>
-                              <button
-                                onClick={(e) => handleDeleteCollage(p.id, e)}
-                                className="text-slate-300 hover:text-red-500 p-1"
-                                title="Delete project"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={handleExportPng} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
-                    <Download className="h-3 w-3" /> PNG
-                  </button>
-                  <button
-                    onClick={handleExportPdf}
-                    disabled={patternRegions.length === 0}
-                    className="p-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold flex items-center gap-1 disabled:opacity-50"
-                    title="Export as printable PDF pattern"
-                  >
-                    <Scissors className="h-3 w-3" /> PDF
-                  </button>
-                  <button
-                    onClick={() => setShowShareModal(true)}
-                    className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold flex items-center gap-1"
-                  >
-                    <Share2 className="h-3 w-3" /> Share
-                  </button>
-                </div>
-              </div>
-              {/* Save message flash */}
-              {saveMessage && (
-                <div className="w-full mb-3">
-                  <p className={`text-[10px] px-2 py-1 rounded ${saveMessage.startsWith('Save failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                    {saveMessage}
-                  </p>
-                </div>
-              )}
-              {/* ===== Replace/Append Row (when AI result active) ===== */}
-              {aiResult && !isGenerating && (
-                <div className="w-full flex items-center gap-2 mb-3 pb-2 border-b border-blush-100">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Apply Mode:</span>
-                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                    <button
-                      onClick={() => setReplaceMode('replace')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
-                        replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
-                      }`}
-                    >
-                      <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace All
-                    </button>
-                    <button
-                      onClick={() => setReplaceMode('append')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
-                        replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
-                      }`}
-                    >
-                      <Plus className="h-3 w-3 inline mr-0.5" /> Append
-                    </button>
-                  </div>
-                </div>
-              )}
-              {/* ===== Collapsible AI Bar ===== */}
-              {showAiBar && (
-                <div className="w-full mb-3 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
-                    {/* Block Size Selector */}
-                    <div className="flex items-center gap-1 bg-white rounded-lg border border-purple-200 px-2 py-1.5 shrink-0">
-                      <span className="text-[10px] text-slate-400 font-medium">Block:</span>
-                      <select
-                        value={blockSize}
-                        onChange={(e) => setBlockSize(Number(e.target.value))}
-                        className="text-xs font-semibold text-slate-700 bg-transparent border-none focus:ring-0 cursor-pointer"
-                        disabled={isGenerating}
-                      >
-                        {[12, 14, 16, 18, 20, 22, 24].map(s => (
-                          <option key={s} value={s}>{s}"</option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      type="text"
-                      value={promptInput}
-                      onChange={(e) => setPromptInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') triggerTextGeneration({ preventDefault: () => {} } as any); }}
-                      placeholder="Describe your collage design (e.g., 'a floral garden with roses and green leaves')"
-                      className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
-                      disabled={isGenerating}
-                    />
-                    <button
-                      onClick={() => triggerTextGeneration({ preventDefault: () => {} } as any)}
-                      disabled={!promptInput.trim() || isGenerating}
-                      className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0"
-                    >
-                      {isGenerating ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
-                      )}
-                      {isGenerating ? (progressPhase + ' ' + generatorProgress + '%') : 'Generate'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {/* ===== Tool-Specific Controls Row ===== */}
-              <div className="w-full flex items-center justify-between mb-3 pb-2 border-b border-blush-100">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-2">
                   {activeTool === 'mirror' && (
                     <button
                       onClick={() => setMirrorEnabled(!mirrorEnabled)}
@@ -665,174 +513,85 @@ export const CollageStudio: React.FC = () => {
                     <span className="text-[10px] text-slate-500 italic">Cycle colors on click</span>
                   )}
                 </div>
-              </div>{/* Canvas Area */}
-              {/* View toggle */}
-              {patternRegions.length > 0 && (
-                <div className="w-full flex items-center gap-2 mb-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">View:</span>
-                  <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                    <button
-                      onClick={() => setViewMode('pattern')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${viewMode === 'pattern' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <Eye className="h-3 w-3 inline mr-0.5" /> Pattern
-                    </button>
-                    <button
-                      onClick={() => setViewMode('colored')}
-                      className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${viewMode === 'colored' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                    >
-                      <Palette className="h-3 w-3 inline mr-0.5" /> Colored
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-slate-400 ml-auto">{patternRegions.length} pieces</span>
-                </div>
-              )}
-              <div className="flex gap-3">
-                {/* Main canvas */}
+              </div>
+
+              {/* Canvas Area */}
+              <div
+                ref={canvasRef}
+                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
+                style={{ height: '500px' }}
+              >
                 <div
-                  ref={canvasRef}
-                  className={`relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden ${patternRegions.length > 0 ? 'flex-1' : 'w-full'}`}
-                  style={{ height: `${getCanvasHeight()}px`, minWidth: patternRegions.length > 0 ? '350px' : '500px' }}
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: 'linear-gradient(#fce7f3 1px, transparent 1px), linear-gradient(90deg, #fce7f3 1px, transparent 1px)',
+                    backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+                    transform: `scale(${zoom})`,
+                    transformOrigin: 'center center',
+                  }}
                 >
-                  {/* Pattern View: outlines + numbers */}
-                  {viewMode === 'pattern' && patternRegions.length > 0 && (
-                    <div className="absolute inset-0" style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
-                      {/* Grid lines */}
-                      <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} preserveAspectRatio="none">
-                        {patternRegions.map((r) => (
-                          <g key={r.number}>
-                            <rect
-                              x={r.x} y={r.y}
-                              width={r.width} height={r.height}
-                              fill="white"
-                              stroke="#333"
-                              strokeWidth="1.5"
-                              rx="2"
-                            />
-                            <text
-                              x={r.x + r.width / 2}
-                              y={r.y + r.height / 2}
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                              fontSize={Math.max(8, Math.min(r.width, r.height) * 0.4)}
-                              fontWeight="bold"
-                              fill="#333"
-                              fontFamily="monospace"
-                            >
-                              {r.number}
-                            </text>
-                          </g>
-                        ))}
-                      </svg>
-                      {/* Base white background */}
-                    </div>
-                  )}
+                  {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
+                    const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
+                    const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
+                    const isPickTool = activeTool === 'eyedropper' && layer.id !== 'bg';
+                    const isPaintTool = activeTool === 'paint';
+                    const isMirrorTool = activeTool === 'mirror' && mirrorEnabled && layer.id !== 'bg';
+                    const isInteractable = isEraseTool || isCloneTool || isPickTool || isPaintTool || isMirrorTool;
 
-                  {/* Colored View: fabric layers */}
-                  {(viewMode === 'colored' || patternRegions.length === 0) && (
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: 'linear-gradient(#fce7f3 1px, transparent 1px), linear-gradient(90deg, #fce7f3 1px, transparent 1px)',
-                        backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                        transform: `scale(${zoom})`,
-                        transformOrigin: 'center center',
-                      }}
-                    >
-                      {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
-                        const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
-                        const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
-                        const isPickTool = activeTool === 'eyedropper' && layer.id !== 'bg';
-                        const isPaintTool = activeTool === 'paint';
-                        const isMirrorTool = activeTool === 'mirror' && mirrorEnabled && layer.id !== 'bg';
-                        const isInteractable = isEraseTool || isCloneTool || isPickTool || isPaintTool || isMirrorTool;
-
-                        return (
-                          <div
-                            key={layer.id}
-                            onClick={() => handleCanvasClick(layer.id)}
-                            className={`absolute transition-shadow duration-200 ${
-                              selectedLayerId === layer.id && activeTool === 'select'
-                                ? 'ring-2 ring-blush-500 ring-offset-2'
-                                : isInteractable
-                                ? 'cursor-pointer hover:ring-2 hover:ring-blush-400 hover:ring-offset-1'
-                                : activeTool === 'select' || activeTool === 'mirror'
-                                ? 'cursor-move'
-                                : 'cursor-default'
-                            }`}
-                            style={(() => {
-                              const fab = getFabricStyle(layer.pattern, layer.color);
-                              return {
-                                left: layer.x,
-                                top: layer.y,
-                                width: layer.width,
-                                height: layer.height,
-                                transform: `rotate(${layer.rotation}deg)`,
-                                opacity: layer.opacity,
-                                zIndex: layer.zIndex,
-                                backgroundColor: fab.backgroundColor,
-                                backgroundImage: fab.backgroundImage,
-                                backgroundSize: fab.backgroundSize,
-                                boxShadow: fab.boxShadow,
-                                borderRadius: layer.id === 'bg' ? '0' : '3px',
-                                border: layer.id !== 'bg' ? '1px solid rgba(0,0,0,0.08)' : 'none',
-                              };
-                            })()}
-                          >
-                            {selectedLayerId === layer.id && layer.id !== 'bg' && (
-                              <div className="absolute -top-5 left-0 text-[8px] text-slate-400 font-medium whitespace-nowrap bg-white/90 px-1 py-0.5 rounded shadow-sm opacity-70 pointer-events-none">
-                                {layer.name}
-                              </div>
-                            )}
-                            {isEraseTool && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
-                                <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
-                              </div>
-                            )}
-                            {isCloneTool && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
-                                <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
-                              </div>
-                            )}
+                    return (
+                      <div
+                        key={layer.id}
+                        onClick={() => handleCanvasClick(layer.id)}
+                        className={`absolute transition-shadow duration-200 ${
+                          selectedLayerId === layer.id && activeTool === 'select'
+                            ? 'ring-2 ring-blush-500 ring-offset-2'
+                            : isInteractable
+                            ? 'cursor-pointer hover:ring-2 hover:ring-blush-400 hover:ring-offset-1'
+                            : activeTool === 'select' || activeTool === 'mirror'
+                            ? 'cursor-move'
+                            : 'cursor-default'
+                        }`}
+                        style={{
+                          left: layer.x,
+                          top: layer.y,
+                          width: layer.width,
+                          height: layer.height,
+                          transform: `rotate(${layer.rotation}deg)`,
+                          opacity: layer.opacity,
+                          zIndex: layer.zIndex,
+                          backgroundColor: layer.color,
+                          backgroundSize: layer.pattern === 'polka' ? '6px 6px' : layer.pattern === 'stripe' || layer.pattern === 'plaid' ? '' : '',
+                          borderRadius: layer.id === 'bg' ? '0' : '12px',
+                        }}
+                      >
+                        {layer.id !== 'bg' && (
+                          <div className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
+                            {layer.name}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        )}
+                        {/* Tool indicator badge */}
+                        {isEraseTool && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
+                            <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
+                          </div>
+                        )}
+                        {isCloneTool && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
+                            <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-
-                {/* Color Key Sidebar (pattern mode) */}
-                {viewMode === 'pattern' && patternRegions.length > 0 && (
-                  <div className="w-52 shrink-0 bg-white rounded-2xl border border-blush-200 p-3 max-h-[500px] overflow-y-auto">
-                    <h4 className="text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1">
-                      <Palette className="h-3.5 w-3.5 text-blush-500" /> Color Guide
-                    </h4>
-                    <p className="text-[9px] text-slate-400 mb-2">Suggested fabric colors for each numbered piece:</p>
-                    <div className="space-y-1">
-                      {patternRegions.map((r) => (
-                        <div key={r.number} className="flex items-center gap-2 text-[10px]">
-                          <span className="w-5 h-5 rounded border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-600 shrink-0 bg-slate-50">
-                            {r.number}
-                          </span>
-                          <span
-                            className="w-4 h-4 rounded-full border border-slate-300 shrink-0"
-                            style={{ backgroundColor: r.suggestedHex }}
-                          />
-                          <span className="text-slate-600 font-medium truncate">{r.suggestedColor}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
-          
-          {/* RIGHT PANEL — Controls */}
-          <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:overflow-y-auto lg:max-h-[calc(100vh-7rem)]">
+          {/* Right: Inspector (4 cols) */}
+          <div className="lg:col-span-4 space-y-6">
             {/* AI Generation Panel */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
+            <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-blush-500" />
@@ -943,14 +702,9 @@ export const CollageStudio: React.FC = () => {
               {aiResult && !isGenerating && (
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                  <div>
-                    <p className="text-[11px] text-emerald-800">
-                      <strong>Success!</strong> {aiResult.totalLayers} fabric layers detected.
-                    </p>
-                    <p className="text-[10px] text-emerald-600 mt-1">
-                      {aiResult.artworkUrl ? 'Preview the artwork, then click "Convert to Quilt" to see your design.' : 'Click "Apply" above to place layers on the canvas.'}
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-emerald-800">
+                    <strong>Success!</strong> {aiResult.totalLayers} layers generated. Click <strong>"Apply to Canvas"</strong> above to use them.
+                  </p>
                 </div>
               )}
 
@@ -978,7 +732,7 @@ export const CollageStudio: React.FC = () => {
             </div>
 
             {/* Layers Panel */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
+            <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Layers className="h-4 w-4 text-blush-500" />
@@ -1018,7 +772,7 @@ export const CollageStudio: React.FC = () => {
 
             {/* Inspector Panel */}
             {selectedLayer && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+              <div className="floral-card p-5 space-y-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Palette className="h-4 w-4 text-blush-500" />
                   {selectedLayer.name}
@@ -1094,79 +848,6 @@ export const CollageStudio: React.FC = () => {
           </div>
         </div>
       </div>
-
-
-      {/* Artwork Preview Modal */}
-      {showArtworkPreview && aiResult?.artworkUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden border-4 border-blush-100" style={{ boxShadow: '0 0 0 4px #fce7f3, 0 0 0 8px #fbcfe8, 0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <div className="bg-gradient-to-r from-blush-500 to-purple-500 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-white" />
-                <span className="text-white font-bold text-sm">AI Artwork Preview</span>
-              </div>
-              <button onClick={() => setShowArtworkPreview(false)} className="text-white/80 hover:text-white">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="p-6 bg-gradient-to-b from-blush-50 to-white">
-              <div className="relative rounded-2xl overflow-hidden border-2 border-blush-200 bg-white" style={{ boxShadow: 'inset 0 0 0 3px #fce7f3, 0 4px 12px rgba(244,114,182,0.15)' }}>
-                <img
-                  src={aiResult.artworkUrl}
-                  alt="AI generated collage artwork"
-                  className="w-full object-contain max-h-[50vh]"
-                />
-              </div>
-              <p className="text-center text-xs text-slate-500 mt-3 italic">
-                "{promptInput}" — {aiResult.totalLayers - 1} fabric layers detected
-              </p>
-            </div>
-            <div className="px-6 py-4 bg-blush-50/50 border-t border-blush-100 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setShowArtworkPreview(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-white border border-slate-200 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConvertToQuilt}
-                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-sm font-bold hover:from-blush-600 hover:to-purple-600 shadow-lg shadow-blush-200 transition-all flex items-center justify-center gap-2 group"
-              >
-                <Sparkles className="h-4 w-4 group-hover:animate-pulse" />
-                Convert to Quilt
-                <svg className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Share to Community Modal */}
-      {showShareModal && (
-        <ShareToCommunityModal
-          projectType="collage"
-          defaultTitle={collageName}
-          onClose={() => setShowShareModal(false)}
-          onSuccess={(entry: ShowcaseEntry) => {
-            setShowShareModal(false);
-            setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-          onError={(msg: string) => {
-            setShareMessage(msg);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-        />
-      )}
-
-      {/* Share success/error toast */}
-      {shareMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
-          <div className="rounded-2xl shadow-floral border px-5 py-4 flex items-center gap-3 max-w-sm bg-white border-emerald-200">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-            <p className="text-xs text-slate-700 font-medium">{shareMessage}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

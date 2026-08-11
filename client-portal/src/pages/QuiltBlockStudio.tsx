@@ -1,12 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, QuiltBlockDesign, QuiltBlockShape } from '../services/api';
-import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import {
-  ArrowLeft, ZoomIn, ZoomOut, Grid3X3,
+  RotateCcw, ZoomIn, ZoomOut, Grid3X3,
   Palette, Download, Save, Trash2, Plus, Loader2,
-  Square, Triangle, Minus,
-  Grid, LayoutGrid, FolderOpen, ChevronDown, Share2, CheckCircle2
+  Flower2, Square, Triangle, Minus,
+  Grid, LayoutGrid, FolderOpen, ChevronDown
 } from 'lucide-react';
 
 interface BlockShape {
@@ -99,10 +98,6 @@ export const QuiltBlockStudio: React.FC = () => {
   const [savedBlocks, setSavedBlocks] = useState<QuiltBlockDesign[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-
-  // Share to Community state
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const selectedShape = shapes.find(s => s.id === selectedShapeId);
   const cellPx = 50;
@@ -330,177 +325,166 @@ export const QuiltBlockStudio: React.FC = () => {
   }
 
   return (
-    <div className="bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
-        <svg className="w-full h-full"><defs><pattern id="qb-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
-          <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />
-          <circle cx="80" cy="80" r="16" fill="#f472b6" /><circle cx="80" cy="80" r="8" fill="#f9a8d4" />
-          <circle cx="130" cy="30" r="12" fill="#f472b6" /><circle cx="130" cy="130" r="10" fill="#f472b6" />
-        </pattern></defs><rect width="100%" height="100%" fill="url(#qb-floral)" /></svg>
-      </div>
-      <div className="max-w-7xl mx-auto relative z-10">
-        <div className="mb-6 flex justify-between items-center">
-          <Link to="/dashboard" className="text-sm font-semibold text-slate-500 hover:text-blush-600 flex items-center gap-1.5 transition-colors">
-            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-          </Link>
-        </div>
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-x-2 rounded-full bg-blush-50/80 backdrop-blur-sm px-4 py-1 text-sm font-semibold leading-6 text-blush-600 ring-1 ring-inset ring-blush-100 mb-4">
-            <LayoutGrid className="h-4 w-4 text-blush-500" /> Quilt Block Studio
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 sm:text-5xl">
-            StitchWise <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-400">Quilt Block Designer</span>
-          </h1>
-          <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design geometric quilt blocks with snap-to-grid precision.</p>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* LEFT PANEL — Canvas */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
-              {/* ===== Merged Header + Controls Row ===== */}
-              <div className="w-full flex flex-wrap items-center gap-3 mb-3 border-b border-blush-100 pb-3">
-                {/* Title */}
-                <div className="shrink-0 mr-1">
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-                    <Grid3X3 className="h-4 w-4 text-blush-500" /> Quilt Canvas
-                  </h3>
+    <div className="min-h-screen bg-floral-soft">
+      {/* Header */}
+      <div className="bg-white border-b border-blush-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link to="/dashboard" className="text-blush-500 hover:text-blush-600 transition-colors">
+                <Flower2 className="h-5 w-5" />
+              </Link>
+              <div>
+                <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <LayoutGrid className="h-5 w-5 text-blush-500" />
+                  Quilt Block Studio
+                </h1>
+                <p className="text-[10px] text-blush-400">Geometric Block Designer</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Save/Load/Export controls */}
+              <div className="flex items-center gap-2 relative">
+                {/* Name input */}
+                <input
+                  type="text"
+                  value={blockName}
+                  onChange={(e) => setBlockName(e.target.value)}
+                  placeholder="Block name..."
+                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBlock(); }}
+                />
+                {/* Save */}
+                <button
+                  onClick={handleSaveBlock}
+                  disabled={isSaving}
+                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+                {/* Load dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={handleLoadBlocks}
+                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                    Load
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </button>
+                  {showLoadDropdown && (
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                      {savedBlocks.length === 0 ? (
+                        <p className="p-3 text-[11px] text-slate-400 text-center">No saved blocks yet</p>
+                      ) : (
+                        savedBlocks.map(b => (
+                          <div
+                            key={b.id}
+                            onClick={() => handleLoadBlock(b.id)}
+                            className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                          >
+                            <span className="text-xs text-slate-700 truncate flex-1">
+                              {b.name}
+                              <span className="text-[10px] text-slate-400 ml-2">{new Date(b.updatedAt).toLocaleDateString()}</span>
+                            </span>
+                            <button
+                              onClick={(e) => handleDeleteBlock(b.id, e)}
+                              className="text-slate-300 hover:text-red-500 p-1"
+                              title="Delete block"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-                {/* Block Size Selector */}
-                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                {/* Export */}
+                <button onClick={handleExportPdf} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export
+                </button>
+              </div>
+              {/* Save message flash */}
+              {saveMessage && (
+                <p className={`text-[10px] px-2 py-0.5 rounded ${saveMessage.startsWith('Save failed') || saveMessage.startsWith('Export') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {saveMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left: Canvas (7 cols) */}
+          <div className="lg:col-span-7">
+            <div className="floral-card p-4">
+              {/* Canvas Toolbar */}
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5"><ZoomIn className="h-4 w-4" /></button>
+                  <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
+                  <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+                  <span className="mx-2 text-blush-200">|</span>
+                  {/* Block Size Selector */}
                   {BLOCK_SIZES.map(s => (
                     <button
                       key={s}
                       onClick={() => setBlockSize(s)}
-                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border transition-all ${
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
                         blockSize === s
                           ? 'bg-blush-500 text-white border-blush-500'
-                          : 'bg-white text-slate-600 border-transparent hover:border-blush-300'
+                          : 'bg-white text-slate-600 border-blush-100 hover:border-blush-300'
                       }`}
                     >
                       {s}x{s}
                     </button>
                   ))}
                 </div>
-                {/* Zoom Controls */}
-                <div className="flex items-center gap-1 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                  <button onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomOut className="h-3.5 w-3.5" /></button>
-                  <span className="text-[10px] font-bold text-slate-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
-                  <button onClick={() => setZoom(z => Math.min(2, z + 0.25))} className="p-1.5 rounded hover:bg-white text-slate-500"><ZoomIn className="h-3.5 w-3.5" /></button>
-                </div>
-                {/* Snap Toggle */}
-                <label className="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer">
-                  <input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-blush-500 rounded" />
-                  Snap
-                </label>
-                {/* Reset */}
-                <button
-                  onClick={() => { setShapes(DEFAULT_SHAPES); setSelectedShapeId('s4'); }}
-                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0"
-                  title="Reset block and start over"
-                >
-                  <Trash2 className="h-3 w-3" /> Reset
-                </button>
-                {/* Shapes count + Add */}
-                <span className="text-[10px] text-blush-500 font-semibold">{shapes.length} shapes</span>
-                <button onClick={addShape} className="p-1 rounded bg-blush-50 text-blush-600 hover:bg-blush-100 border border-blush-100">
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-                {/* Action Buttons */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <input
-                    type="text"
-                    value={blockName}
-                    onChange={(e) => setBlockName(e.target.value)}
-                    placeholder="Block name..."
-                    className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBlock(); }}
-                  />
-                  <button
-                    onClick={handleSaveBlock}
-                    disabled={isSaving}
-                    className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100 disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                  </button>
-                  {/* Load dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={handleLoadBlocks}
-                      className="p-1.5 rounded bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100 hover:bg-blush-100"
-                    >
-                      <FolderOpen className="h-3 w-3" />
-                      <ChevronDown className="h-2.5 w-2.5" />
-                    </button>
-                    {showLoadDropdown && (
-                      <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
-                        {savedBlocks.length === 0 ? (
-                          <p className="p-3 text-[11px] text-slate-400 text-center">No saved blocks yet</p>
-                        ) : (
-                          savedBlocks.map(b => (
-                            <div
-                              key={b.id}
-                              onClick={() => handleLoadBlock(b.id)}
-                              className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
-                            >
-                              <span className="text-xs text-slate-700 truncate flex-1">
-                                {b.name}
-                                <span className="text-[10px] text-slate-400 ml-2">{new Date(b.updatedAt).toLocaleDateString()}</span>
-                              </span>
-                              <button
-                                onClick={(e) => handleDeleteBlock(b.id, e)}
-                                className="text-slate-300 hover:text-red-500 p-1"
-                                title="Delete block"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={handleExportPdf} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
-                    <Download className="h-3 w-3" /> PDF
-                  </button>
-                  <button
-                    onClick={() => setShowShareModal(true)}
-                    className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold flex items-center gap-1"
-                  >
-                    <Share2 className="h-3 w-3" /> Share
-                  </button>
+                <div className="flex items-center gap-1.5 text-xs text-blush-500">
+                  <Grid3X3 className="h-3.5 w-3.5" />
+                  <span>{shapes.length} shapes</span>
                 </div>
               </div>
-              {/* Save message flash */}
-              {saveMessage && (
-                <div className="w-full mb-3">
-                  <p className={`text-[10px] px-2 py-1 rounded ${saveMessage.startsWith('Save failed') || saveMessage.startsWith('Export') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                    {saveMessage}
-                  </p>
-                </div>
-              )}
+
               {/* Tool Mode Bar */}
-              <div className="w-full flex flex-wrap items-center gap-2 mb-3">
-                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                  {([
-                    { mode: 'square' as const, icon: Square, label: 'Square' },
-                    { mode: 'triangle' as const, icon: Triangle, label: 'Tri' },
-                    { mode: 'hst' as const, icon: Minus, label: 'HST' },
-                  ]).map(t => (
-                    <button
-                      key={t.mode}
-                      onClick={() => setToolMode(t.mode)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${
-                        toolMode === t.mode
-                          ? 'bg-blush-500 text-white border-blush-500'
-                          : 'bg-white text-slate-600 border-transparent hover:border-blush-300'
-                      }`}
-                    >
-                      <t.icon className="h-3 w-3" />
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>{/* Canvas Area */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tool:</span>
+                {([
+                  { mode: 'square' as const, icon: Square, label: 'Square' },
+                  { mode: 'triangle' as const, icon: Triangle, label: 'Triangle' },
+                  { mode: 'hst' as const, icon: Minus, label: 'HST' },
+                ]).map(t => (
+                  <button
+                    key={t.mode}
+                    onClick={() => setToolMode(t.mode)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                      toolMode === t.mode
+                        ? 'bg-blush-500 text-white border-blush-500'
+                        : 'bg-white text-slate-600 border-blush-100 hover:border-blush-300'
+                    }`}
+                  >
+                    <t.icon className="h-3 w-3" />
+                    {t.label}
+                  </button>
+                ))}
+                <span className="mx-2 text-blush-200">|</span>
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer">
+                  <input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)}
+                    className="rounded text-blush-500 focus:ring-blush-400 h-3 w-3" />
+                  Snap to Grid
+                </label>
+                <button onClick={addShape} className="btn-floral-ghost p-1 ml-auto">
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Canvas Area */}
               <div
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden cursor-crosshair"
                 style={{ height: '480px' }}
@@ -567,11 +551,10 @@ export const QuiltBlockStudio: React.FC = () => {
             </div>
           </div>
 
-          
-          {/* RIGHT PANEL — Controls */}
-          <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:overflow-y-auto lg:max-h-[calc(100vh-7rem)]">
+          {/* Right: Inspector (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
             {/* Shapes List */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
+            <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Grid className="h-4 w-4 text-blush-500" />
@@ -607,7 +590,7 @@ export const QuiltBlockStudio: React.FC = () => {
 
             {/* Inspector Panel */}
             {selectedShape && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+              <div className="floral-card p-5 space-y-4">
                 <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Palette className="h-4 w-4 text-blush-500" />
                   <span className="capitalize">{selectedShape.type} Shape</span>
@@ -686,7 +669,7 @@ export const QuiltBlockStudio: React.FC = () => {
             )}
 
             {/* Quick Info */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100">
+            <div className="floral-card p-4">
               <h3 className="font-bold text-slate-700 text-xs flex items-center gap-2 mb-2">
                 <Grid3X3 className="h-3.5 w-3.5 text-blush-500" />
                 Block Info
@@ -704,34 +687,6 @@ export const QuiltBlockStudio: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Share to Community Modal */}
-      {showShareModal && (
-        <ShareToCommunityModal
-          projectType="quilt-block"
-          defaultTitle={blockName}
-          onClose={() => setShowShareModal(false)}
-          onSuccess={(entry) => {
-            setShowShareModal(false);
-            setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-          onError={(msg) => {
-            setShareMessage(msg);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-        />
-      )}
-
-      {/* Share success/error toast */}
-      {shareMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
-          <div className="rounded-2xl shadow-floral border px-5 py-4 flex items-center gap-3 max-w-sm bg-white border-emerald-200">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-            <p className="text-xs text-slate-700 font-medium">{shareMessage}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

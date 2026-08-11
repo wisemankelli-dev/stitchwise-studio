@@ -137,6 +137,14 @@ export interface FabricPieceInfo {
 }
 
 
+/** Response from POST /api/ai/embroidery/text-to-pattern (async) */
+export interface AIPatternJobResponse {
+  jobId: string;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  result?: AIPatternResponse | null;
+  error?: string | null;
+}
+
 // Fallback initial projects if nothing is in localStorage yet
 const INITIAL_PROJECTS: Project[] = [
   {
@@ -890,6 +898,88 @@ class ApiClient {
     return await response.json();
   }
 
+  // ==================== ASYNC AI PATTERN JOB TYPES ====================
+
+  /**
+   * Generate an embroidery pattern directly from a text prompt (single-phase).
+   * POST /api/ai/embroidery/text-to-pattern
+   *
+   * Returns HTTP 200 (synchronous) for procedural/shape patterns,
+   * or HTTP 202 (async) for AI-generated patterns that require polling.
+   */
+  async generatePatternFromText(
+    prompt: string,
+    options?: { gridSize?: number; maxColors?: number }
+  ): Promise<AIPatternResponse> {
+    if (!this.isLiveBackend) {
+      throw new Error('Backend not available. Pattern generation requires a live backend connection.');
+    }
+
+    const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ prompt, ...options }),
+    });
+
+    // Sync response (HTTP 200) - procedural/shape patterns
+    if (response.status === 200) {
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || data.message || 'Pattern generation failed');
+      }
+      return data;
+    }
+
+    // Async response (HTTP 202) - AI-generated patterns need polling
+    if (response.status === 202) {
+      const { jobId } = await response.json();
+      return this.pollPatternJob(jobId);
+    }
+
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || errData.message || `Pattern generation failed (${response.status})`);
+  }
+
+  /**
+   * Poll a pattern generation job until it completes or fails.
+   * GET /api/ai/embroidery/jobs/:jobId
+   */
+  private async pollPatternJob(jobId: string): Promise<AIPatternResponse> {
+    const MAX_POLLS = 60; // 2 minutes max at 2s intervals
+    const POLL_INTERVAL = 2000; // 2 seconds
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+
+      const response = await fetch(`${this.apiBaseUrl}/ai/embroidery/jobs/${jobId}`, {
+        headers: this.getHeaders(),
+      });
+
+      if (response.status === 404) {
+        throw new Error('Job not found');
+      }
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Job polling failed (${response.status})`);
+      }
+
+      const job: AIPatternJobResponse = await response.json();
+
+      if (job.status === 'done' && job.result) {
+        return job.result;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.error || 'Pattern generation job failed');
+      }
+
+      // status is 'queued' or 'processing' — continue polling
+    }
+
+    throw new Error('Pattern generation timed out. Please try again.');
+  }
+
   /**
    * Generates an embroidery pattern from an uploaded image using AI.
    * POST /api/ai/embroidery/image-to-pattern
@@ -1026,7 +1116,7 @@ class ApiClient {
    */
   async generateCollageFromText(
     prompt: string,
-    options?: { gridSize?: number; blockSize?: number }
+    options?: { gridSize?: number }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
       try {
@@ -1036,13 +1126,7 @@ class ApiClient {
           body: JSON.stringify({ prompt, ...options })
         });
         if (!response.ok) throw new Error('AI collage generation failed');
-        const raw = await response.json();
-        const data = raw.data || raw;
-        return {
-          ...data,
-          success: raw.success ?? data.success ?? true,
-          totalLayers: data.totalLayers ?? data.layerCount ?? 0,
-        };
+        return await response.json();
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
@@ -1218,12 +1302,6 @@ class ApiClient {
     return {
       success: true,
       layers,
-      regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
-        number: i + 1,
-        suggestedColor: l.name,
-        suggestedHex: l.color,
-        x: l.x, y: l.y, width: l.width, height: l.height,
-      })),
       canvasWidth: 500,
       canvasHeight: 500,
       promptUsed: prompt,
@@ -1252,13 +1330,7 @@ class ApiClient {
           body: formData,
         });
         if (!response.ok) throw new Error('AI image-to-collage generation failed');
-        const raw = await response.json();
-        const data = raw.data || raw;
-        return {
-          ...data,
-          success: raw.success ?? data.success ?? true,
-          totalLayers: data.totalLayers ?? data.layerCount ?? 0,
-        };
+        return await response.json();
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
@@ -1321,35 +1393,12 @@ class ApiClient {
     return {
       success: true,
       layers,
-      regions: layers.filter(l => l.id !== 'bg').map((l, i) => ({
-        number: i + 1,
-        suggestedColor: l.name,
-        suggestedHex: l.color,
-        x: l.x, y: l.y, width: l.width, height: l.height,
-      })),
       canvasWidth: 500,
       canvasHeight: 500,
       promptUsed: `Image: ${file.name}`,
       processingTimeMs: 3500,
       totalLayers: layers.length,
     };
-  }
-
-  /** Export a collage pattern as a printable PDF */
-  async exportCollagePdf(
-    name: string,
-    blockSize: number,
-    regions: PatternRegion[],
-    canvasWidth?: number,
-    canvasHeight?: number,
-  ): Promise<Blob> {
-    const response = await fetch(`${this.apiBaseUrl}/ai/collage/export-pdf`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ name, blockSize, regions, canvasWidth, canvasHeight }),
-    });
-    if (!response.ok) throw new Error('Failed to generate PDF');
-    return response.blob();
   }
 
   // ==================== MARKETPLACE API ====================
@@ -1957,29 +2006,15 @@ export interface FabricLayer {
   zIndex: number;
 }
 
-/** A numbered outline region for the printable quilt pattern */
-export interface PatternRegion {
-  number: number;
-  suggestedColor: string;
-  suggestedHex: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 /** Response from AI collage generation */
 export interface AICollageResponse {
   success: boolean;
   layers: FabricLayer[];
-  regions: PatternRegion[];
   canvasWidth: number;
   canvasHeight: number;
   promptUsed?: string;
   processingTimeMs: number;
   totalLayers: number;
-  artworkUrl?: string;
-  blockSize?: number;
 }
 
 // ── Collage Persistence ──────────────────────────────

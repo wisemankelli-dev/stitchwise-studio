@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, RefreshCw, Share2, CheckCircle2
+  Upload, Eye, Sparkles, Loader2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -14,7 +14,6 @@ import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
-import { ShareToCommunityModal } from '../components/ShareToCommunityModal';
 import { api } from '../services/api';
 
 interface StitchStyle { id: string; name: string; description: string; }
@@ -329,24 +328,9 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
   { id: 'half', icon: <Triangle className="h-3.5 w-3.5" />, label: 'Half' },
 ];
 
-/** Template insert region definition (fractional coords relative to canvas size). */
-export interface InsertRegionDef {
-  type: 'circle' | 'silhouette' | 'rect';
-  centerXFrac?: number;
-  centerYFrac?: number;
-  diamFrac?: number;
-  xFrac?: number;
-  yFrac?: number;
-  wFrac?: number;
-  hFrac?: number;
-  svgPath?: string;
-  svgViewBoxW?: number;
-  svgViewBoxH?: number;
-}
-
 /** Canvas size presets defined as physical dimensions (inches).
  *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches). */
-interface CanvasPreset { name: string; inchW: number; inchH: number; templateName?: string; insertRegion?: InsertRegionDef; }
+interface CanvasPreset { name: string; inchW: number; inchH: number; }
 const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Bag Charm', inchW: 2, inchH: 2 },
   { name: 'Ornament', inchW: 3, inchH: 3 },
@@ -356,131 +340,11 @@ const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Stocking', inchW: 5, inchH: 8 },
   { name: 'Large Pillow', inchW: 8, inchH: 8 },
   { name: 'Wall Hanging', inchW: 8, inchH: 16 },
-  // Template presets with insert regions
-  { name: 'Template: Ornament', inchW: 8, inchH: 8, templateName: 'ornament', insertRegion: { type: 'circle', centerXFrac: 0.5, centerYFrac: 0.5, diamFrac: 5/8 } },
-  { name: 'Template: Stocking', inchW: 8, inchH: 8, templateName: 'stocking', insertRegion: { type: 'silhouette', svgPath: 'M110 45 Q200 45 290 45 L290 75 Q280 120 260 180 Q250 230 290 270 Q310 290 300 315 Q280 340 210 340 Q150 340 85 310 Q65 290 70 255 Q75 220 95 170 Q100 130 110 75 Z', svgViewBoxW: 400, svgViewBoxH: 400 } },
-  { name: 'Template: Belt', inchW: 30, inchH: 2, templateName: 'belt', insertRegion: { type: 'rect', xFrac: 1/30, yFrac: 0, wFrac: 28/30, hFrac: 1.0 } },
 ];
 
-/** Parse an SVG path into normalized x,y points, approximating curves with line segments. */
-function parseSvgPathToPoints(svgPath: string, vbW: number, vbH: number): { x: number; y: number }[] {
-  const tokens = svgPath.match(/[MLQCZmlqcz]|[\d.]+/g);
-  if (!tokens) return [];
-  const points: { x: number; y: number }[] = [];
-  let cx = 0, cy = 0; // current point
-  let i = 0;
-
-  function addPoint(x: number, y: number) {
-    points.push({ x: x / vbW, y: y / vbH });
-  }
-
-  // Flatten a cubic bezier into line segments
-  function cubicTo(ax: number, ay: number, bx: number, by: number, ex: number, ey: number) {
-    const steps = 16;
-    for (let s = 1; s <= steps; s++) {
-      const t = s / steps;
-      const u = 1 - t;
-      const px = u*u*u*cx + 3*u*u*t*ax + 3*u*t*t*bx + t*t*t*ex;
-      const py = u*u*u*cy + 3*u*u*t*ay + 3*u*t*t*by + t*t*t*ey;
-      addPoint(px, py);
-    }
-    cx = ex; cy = ey;
-  }
-
-  // Flatten a quadratic bezier into line segments
-  function quadTo(ax: number, ay: number, ex: number, ey: number) {
-    const steps = 12;
-    for (let s = 1; s <= steps; s++) {
-      const t = s / steps;
-      const u = 1 - t;
-      const px = u*u*cx + 2*u*t*ax + t*t*ex;
-      const py = u*u*cy + 2*u*t*ay + t*t*ey;
-      addPoint(px, py);
-    }
-    cx = ex; cy = ey;
-  }
-
-  while (i < tokens.length) {
-    const cmd = tokens[i++];
-    if (cmd === 'M') {
-      cx = parseFloat(tokens[i++]);
-      cy = parseFloat(tokens[i++]);
-      addPoint(cx, cy);
-    } else if (cmd === 'm') {
-      cx += parseFloat(tokens[i++]);
-      cy += parseFloat(tokens[i++]);
-      addPoint(cx, cy);
-    } else if (cmd === 'L') {
-      cx = parseFloat(tokens[i++]);
-      cy = parseFloat(tokens[i++]);
-      addPoint(cx, cy);
-    } else if (cmd === 'l') {
-      cx += parseFloat(tokens[i++]);
-      cy += parseFloat(tokens[i++]);
-      addPoint(cx, cy);
-    } else if (cmd === 'C') {
-      const ax = parseFloat(tokens[i++]), ay = parseFloat(tokens[i++]);
-      const bx = parseFloat(tokens[i++]), by = parseFloat(tokens[i++]);
-      const ex = parseFloat(tokens[i++]), ey = parseFloat(tokens[i++]);
-      cubicTo(ax, ay, bx, by, ex, ey);
-    } else if (cmd === 'c') {
-      const ax = cx + parseFloat(tokens[i++]), ay = cy + parseFloat(tokens[i++]);
-      const bx = cx + parseFloat(tokens[i++]), by = cy + parseFloat(tokens[i++]);
-      const ex = cx + parseFloat(tokens[i++]), ey = cy + parseFloat(tokens[i++]);
-      cubicTo(ax, ay, bx, by, ex, ey);
-    } else if (cmd === 'Q') {
-      const ax = parseFloat(tokens[i++]), ay = parseFloat(tokens[i++]);
-      const ex = parseFloat(tokens[i++]), ey = parseFloat(tokens[i++]);
-      quadTo(ax, ay, ex, ey);
-    } else if (cmd === 'q') {
-      const ax = cx + parseFloat(tokens[i++]), ay = cy + parseFloat(tokens[i++]);
-      const ex = cx + parseFloat(tokens[i++]), ey = cy + parseFloat(tokens[i++]);
-      quadTo(ax, ay, ex, ey);
-    } else if (cmd === 'Z' || cmd === 'z') {
-      break;
-    }
-  }
-  return points;
-}
-
-/** Compute a TemplateInsert (grid-scale) from a CanvasPreset's insertRegion + grid dimensions. */
-function computeTemplateInsert(
-  preset: CanvasPreset,
-  gridW: number,
-  gridH: number,
-): import('../components/StitchGrid').TemplateInsert | undefined {
-  const def = preset.insertRegion;
-  if (!def) return undefined;
-
-  if (def.type === 'circle' && def.centerXFrac != null) {
-    const cx = def.centerXFrac * gridW;
-    const cy = (def.centerYFrac ?? 0.5) * gridH;
-    const dia = (def.diamFrac ?? 0.5) * Math.max(gridW, gridH);
-    return { type: 'circle', x: cx, y: cy, diameter: dia };
-  }
-
-  if (def.type === 'rect' && def.xFrac != null) {
-    return {
-      type: 'rect',
-      x: def.xFrac * gridW,
-      y: (def.yFrac ?? 0) * gridH,
-      width: (def.wFrac ?? 1) * gridW,
-      height: (def.hFrac ?? 1) * gridH,
-    };
-  }
-
-  if (def.type === 'silhouette' && def.svgPath && def.svgViewBoxW && def.svgViewBoxH) {
-    const normPoints = parseSvgPathToPoints(def.svgPath, def.svgViewBoxW, def.svgViewBoxH);
-    const scaled = normPoints.map(p => ({ x: p.x * gridW, y: p.y * gridH }));
-    return { type: 'silhouette', x: 0, y: 0, width: gridW, height: gridH, points: scaled, svgPath: def.svgPath };
-  }
-
-  return undefined;
-}
-
-/** Compute stitch count from physical inches and fabric count, clamped to [6, 420] */
+/** Compute stitch count from physical inches and fabric count, clamped to [6, 200] */
 function inchesToStitches(inches: number, fabricCount: number): number {
-  return Math.max(6, Math.min(420, Math.round(inches * fabricCount)));
+  return Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
 }
 
 /** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
@@ -616,31 +480,18 @@ export const Designer: React.FC = () => {
   // Shape browser state
   const [selectedShape, setSelectedShape] = useState<ClipartShape | null>(null);
 
-  // AI pattern generation state
+  // AI pattern generation state (single-phase, handles both sync 200 and async 202)
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
-  const [generatedArt, setGeneratedArt] = useState<string | null>(null);
-  const [isTransposing, setIsTransposing] = useState(false);
-
-  // AI bar toggle
-  const [showAiBar, setShowAiBar] = useState(true);
-
-  // Share to Community state
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [pollingStatus, setPollingStatus] = useState('');
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
   
-  // Active preset tracking — when set, fabric count changes recalc grid
-  const [activePreset, setActivePreset] = useState<CanvasPreset | null>(null);
-
-  // Computed template insert region for the active preset (grid-scale coords)
-  const templateInsert = activePreset?.insertRegion
-    ? computeTemplateInsert(activePreset, gridWidth, gridHeight)
-    : undefined;
+  // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
+  const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
 
 
   // Utility: stitches to inches based on fabric count
@@ -1007,42 +858,23 @@ export const Designer: React.FC = () => {
     setReferenceOpacity(0.20);
     setAiError('');
     setAiStats(null);
-    setGeneratedArt(null);
+    setPollingStatus('');
   };
 
-  const handleGenerateAi = useCallback(async () => {
+  /** Single-phase generation: prompt → pattern (handles sync 200 and async 202 with polling) */
+  const handleGenerate = useCallback(async () => {
     if (!aiPrompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setAiError('');
     setAiStats(null);
-    setGeneratedArt(null);
-    try {
-      // Include template context in the prompt when a template is active
-      let prompt = aiPrompt.trim();
-      if (templateInsert) {
-        const shapeLabel = templateInsert.type === 'circle' ? 'circular ornament'
-          : templateInsert.type === 'silhouette' ? 'stocking-shaped design'
-          : 'narrow belt design';
-        prompt = `Embroidery design for a ${shapeLabel} template: ${prompt}. The design should fit within the ${shapeLabel} area.`;
-      }
-      const data = await api.generateArt(prompt);
-      setGeneratedArt(data.imageDataUrl);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to generate art';
-      setAiError(message);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [aiPrompt, isGenerating, templateInsert]);
-
-  const handleTranspose = useCallback(async () => {
-    if (!generatedArt || isTransposing) return;
-    setIsTransposing(true);
-    setAiError('');
-    setAiStats(null);
+    setPollingStatus('');
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      const data = await api.transposeToPattern(generatedArt, gridSize, 6, aiPrompt.trim());
+      setPollingStatus('Generating pattern…');
+
+      const data = await api.generatePatternFromText(aiPrompt.trim(), { gridSize, maxColors: 6 });
+
+      // Process the response into the grid
       const newGrid: Record<string, string> = {};
       const newStitchTypes: Record<string, string> = {};
       let backstitch = 0;
@@ -1051,15 +883,14 @@ export const Designer: React.FC = () => {
 
       for (let r = 0; r < data.grid.length; r++) {
         for (let c = 0; c < data.grid[r].length; c++) {
-          const cell = data.grid[r][c];
-          if (cell && cell.color) {
+          const color = data.grid[r][c];
+          if (color) {
             const key = `${r},${c}`;
-            newGrid[key] = cell.color;
-            const st = cell.stitchType || 'cross';
+            newGrid[key] = color;
+            const st = (data.stitchTypes?.[r]?.[c]) || 'cross';
             newStitchTypes[key] = st;
             if (st === 'back') backstitch++;
             else crossStitch++;
-            if (cell.dmcCode) dmcSet.add(cell.dmcCode);
           }
         }
       }
@@ -1076,42 +907,41 @@ export const Designer: React.FC = () => {
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
+
+      // Collect DMC palette info
+      if (data.dmcPalette) {
+        data.dmcPalette.forEach(c => dmcSet.add(c.code));
+      }
+
       setAiStats({
         stitches: Object.keys(newGrid).length,
         colors: dmcSet.size,
         backstitch,
         crossStitch,
       });
+      setPollingStatus('');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to transpose pattern';
+      const message = err instanceof Error ? err.message : 'Failed to generate pattern';
       setAiError(message);
+      setPollingStatus('');
     } finally {
-      setIsTransposing(false);
+      setIsGenerating(false);
     }
-  }, [generatedArt, isTransposing, gridWidth, gridHeight]);
-
-  const handleClearArt = useCallback(() => {
-    setGeneratedArt(null);
-    setAiError('');
-    setAiStats(null);
-  }, []);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
     for (const c of COLORS) colorNames[c.hex] = c.name;
     exportPatternToPdf({
-      patternName: activePreset?.templateName 
-        ? `${activePreset.name} Pattern` 
-        : 'StitchWise Pattern',
+      patternName: 'StitchWise Pattern',
       grid,
       gridWidth,
       gridHeight,
       fabricCount,
       colorNames,
       cellFractions,
-      insertRegion: templateInsert,
     });
-  }, [grid, gridWidth, gridHeight, fabricCount, cellFractions, templateInsert, activePreset]);
+  }, [grid, gridWidth, gridHeight, fabricCount, cellFractions]);
 
   // Canvas resize logic
   const hasStitchesOutside = (newW: number, newH: number): boolean => {
@@ -1210,7 +1040,7 @@ export const Designer: React.FC = () => {
         {/* ==================== EXISTING GRID EDITOR ==================== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* LEFT PANEL */}
-          <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:overflow-y-auto lg:max-h-[calc(100vh-7rem)]">
+          <div className="lg:col-span-4 space-y-6">
 
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-5">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -1243,7 +1073,7 @@ export const Designer: React.FC = () => {
             </div>
 
             {/* === CANVAS SIZE CONTROLS === */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Ruler className="h-5 w-5 text-blush-500" /> Canvas Size
               </h2>
@@ -1281,7 +1111,7 @@ export const Designer: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Preset Sizes</label>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {CANVAS_PRESETS.filter(p => !p.templateName).map((preset) => {
+                  {CANVAS_PRESETS.map((preset) => {
                     const stitchW = inchesToStitches(preset.inchW, fabricCount);
                     const stitchH = inchesToStitches(preset.inchH, fabricCount);
                     const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
@@ -1289,8 +1119,8 @@ export const Designer: React.FC = () => {
                       <button
                         key={preset.name}
                         onClick={() => {
-                          setActivePreset(preset);
-                          applyResize(stitchW, stitchH);
+                          setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+                          requestResize(stitchW, stitchH);
                         }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
                           isActive
@@ -1299,33 +1129,6 @@ export const Designer: React.FC = () => {
                         }`}
                       >
                         <div className="text-[10px] font-bold leading-tight">{preset.name}</div>
-                        <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
-                          {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 mt-3 pt-3 border-t border-blush-100">Templates</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {CANVAS_PRESETS.filter(p => p.templateName).map((preset) => {
-                    const stitchW = inchesToStitches(preset.inchW, fabricCount);
-                    const stitchH = inchesToStitches(preset.inchH, fabricCount);
-                    const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
-                    return (
-                      <button
-                        key={preset.name}
-                        onClick={() => {
-                          setActivePreset(preset);
-                          applyResize(stitchW, stitchH);
-                        }}
-                        className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
-                          isActive
-                            ? 'bg-blush-500 text-white border-blush-500 shadow-sm'
-                            : 'bg-white text-slate-700 border-blush-100 hover:bg-blush-50'
-                        }`}
-                      >
-                        <div className="text-[10px] font-bold leading-tight">{preset.name.replace('Template: ', '')}</div>
                         <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
                           {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
                         </div>
@@ -1345,12 +1148,12 @@ export const Designer: React.FC = () => {
                       type="number"
                       value={gridWidth}
                       onChange={(e) => {
-                        const v = Math.max(6, Math.min(420, Number(e.target.value) || 6));
+                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
                         setActivePreset(null);
                         requestResize(v, gridHeight);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
-                      min={6} max={420}
+                      min={6} max={200}
                     />
                   </div>
                   <span className="text-slate-300 font-bold">×</span>
@@ -1360,12 +1163,12 @@ export const Designer: React.FC = () => {
                       type="number"
                       value={gridHeight}
                       onChange={(e) => {
-                        const v = Math.max(6, Math.min(420, Number(e.target.value) || 6));
+                        const v = Math.max(6, Math.min(200, Number(e.target.value) || 6));
                         setActivePreset(null);
                         requestResize(gridWidth, v);
                       }}
                       className="w-14 rounded-lg border-blush-100 text-[11px] font-bold text-slate-700 px-2 py-1.5 border text-center focus:border-blush-500 focus:ring-blush-500"
-                      min={6} max={420}
+                      min={6} max={200}
                     />
                   </div>
                 </div>
@@ -1377,7 +1180,7 @@ export const Designer: React.FC = () => {
             </div>
 
             {stitchData && stitchData.dmcPalette.length > 0 && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100">
                 <DmcLegend palette={stitchData.dmcPalette} />
                 <div className="mt-3 pt-3 border-t border-blush-100 text-[10px] text-slate-500 space-y-0.5">
                   <p>Total stitches: <span className="font-bold text-blush-600">{stitchData.totalStitches}</span></p>
@@ -1398,7 +1201,7 @@ export const Designer: React.FC = () => {
             />
 
             {/* === MATERIAL ESTIMATOR === */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-lg shadow-blush-100/50 border border-blush-100 space-y-4">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Ruler className="h-5 w-5 text-blush-500" /> Material Estimator
               </h2>
@@ -1477,47 +1280,22 @@ export const Designer: React.FC = () => {
 
           {/* RIGHT PANEL */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
-              {/* ===== Merged Header + Toolbar Row ===== */}
-              <div className="w-full flex flex-wrap items-center gap-3 mb-3 border-b border-blush-100 pb-3">
-                {/* Title */}
-                <div className="shrink-0 mr-1">
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-                    <Layers className="h-4 w-4 text-blush-500" /> Embroidery Canvas
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/50 border border-blush-100 flex flex-col items-center">
+              <div className="w-full flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-blush-100 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-blush-500" /> Embroidery Canvas
                   </h3>
+                  <p className="text-xs text-slate-500">Upload an image or click cells to paint your pattern.</p>
                 </div>
-                {/* Tool Buttons */}
-                <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                  {TOOLS.map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => {
-                        setActiveTool(tool.id);
-                        if (tool.id !== 'clone') setCloneSource(null);
-                        if (tool.id !== 'mirror') setMirrorEnabled(false);
-                        if (tool.id !== 'paint') setSelectedShape(null);
-                      }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
-                        activeTool === tool.id
-                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                      title={tool.label}
-                    >
-                      {tool.icon}
-                      <span className="hidden sm:inline">{tool.label}</span>
-                    </button>
-                  ))}
-                </div>
-                {/* Action Buttons */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
-                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="p-1 rounded hover:bg-white text-slate-500"><ZoomOut className="h-3.5 w-3.5" /></button>
-                    <span className="text-[10px] font-bold text-slate-600 w-7 text-center">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1 rounded hover:bg-white text-slate-500"><ZoomIn className="h-3.5 w-3.5" /></button>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomOut className="h-4 w-4" /></button>
+                    <span className="text-[10px] font-bold text-slate-600 w-8 text-center">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomIn className="h-4 w-4" /></button>
                   </div>
-                  <button onClick={handleClearGrid} className="p-1.5 rounded hover:bg-blush-50 text-slate-600 text-[10px] font-semibold flex items-center gap-1 border border-blush-100">
-                    <RotateCcw className="h-3 w-3" /> Reset
+                  <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
+                    <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
                   <input
                     ref={fileInputRef}
@@ -1530,7 +1308,7 @@ export const Designer: React.FC = () => {
                   <select
                     value={numColors}
                     onChange={(e) => setNumColors(Number(e.target.value))}
-                    className="rounded border border-blush-100 text-[10px] font-bold text-slate-600 px-1 py-1.5 bg-white"
+                    className="rounded-lg border border-blush-100 text-[10px] font-bold text-slate-600 px-1.5 py-2 bg-white"
                     title="Number of colors"
                   >
                     <option value={5}>5 colors</option>
@@ -1541,40 +1319,34 @@ export const Designer: React.FC = () => {
                   </select>
                   <label
                     htmlFor="image-upload"
-                    className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-all ${
+                    className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
                       isProcessingImage
                         ? 'bg-blush-100 text-blush-400 cursor-wait'
                         : 'bg-blush-500 hover:bg-blush-600 text-white'
                     }`}
                   >
                     {isProcessingImage ? (
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                     ) : (
-                      <Upload className="h-3 w-3" />
+                      <Upload className="h-3.5 w-3.5" />
                     )}
-                    {isProcessingImage ? 'Processing...' : 'Upload'}
+                    {isProcessingImage ? 'Processing...' : 'Upload Image'}
                   </label>
-                  <button onClick={handleExportPdf} className="p-1.5 rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-semibold flex items-center gap-1">
-                    <Download className="h-3 w-3" /> PDF
-                  </button>
-                  <button
-                    onClick={() => setShowShareModal(true)}
-                    className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold flex items-center gap-1"
-                  >
-                    <Share2 className="h-3 w-3" /> Share
+                  <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
+                    <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
                   {referenceImage && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setShowReference(!showReference)}
-                        className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                        className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                           showReference
                             ? 'bg-pink-100 text-pink-700 border border-pink-200 hover:bg-pink-200'
                             : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200'
                         }`}
                         title={showReference ? 'Hide reference image' : 'Show reference image'}
                       >
-                        <Eye className={`h-3 w-3 ${showReference ? '' : 'opacity-50'}`} />
+                        <Eye className={`h-3.5 w-3.5 ${showReference ? '' : 'opacity-50'}`} />
                         Ref
                       </button>
                       <input
@@ -1583,33 +1355,100 @@ export const Designer: React.FC = () => {
                         max="50"
                         value={Math.round(referenceOpacity * 100)}
                         onChange={(e) => setReferenceOpacity(Number(e.target.value) / 100)}
-                        className="w-12 h-1 accent-pink-500 cursor-pointer"
+                        className="w-14 h-1.5 accent-pink-500 cursor-pointer"
                         title={`Reference opacity: ${Math.round(referenceOpacity * 100)}%`}
                       />
                     </div>
                   )}
-                  {/* AI Toggle */}
-                  <button
-                    onClick={() => setShowAiBar(!showAiBar)}
-                    className={`p-1.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
-                      showAiBar
-                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                        : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
-                    }`}
-                    title="Toggle AI generation"
-                  >
-                    <Sparkles className="h-3 w-3" /> AI
-                  </button>
                 </div>
               </div>
 
-              {/* ===== Tool-Specific Controls Row ===== */}
-              <div className="w-full flex items-center justify-end mb-3 pb-2 border-b border-blush-100">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* AI Prompt Bar */}
+              <div className="w-full mb-4 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+                  <input
+                    type="text"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleGenerate(); }}
+                    placeholder="Describe a pattern (e.g., 'a sunflower with green leaves')"
+                    className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
+                    disabled={isGenerating}
+                  />
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!aiPrompt.trim() || isGenerating}
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-blush-600 to-blush-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0 hover:from-blush-700 hover:to-blush-600"
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {isGenerating ? (pollingStatus || 'Generating…') : 'Generate'}
+                  </button>
+                </div>
+
+                {aiError && (
+                  <p className="mt-2 text-[10px] text-red-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> {aiError}
+                  </p>
+                )}
+                {isGenerating && pollingStatus && !aiError && (
+                  <p className="mt-2 text-[10px] text-blush-600 flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> {pollingStatus}
+                  </p>
+                )}
+                {aiStats && (
+                  <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
+                    <span className="font-bold text-slate-700">{aiStats.stitches} stitches</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.colors} DMC colors</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.crossStitch} cross</span>
+                    <span className="text-slate-400">•</span>
+                    <span>{aiStats.backstitch} backstitch</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Toolbar */}
+              <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
+                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+                  {TOOLS.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={() => {
+                        setActiveTool(tool.id);
+                        if (tool.id !== 'clone') setCloneSource(null);
+                        if (tool.id !== 'mirror') setMirrorEnabled(false);
+                        if (tool.id !== 'paint') setSelectedShape(null);
+                      }}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                        activeTool === tool.id
+                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      title={tool.label}
+                    >
+                      {tool.icon}
+                      <span className="hidden sm:inline">{tool.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleClearGrid}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1"
+                    title="Clear entire grid and start over"
+                  >
+                    <Trash2 className="h-3 w-3" /> Clear Grid
+                  </button>
                   {activeTool === 'mirror' && (
                     <button
                       onClick={() => setMirrorEnabled(!mirrorEnabled)}
-                      className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
                         mirrorEnabled ? 'bg-blush-500 text-white shadow-sm' : 'bg-blush-50 text-slate-500 border border-blush-100'
                       }`}
                     >
@@ -1618,7 +1457,7 @@ export const Designer: React.FC = () => {
                     </button>
                   )}
                   {activeTool === 'clone' && cloneSource && (
-                    <span className="text-[10px] font-bold text-blush-600 bg-blush-50 px-2 py-1 rounded">
+                    <span className="text-[10px] font-bold text-blush-600 bg-blush-50 px-2 py-1 rounded-lg">
                       Source: ({cloneSource.row},{cloneSource.col}) — click to paste
                     </span>
                   )}
@@ -1635,16 +1474,16 @@ export const Designer: React.FC = () => {
                     <span className="text-[10px] text-slate-500 italic">Click to cycle: empty → ½ → full</span>
                   )}
                   {activeTool === 'alphabet' && (
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-3">
                       <input type="text" value={alphabetText}
                         onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
                         placeholder="TYPE TEXT"
-                        className="w-24 rounded border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
+                        className="w-28 rounded-lg border-blush-100 text-[10px] font-mono font-bold text-slate-800 uppercase px-2 py-1 border focus:border-blush-500 focus:ring-blush-500"
                         maxLength={12}
                       />
                       <select value={selectedFontId}
                         onChange={(e) => setSelectedFontId(e.target.value)}
-                        className="rounded border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
+                        className="rounded-lg border-blush-100 text-[10px] font-bold text-slate-600 px-2 py-1 border bg-white"
                       >
                         {FONTS.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
                       </select>
@@ -1652,115 +1491,20 @@ export const Designer: React.FC = () => {
                         <span className="text-[10px] text-slate-400">R:</span>
                         <input type="number" value={placeRow}
                           onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridHeight - 1, Number(e.target.value))))}
-                          className="w-10 rounded border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridHeight - 1} />
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridHeight - 1} />
                         <span className="text-[10px] text-slate-400">C:</span>
                         <input type="number" value={placeCol}
                           onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridWidth - 1, Number(e.target.value))))}
-                          className="w-10 rounded border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridWidth - 1} />
+                          className="w-10 rounded-lg border-blush-100 text-[10px] text-slate-700 px-1 py-1 border text-center" min={0} max={gridWidth - 1} />
                       </div>
                       <button onClick={handlePlaceText} disabled={!alphabetText.trim()}
-                        className="rounded bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-2.5 py-1 disabled:opacity-50 transition-all">
+                        className="rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-[10px] font-bold px-3 py-1.5 disabled:opacity-50 transition-all">
                         <Type className="h-3 w-3 inline mr-1" /> Place
                       </button>
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={handleClearGrid}
-                  className="px-2.5 py-1 rounded text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1 shrink-0 ml-2"
-                  title="Clear entire grid and start over"
-                >
-                  <Trash2 className="h-3 w-3" /> Clear Grid
-                </button>
               </div>
-              {/* ===== Collapsible AI Bar ===== */}
-              {showAiBar && (
-                <div className="w-full mb-3 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
-                  <input
-                    type="text"
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleGenerateAi(); }}
-                    placeholder="Describe a pattern (e.g., 'a sunflower with green leaves')"
-                    className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
-                    disabled={isGenerating || isTransposing}
-                  />
-                  <button
-                    onClick={handleGenerateAi}
-                    disabled={!aiPrompt.trim() || isGenerating || isTransposing}
-                    className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0"
-                  >
-                    {isGenerating ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5" />
-                    )}
-                    {isGenerating ? 'Generating Art…' : 'Generate Art'}
-                  </button>
-                </div>
-
-                {/* Generated Art Preview */}
-                {generatedArt && (
-                  <div className="mt-3 p-3 bg-white rounded-lg border border-purple-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">AI Illustration</span>
-                      <button
-                        onClick={handleClearArt}
-                        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        ✕ Clear
-                      </button>
-                    </div>
-                    <img
-                      src={generatedArt}
-                      alt="AI generated art"
-                      className="w-full max-w-[400px] mx-auto rounded-lg shadow-sm border border-slate-100"
-                    />
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        onClick={handleTranspose}
-                        disabled={isTransposing}
-                        className="flex-1 px-3 py-2 rounded-lg bg-gradient-to-r from-blush-600 to-blush-500 text-white text-xs font-bold hover:from-blush-700 hover:to-blush-600 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
-                      >
-                        {isTransposing ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3.5 w-3.5" />
-                        )}
-                        {isTransposing ? 'Making Pattern…' : 'Make Pattern'}
-                      </button>
-                      <button
-                        onClick={handleGenerateAi}
-                        disabled={isGenerating || isTransposing}
-                        className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50 transition-all flex items-center gap-1.5"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        Regenerate
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {aiError && (
-                  <p className="mt-2 text-[10px] text-red-500 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> {aiError}
-                  </p>
-                )}
-                {aiStats && (
-                  <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
-                    <span className="font-bold text-slate-700">{aiStats.stitches} stitches</span>
-                    <span className="text-slate-400">•</span>
-                    <span>{aiStats.colors} DMC colors</span>
-                    <span className="text-slate-400">•</span>
-                    <span>{aiStats.crossStitch} cross</span>
-                    <span className="text-slate-400">•</span>
-                    <span>{aiStats.backstitch} backstitch</span>
-                  </div>
-                )}
-                </div>
-              )}
 
               <div
                 ref={canvasRef}
@@ -1784,7 +1528,6 @@ export const Designer: React.FC = () => {
                       referenceImage={referenceImage}
                       showReference={showReference}
                       referenceOpacity={referenceOpacity}
-                      templateInsert={templateInsert}
                     />
                 </div>
               </div>
@@ -1802,36 +1545,6 @@ export const Designer: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Share to Community Modal */}
-      {showShareModal && (
-        <ShareToCommunityModal
-          projectType="embroidery"
-          defaultTitle=""
-          defaultStitchCount={stitchData.totalStitches}
-          defaultThreadColors={stitchData.dmcPalette?.map(c => c.hex)}
-          onClose={() => setShowShareModal(false)}
-          onSuccess={(entry) => {
-            setShowShareModal(false);
-            setShareMessage(`Shared "${entry.title}" to the community! 🎉`);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-          onError={(msg) => {
-            setShareMessage(msg);
-            setTimeout(() => setShareMessage(null), 4000);
-          }}
-        />
-      )}
-
-      {/* Share success/error toast */}
-      {shareMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
-          <div className="rounded-2xl shadow-floral border px-5 py-4 flex items-center gap-3 max-w-sm bg-white border-emerald-200">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-            <p className="text-xs text-slate-700 font-medium">{shareMessage}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
