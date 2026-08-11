@@ -306,7 +306,7 @@ export async function lineArtToStitchGrid(
   outlineDmcCode: string = "310",
 ): Promise<PatternResult> {
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
+  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
 
   // Step 1: Resize the image to the target grid size using nearest-neighbor.
   // This preserves hard edges in line art — essential for clean outlines.

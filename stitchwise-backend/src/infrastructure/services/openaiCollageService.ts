@@ -111,8 +111,7 @@ export async function imageBufferToCollageLayers(
   imageBuffer: Buffer,
   gridSize: number = 32,
 ): Promise<CollageGenerationResult> {
-  const validSizes = [8, 10, 12, 16, 20, 24, 32, 48, 64];
-  const size = validSizes.includes(gridSize) ? gridSize : 32;
+  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : 32;
 
   // Resize image using sharp
   const { data, info } = await sharp(imageBuffer)

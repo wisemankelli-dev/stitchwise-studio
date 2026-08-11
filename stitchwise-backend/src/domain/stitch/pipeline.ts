@@ -200,7 +200,7 @@ export async function imageToStitchGrid(
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
+  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
 
   // Step 1: Normalize image to target grid dimensions
   // Nearest-neighbor preserves hard edges and creates clean pixel blocks.
@@ -238,7 +238,7 @@ export async function svgToStitchGrid(
   prompt?: string,
 ): Promise<PatternResult> {
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
+  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
 
   // Render SVG at high resolution (1024px) to preserve organic curved paths,
   // then let imageToStitchGrid downscale to the target grid via nearest-neighbor.
@@ -280,7 +280,7 @@ export async function generatePatternFromImage(
   generateImage: (prompt: string) => Promise<{ url: string; buffer: Buffer } | null>,
 ): Promise<PatternResult & { previewUrl?: string }> {
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = validSizes.includes(gridSize) ? gridSize : DEFAULT_GRID_SIZE;
+  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
 
   // Generate artwork
   const generation = await generateImage(prompt);
