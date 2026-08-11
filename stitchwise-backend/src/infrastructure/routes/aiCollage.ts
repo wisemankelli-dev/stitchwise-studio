@@ -67,14 +67,14 @@ export function createAICollageRouter(): Router {
         const resolvedGridSize = Math.max(12, blockSize || 12);
 
         // Two phases: OpenAI artwork generation, then organic quilt conversion.
-        // Keep generation responsive even if the external provider stalls —
-        // return the deterministic layout after 20s.
+        // gpt-image-1 routinely takes 30s–3min under load — allow up to 3 minutes
+        // before falling back to the deterministic layout.
         let generation;
         try {
           generation = await Promise.race([
             generateCollageImage(prompt, negativePrompt),
             new Promise< never>((_, reject) =>
-              setTimeout(() => reject(new Error("AI generation timed out")), 20_000),
+              setTimeout(() => reject(new Error("AI generation timed out")), 180_000),
             ),
           ]);
         } catch (err) {
