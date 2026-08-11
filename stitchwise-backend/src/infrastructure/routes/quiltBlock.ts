@@ -194,5 +194,28 @@ export function createQuiltBlockRouter(repo: QuiltBlockRepo): Router {
     }
   });
 
+  // Frontend adapter routes (the SPA uses /api/quilt-blocks).
+  router.get("/quilt-blocks", authenticate, async (req: Request, res: Response) => {
+    try { res.json({ blocks: await repo.listProjectsByUser((req as any).user.userId) }); }
+    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+  router.post("/quilt-blocks", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { name, shapes, blockSize } = req.body ?? {};
+      if (typeof name !== "string" || !name.trim() || !Array.isArray(shapes)) { res.status(400).json({ error: "Validation failed" }); return; }
+      const size = typeof blockSize === "number" ? blockSize : 12;
+      const project = await repo.createProject({ name: name.trim(), data: JSON.stringify({ shapes }), blockSize: size, gridRows: 4, gridCols: 4, userId: (req as any).user.userId });
+      res.status(201).json(project);
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+  router.get("/quilt-blocks/:id", authenticate, async (req: Request, res: Response) => {
+    try { const block = await repo.getProject(req.params.id); if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; } if (block.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; } res.json({ block }); }
+    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+  router.delete("/quilt-blocks/:id", authenticate, async (req: Request, res: Response) => {
+    try { const block = await repo.getProject(req.params.id); if (!block) { res.status(404).json({ error: "Quilt block project not found" }); return; } if (block.userId !== (req as any).user.userId) { res.status(403).json({ error: "Access denied" }); return; } await repo.deleteProject(req.params.id); res.status(204).send(); }
+    catch (err) { res.status(500).json({ error: "Internal server error" }); }
+  });
+
   return router;
 }
