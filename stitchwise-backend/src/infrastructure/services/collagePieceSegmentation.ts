@@ -26,12 +26,21 @@ import type { CollagePiece } from "../../domain/ai/collageAI";
 const WORK_SIZE = 160;
 /** Default maximum number of pieces. */
 const MAX_PIECES = 40;
-/** Regions smaller than this fraction of the image are dropped as specks. */
-const MIN_PIECE_FRACTION = 0.005;
+/**
+ * Regions smaller than this fraction of the image are dropped as specks.
+ * 0.2% (was 0.5%): real AI art is noisy and its legitimate regions are
+ * smaller than flat mock renders — 0.5% threw away every region of a
+ * dark, textured generation and collapsed to one whole-canvas piece.
+ */
+const MIN_PIECE_FRACTION = 0.002;
 /** Maximum pixel dimension of a piece image crop (keeps payloads sane). */
 const PIECE_MAX_DIM = 256;
-/** k-means palette size. */
-const PALETTE_K = 12;
+/** k-means palette size. 16 (was 12): more separation for noisy art. */
+const PALETTE_K = 16;
+/** k-means Lloyd iterations. 24 (was 8): real images need to converge. */
+const KMEANS_ITERATIONS = 24;
+/** Median filter radius applied before quantization (denoises speckle). */
+const MEDIAN_RADIUS = 3;
 
 export interface SegmentationOptions {
   maxPieces?: number;
@@ -61,6 +70,13 @@ export async function segmentImageIntoPieces(
 
   const { data } = await sharp(imageBuffer)
     .resize(w, h, { fit: "fill" })
+    .median(MEDIAN_RADIUS)
+    // CRITICAL: force 4 channels. Real AI art comes back as RGB (no alpha)
+    // (e.g. PNG without alpha) and the whole pipeline indexes pixels[i*4]
+    // assuming RGBA — misaligned reads produced NaN k-means centers and a
+    // single whole-canvas piece for real generations (mock renders had alpha
+    // so they worked). ensureAlpha() makes RGBA unconditionally.
+    .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
   const pixels = new Uint8ClampedArray(data);
@@ -190,7 +206,7 @@ function quantizePixels(
   }
 
   // Lloyd iterations
-  for (let iter = 0; iter < 8; iter++) {
+  for (let iter = 0; iter < KMEANS_ITERATIONS; iter++) {
     for (let i = 0; i < n; i++) {
       const r = pixels[i * 4];
       const g = pixels[i * 4 + 1];
