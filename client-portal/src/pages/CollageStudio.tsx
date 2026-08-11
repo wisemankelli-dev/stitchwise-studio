@@ -29,9 +29,6 @@ const FABRIC_COLORS = [
 
 const DEFAULT_LAYERS: FabricLayer[] = [
   { id: 'bg', name: 'Base Fabric', color: '#fce7f3', pattern: 'solid', x: 100, y: 100, width: 300, height: 300, rotation: 0, opacity: 1, zIndex: 0 },
-  { id: 'fabric-1', name: 'Petal Shape', color: '#f9a8d4', pattern: 'polka', x: 150, y: 130, width: 120, height: 100, rotation: 15, opacity: 0.9, zIndex: 1 },
-  { id: 'fabric-2', name: 'Leaf Accent', color: '#86efac', pattern: 'stripe', x: 280, y: 180, width: 80, height: 60, rotation: -10, opacity: 0.8, zIndex: 2 },
-  { id: 'fabric-3', name: 'Center Bloom', color: '#ec4899', pattern: 'solid', x: 200, y: 160, width: 60, height: 60, rotation: 0, opacity: 1, zIndex: 3 },
 ];
 
 const CANVAS_WIDTH = 500;
@@ -48,7 +45,7 @@ const TOOLS: { id: CollageTool; icon: React.ReactNode; label: string }[] = [
 
 export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
-  const [selectedLayerId, setSelectedLayerId] = useState<string>('fabric-3');
+  const [selectedLayerId, setSelectedLayerId] = useState<string>('bg');
   const [zoom, setZoom] = useState(1);
 
   // AI Generation state
@@ -105,6 +102,14 @@ export const CollageStudio: React.FC = () => {
     if (selectedLayerId === id) {
       setSelectedLayerId(layers[layers.length - 2]?.id || '');
     }
+  };
+
+  const handleReset = () => {
+    if (!window.confirm('Reset canvas? This will clear all layers and unsaved work.')) return;
+    setLayers(DEFAULT_LAYERS.map(l => ({ ...l })));
+    setSelectedLayerId('bg');
+    setAiResult(null);
+    setAiError(null);
   };
 
   const applyAiResult = () => {
@@ -459,6 +464,14 @@ export const CollageStudio: React.FC = () => {
                   <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
                   <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
                   <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+                  <span className="mx-1 text-blush-200">|</span>
+                  <button
+                    onClick={handleReset}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-1"
+                    title="Clear all layers and start fresh"
+                  >
+                    <Trash2 className="h-3 w-3" /> Reset
+                  </button>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-blush-500">
                   <Grid3X3 className="h-3.5 w-3.5" />

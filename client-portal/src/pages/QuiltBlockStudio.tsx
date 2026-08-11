@@ -77,16 +77,11 @@ const ShapePreview: React.FC<{ shape: BlockShape; cellPx: number; gridOffset: nu
   );
 };
 
-const DEFAULT_SHAPES: BlockShape[] = [
-  { id: 's1', type: 'square', color: '#fce7f3', pattern: 'solid', gridX: 1, gridY: 1, size: 2, rotation: 0, zIndex: 0 },
-  { id: 's2', type: 'square', color: '#f9a8d4', pattern: 'polka', gridX: 3, gridY: 1, size: 2, rotation: 0, zIndex: 1 },
-  { id: 's3', type: 'triangle', color: '#86efac', pattern: 'stripe', gridX: 1, gridY: 3, size: 2, rotation: 0, zIndex: 2 },
-  { id: 's4', type: 'hst', color: '#c4b5fd', pattern: 'solid', gridX: 3, gridY: 3, size: 2, rotation: 0, zIndex: 3 },
-];
+const DEFAULT_SHAPES: BlockShape[] = [];
 
 export const QuiltBlockStudio: React.FC = () => {
   const [shapes, setShapes] = useState<BlockShape[]>(DEFAULT_SHAPES);
-  const [selectedShapeId, setSelectedShapeId] = useState<string>('s4');
+  const [selectedShapeId, setSelectedShapeId] = useState<string>('');
   const [blockSize, setBlockSize] = useState<number>(8);
   const [zoom, setZoom] = useState(1);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -135,11 +130,18 @@ export const QuiltBlockStudio: React.FC = () => {
   };
 
   const deleteShape = (id: string) => {
-    if (shapes.length <= 1) return;
+    if (shapes.length === 0) return;
     setShapes(prev => prev.filter(s => s.id !== id));
     if (selectedShapeId === id) {
-      setSelectedShapeId(shapes[shapes.length - 2]?.id || '');
+      const remaining = shapes.filter(s => s.id !== id);
+      setSelectedShapeId(remaining[remaining.length - 1]?.id || '');
     }
+  };
+
+  const handleReset = () => {
+    if (!window.confirm('Reset canvas? This will clear all shapes and unsaved work.')) return;
+    setShapes([]);
+    setSelectedShapeId('');
   };
 
   // Handle clicking on the grid to place a shape
@@ -430,6 +432,14 @@ export const QuiltBlockStudio: React.FC = () => {
                   <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
                   <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
                   <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+                  <span className="mx-1 text-blush-200">|</span>
+                  <button
+                    onClick={handleReset}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-1"
+                    title="Clear all shapes and start fresh"
+                  >
+                    <Trash2 className="h-3 w-3" /> Reset
+                  </button>
                   <span className="mx-2 text-blush-200">|</span>
                   {/* Block Size Selector */}
                   {BLOCK_SIZES.map(s => (
