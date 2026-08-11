@@ -2078,14 +2078,21 @@ export interface CollageProject {
 // ── Quilt Block Persistence ──────────────────────────
 export interface QuiltBlockShape {
   id: string;
-  type: 'square' | 'triangle' | 'hst';
+  type: string;
   color: string;
   pattern: string;
-  gridX: number;
-  gridY: number;
-  size: number;
+  /** Free-position canvas model (owner redesign): top-left in canvas px. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
   rotation: number;
+  scale: number;
   zIndex: number;
+  /** Legacy grid fields — kept so pre-redesign saves can be migrated on load. */
+  gridX?: number;
+  gridY?: number;
+  size?: number;
 }
 
 export interface QuiltBlockDesign {
