@@ -67,7 +67,22 @@ export function createAICollageRouter(): Router {
         const resolvedGridSize = Math.max(12, blockSize || 12);
 
         // Two phases: OpenAI artwork generation, then organic quilt conversion.
-        const generation = await generateCollageImage(prompt, negativePrompt);
+        // Keep generation responsive even if the external provider stalls —
+        // return the deterministic layout after 20s.
+        let generation;
+        try {
+          generation = await Promise.race([
+            generateCollageImage(prompt, negativePrompt),
+            new Promise< never>((_, reject) =>
+              setTimeout(() => reject(new Error("AI generation timed out")), 20_000),
+            ),
+          ]);
+        } catch (err) {
+          console.warn({ event: "collage_ai_fallback", error: String(err) });
+          const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
+          res.json({ success: true, data: collage });
+          return;
+        }
         if (generation?.url) {
           // Real AI generation — convert image to collage layers
           const collage = await imageUrlToCollageLayers(generation.url, resolvedGridSize);
