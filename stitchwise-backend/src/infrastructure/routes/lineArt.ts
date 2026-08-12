@@ -17,6 +17,7 @@ import { imageBufferToStitchGrid } from "../../domain/stitch/patternConverter";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../../domain/stitch/types";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generateImageWithDallE } from "../services/openaiImageService";
+import { createAIJob } from "../services/aiJobStore";
 import {
   generateSubjectPattern,
   renderPatternToPng,
@@ -289,33 +290,23 @@ export function createLineArtRouter(): Router {
           "text, watermark, signature, letters, numbers",
         ].join(", ");
 
-        let imageDataUrl: string | null = null;
-        let pipelineUsed: string = "unknown";
-
-        // OpenAI DALL-E / gpt-image-1 (sole provider)
-        const dalleResult = await generateImageWithDallE(artPrompt);
-        if (dalleResult?.url) {
-          imageDataUrl = dalleResult.url;
-          pipelineUsed = "dall-e";
-        }
-
-        if (!imageDataUrl) {
-          res.status(500).json({
-            error: "AI art generation failed. All pipelines returned no image.",
-          });
-          return;
-        }
-
-        console.error(JSON.stringify({
-          event: "generate_art_success",
-          pipeline: pipelineUsed,
-          prompt: prompt,
-        }));
-
-        res.json({
-          imageDataUrl,
-          pipeline: pipelineUsed,
+        // OpenAI DALL-E / gpt-image-1 (sole provider) — slow (30-60s). Run in
+        // the background so the gateway's ~30s upstream timeout is never hit.
+        const jobId = createAIJob(async () => {
+          const dalleResult = await generateImageWithDallE(artPrompt);
+          if (!dalleResult?.url) {
+            throw new Error("AI art generation failed. All pipelines returned no image.");
+          }
+          const imageDataUrl = dalleResult.url;
+          const pipelineUsed = "dall-e";
+          console.error(JSON.stringify({
+            event: "generate_art_success",
+            pipeline: pipelineUsed,
+            prompt: prompt,
+          }));
+          return { imageDataUrl, pipeline: pipelineUsed };
         });
+        res.status(202).json({ jobId });
       } catch (err: any) {
         console.error("generate-art error:", err);
         res.status(500).json({

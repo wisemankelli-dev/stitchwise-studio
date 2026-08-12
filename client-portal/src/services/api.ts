@@ -872,6 +872,32 @@ class ApiClient {
       headers: this.getHeaders(),
       body: JSON.stringify({ prompt }),
     });
+    // Async job pattern (202 { jobId }): poll until done, retry once on error
+    // (the retry re-POSTs so the backend creates a fresh job).
+    if (response.status === 202) {
+      const { jobId } = await response.json();
+      return this.submitAndPollAIJob(
+        async () => {
+          const res = await fetch(`${this.apiBaseUrl}/ai/generate-art`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ prompt }),
+          });
+          if (res.status !== 202) {
+            throw new Error('AI art generation did not return an async job');
+          }
+          const { jobId: id } = await res.json();
+          if (!id) throw new Error('AI art generation failed: missing jobId');
+          return id;
+        },
+        result => {
+          const r = (result ?? {}) as { imageDataUrl?: string; pipeline?: string };
+          if (!r.imageDataUrl) throw new Error('AI art generation returned no image');
+          return { imageDataUrl: r.imageDataUrl, pipeline: r.pipeline || 'dall-e' };
+        },
+        jobId,
+      );
+    }
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.message || errData.error || `Art generation failed (${response.status})`);
@@ -992,6 +1018,105 @@ class ApiClient {
     }
 
     throw new Error('Pattern generation timed out. Please try again.');
+  }
+  /**
+   * Poll an async AI job (GET /api/ai/jobs/:id) every 2s until it finishes.
+   * Throws on error/failed status or when the deadline passes.
+   */
+  private async pollAIJob(jobId: string, timeoutMs = 180_000): Promise<{ status: string; result: unknown; error?: string }> {
+    const POLL_INTERVAL = 2000; // 2 seconds
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      const response = await fetch(`${this.apiBaseUrl}/ai/jobs/${jobId}`, {
+        headers: this.getHeaders(),
+      });
+      if (response.status === 404) {
+        throw new Error('Job not found');
+      }
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const err = new Error(errData.error || `Job polling failed (${response.status})`) as Error & { status?: number };
+        err.status = response.status;
+        throw err;
+      }
+      const job = await response.json();
+      if (job.status === 'done') {
+        return { status: 'done', result: job.result };
+      }
+      if (job.status === 'error' || job.status === 'failed') {
+        return { status: 'error', result: undefined, error: job.error || 'AI generation job failed' };
+      }
+      // status is 'pending' or 'processing' — keep polling
+    }
+    throw new Error('AI generation timed out. Please try again.');
+  }
+  /**
+   * Submit an async AI job and poll it, retrying the submission once if the
+   * first job errors (the backend already retries models internally, so this
+   * covers transient/gateway failures on the POST itself).
+   */
+  private async submitAndPollAIJob<T>(
+    submit: () => Promise<string>,
+    normalize: (result: unknown) => T | Promise<T>,
+    firstJobId?: string,
+  ): Promise<T> {
+    let lastError: string | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // First attempt reuses the job from the initial POST; a retry re-POSTs
+      // through submit() so the backend creates a fresh job.
+      const jobId = attempt === 0 && firstJobId ? firstJobId : await submit();
+      const job = await this.pollAIJob(jobId);
+      if (job.status === 'done') {
+        return await normalize(job.result);
+      }
+      lastError = job.error;
+    }
+    throw new Error(lastError || 'AI generation failed. Please try again.');
+  }
+  /**
+   * POST text-to-collage and return the async jobId (throws on error/validation).
+   * Used for the initial submit and for the one-shot retry (fresh job each time).
+   */
+  private async postCollageJob(prompt: string, options?: { gridSize?: number }): Promise<string> {
+    const res = await fetch(`${this.apiBaseUrl}/ai/collage/text-to-collage`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ prompt, ...options }),
+    });
+    if (res.status === 202) {
+      const { jobId } = await res.json();
+      if (!jobId) throw new Error('AI collage generation failed: missing jobId');
+      return jobId;
+    }
+    if (!res.ok) this.throwApiError('AI collage generation failed', res);
+    throw new Error('AI collage generation did not return an async job');
+  }
+  /**
+   * Unwrap a collage generation result into the client-facing shape.
+   * The backend wraps the payload in { success, data: CollageGenerationResult };
+   * older responses may be flat — handle both.
+   */
+  private normalizeCollageResult(json: unknown, prompt: string): AICollageResponse {
+    const data =
+      json && typeof json === 'object' && (json as { data?: unknown }).data && typeof (json as { data?: unknown }).data === 'object'
+        ? (json as { data?: unknown }).data
+        : json;
+    const d = (data ?? {}) as { layers?: FabricLayer[]; pieces?: CollagePiece[]; referenceImage?: string; artworkUrl?: string; previewUrl?: string; canvasWidth?: number; canvasHeight?: number; processingTimeMs?: number };
+    return {
+      success: true,
+      layers: Array.isArray(d.layers) ? d.layers : [],
+      pieces: Array.isArray(d.pieces) ? d.pieces : undefined,
+      // referenceImage is the exact full art the pieces were cut from (normalized
+      // outlines are relative to it) — use it as the primary reference; fall back
+      // to the preview/artwork URLs for older backend responses.
+      referenceArt: d.referenceImage || d.artworkUrl || d.previewUrl || undefined,
+      canvasWidth: d.canvasWidth ?? 500,
+      canvasHeight: d.canvasHeight ?? 500,
+      promptUsed: prompt,
+      processingTimeMs: d.processingTimeMs ?? 0,
+      totalLayers: Array.isArray(d.layers) ? d.layers.length : 0,
+    };
   }
 
   /**
@@ -1133,9 +1258,6 @@ class ApiClient {
     options?: { gridSize?: number }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
-      // Guard: real gpt-image-1 generation is slow, but the UI must never look
-      // hung. If nothing settles within 90s, abort and let the page show an
-      // honest "took too long" message instead of an infinite spinner.
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90_000);
       try {
@@ -1145,24 +1267,22 @@ class ApiClient {
           body: JSON.stringify({ prompt, ...options }),
           signal: controller.signal,
         });
+        // Async job pattern: the backend returns 202 { jobId } and runs the slow
+        // gpt-image-1 generation in the background (the platform gateway cuts
+        // requests at ~30s, so synchronous generation fails through the public
+        // URL). Poll the job until it is done, then unwrap the result.
+        if (response.status === 202) {
+          const { jobId } = await response.json();
+          clearTimeout(timeout); // no long-lived request on the async path
+          return this.submitAndPollAIJob(
+            () => this.postCollageJob(prompt, options),
+            result => this.normalizeCollageResult(result, prompt),
+            jobId,
+          );
+        }
         if (!response.ok) this.throwApiError('AI collage generation failed', response);
         const json = await response.json();
-        // Backend wraps the result in { success, data: CollageGenerationResult } — unwrap it
-        const data = json?.data && typeof json.data === 'object' ? json.data : json;
-        return {
-          success: true,
-          layers: Array.isArray(data?.layers) ? data.layers : [],
-          pieces: Array.isArray(data?.pieces) ? data.pieces : undefined,
-          // referenceImage is the exact full art the pieces were cut from (normalized
-          // outlines are relative to it) — use it as the primary reference; fall back
-          // to the preview/artwork URLs for older backend responses.
-          referenceArt: data?.referenceImage || data?.artworkUrl || data?.previewUrl || undefined,
-          canvasWidth: data?.canvasWidth ?? 500,
-          canvasHeight: data?.canvasHeight ?? 500,
-          promptUsed: prompt,
-          processingTimeMs: data?.processingTimeMs ?? 0,
-          totalLayers: Array.isArray(data?.layers) ? data.layers.length : 0,
-        };
+        return this.normalizeCollageResult(json, prompt);
       } catch (err) {
         clearTimeout(timeout);
         throw err instanceof Error ? err : new Error('Request failed');
