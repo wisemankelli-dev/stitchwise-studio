@@ -270,13 +270,13 @@ export const CollageStudio: React.FC = () => {
       const drawPatternPiece = (p: PlacedCollagePiece, idx: number) => {
         const outline = (p.piece.outline || []).map(([ox, oy]) => piecePointMm(p, ox, oy));
         if (outline.length < 3) return;
-        doc.setDrawColor(71, 85, 105);
-        doc.setLineWidth(0.4);
+        doc.setDrawColor(17, 17, 17);
+        doc.setLineWidth(0.5);
         for (let k = 0; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
         doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
         const [cxr, cyr] = pieceCentroidMm(p);
         doc.setFontSize(7);
-        doc.setTextColor(71, 85, 105);
+        doc.setTextColor(17, 17, 17);
         doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
       };
       if (hasPieces) {
@@ -1038,8 +1038,8 @@ export const CollageStudio: React.FC = () => {
                             <polygon
                               points={(placed.piece.outline || []).map(([ox, oy]) => `${(ox * 100).toFixed(2)},${(oy * 100).toFixed(2)}`).join(' ')}
                               fill="#ffffff"
-                              stroke="#475569"
-                              strokeWidth={1.6}
+                              stroke="#111111"
+                              strokeWidth={2}
                               strokeLinejoin="round"
                               style={{ vectorEffect: 'non-scaling-stroke' }}
                             />
@@ -1052,7 +1052,7 @@ export const CollageStudio: React.FC = () => {
                         )}
                         {/* Piece number (coloring-book numbering) */}
                         <span
-                          className="absolute text-[10px] font-bold text-slate-600 pointer-events-none select-none"
+                          className="absolute text-[10px] font-bold text-black pointer-events-none select-none"
                           style={{ left: `${cxPct}%`, top: `${cyPct}%`, transform: 'translate(-50%, -50%)' }}
                         >
                           {placedIdx + 1}
