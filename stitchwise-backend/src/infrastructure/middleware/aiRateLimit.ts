@@ -5,8 +5,8 @@ import type { Request, Response, NextFunction } from "express";
 
 export const AI_LIMITS: Record<string, { daily: number; monthly: number }> = {
   HOBBYIST: { daily: 5, monthly: 30 },
-  PRO: { daily: 30, monthly: 200 },
-  STUDIO: { daily: 75, monthly: 500 },
+  PRO: { daily: 15, monthly: 100 },
+  STUDIO: { daily: 30, monthly: 200 },
 };
 const USAGE_FILE = resolve(process.cwd(), "logs/ai-daily-usage.json");
 type UsageEntry = { daily: number; monthly: number };
@@ -17,6 +17,10 @@ function tierAndLimits(raw: string | undefined) {
   const normalized = (raw ?? "HOBBYIST").toUpperCase();
   const tier = normalized === "PRO CRAFTER" ? "PRO" : normalized === "DESIGN STUDIO" ? "STUDIO" : normalized;
   return { tier, limits: AI_LIMITS[tier] ?? AI_LIMITS.HOBBYIST };
+}
+/** True when the raw tier string denotes the Design Studio tier (premium-model eligible). */
+export function isPremiumTier(raw: string | undefined): boolean {
+  return tierAndLimits(raw).tier === "STUDIO";
 }
 function readUsage(): Usage { try { return JSON.parse(readFileSync(USAGE_FILE, "utf8")) as Usage; } catch { return {}; } }
 function writeUsage(usage: Usage): void { mkdirSync(dirname(USAGE_FILE), { recursive: true }); writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2) + "\n"); }

@@ -70,6 +70,7 @@ export const TextToPatternSchema = z.object({
   negativePrompt: z.string().max(500).optional(),
   fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
   desiredInches: z.number().positive().max(30).optional(),
+  premiumModel: z.boolean().optional(),
 });
 
 export const ImageToPatternSchema = z.object({

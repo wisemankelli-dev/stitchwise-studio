@@ -51,9 +51,9 @@ function createClient() {
  * Generate an image from a text prompt using OpenAI.
  * Reuses the same approach as the embroidery service.
  */
-export async function generateCollageImage(prompt: string, negativePrompt?: string): Promise<OpenAIGenerationResponse> {
+export async function generateCollageImage(prompt: string, negativePrompt?: string, premium = false): Promise<OpenAIGenerationResponse> {
   const artworkPrompt = `beautiful realistic artwork of ${prompt}; fabric collage quilt, thread-painted style, organic fabric shapes, painterly fabric art, realistic fabric portrait`;
-  const result = await generateImageWithDallE(artworkPrompt, negativePrompt);
+  const result = await generateImageWithDallE(artworkPrompt, negativePrompt, undefined, premium);
   return result ? { id: "openai", url: result.url, buffer: result.buffer } : { id: "openai" };
 }
 /**

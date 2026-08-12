@@ -165,6 +165,7 @@ export const TextToCollageSchema = z.object({
     .optional()
     .default(32),
   negativePrompt: z.string().max(500).optional(),
+  premiumModel: z.boolean().optional(),
 });
 
 export const ImageToCollageSchema = z.object({

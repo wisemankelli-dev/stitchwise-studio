@@ -18,22 +18,32 @@ import { logAICall, getEstimatedCost } from "./aiCostLogger";
 /**
  * Google Gemini image generation (REST, no SDK dependency).
  *
- * MODEL: gemini-3-pro-image (premium tier) — owner standard is BEAUTIFUL
- * artwork FIRST, converted to stitch patterns downstream. The flat/posterized
- * prompt constraints (tried 2026-08-12 with the flash model) produced
- * childish flat drawings — removed. Art prompts now ask for rich, professional
- * illustrations; the image-to-grid pipeline quantizes to stitchable colors.
+ * MODELS (2026-08-12, owner decision — AI cost revision):
+ *   - DEFAULT: gemini-3.1-flash-image ($0.067/image) — all tiers by default.
+ *   - PREMIUM: gemini-3-pro-image (~$0.13/image, est) — Design Studio tier
+ *     only, via the client premium toggle. Gated server-side by tier; the
+ *     premium flag is ignored for non-Studio tiers.
  *
- * Configurable via GEMINI_IMAGE_MODEL. Returns { url, buffer } or null.
+ * The flat/posterized prompt constraints (tried 2026-08-12 with the flash
+ * model) produced childish flat drawings — removed. Art prompts now ask for
+ * rich, professional illustrations; the image-to-grid pipeline quantizes to
+ * stitchable colors.
+ *
+ * Configurable via GEMINI_IMAGE_MODEL (overrides the default). Returns
+ * { url, buffer } or null.
  */
-const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image";
+const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-image";
+const GEMINI_PREMIUM_MODEL = "gemini-3-pro-image";
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || GEMINI_DEFAULT_MODEL;
 export async function generateImageWithGemini(
   prompt: string,
   styleHints?: string,
   userId?: string,
+  premium = false,
 ): Promise<{ url: string; buffer: Buffer } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
+  const model = premium ? GEMINI_PREMIUM_MODEL : GEMINI_IMAGE_MODEL;
   const defaultStyle = [
     "beautiful professional illustration, elegant refined artwork",
     "rich detail, soft painterly shading and depth",
@@ -45,14 +55,14 @@ export async function generateImageWithGemini(
   const enhancedPrompt = styleHints
     ? `${prompt}, ${styleHints}`
     : `${prompt}, ${defaultStyle}`;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   let lastError: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       if (attempt === 1) await new Promise((r) => setTimeout(r, 2_000));
       console.error(JSON.stringify({
         event: "gemini_image_request",
-        model: GEMINI_IMAGE_MODEL,
+        model,
         attempt,
         originalPrompt: prompt,
       }));
@@ -68,12 +78,12 @@ export async function generateImageWithGemini(
       if (res.status >= 400 && res.status < 500) {
         const body = await res.text();
         lastError = `Gemini ${res.status}: ${body.slice(0, 200)}`;
-        console.error(JSON.stringify({ event: "gemini_model_error", model: GEMINI_IMAGE_MODEL, attempt, error: lastError }));
+        console.error(JSON.stringify({ event: "gemini_model_error", model, attempt, error: lastError }));
         break; // hard provider error — retrying won't help
       }
       if (!res.ok) {
         lastError = `Gemini HTTP ${res.status}`;
-        console.error(JSON.stringify({ event: "gemini_model_error", model: GEMINI_IMAGE_MODEL, attempt, error: lastError }));
+        console.error(JSON.stringify({ event: "gemini_model_error", model, attempt, error: lastError }));
         continue;
       }
       const data = await res.json();
@@ -89,9 +99,9 @@ export async function generateImageWithGemini(
       logAICall({
         timestamp: new Date().toISOString(),
         provider: "gemini",
-        model: GEMINI_IMAGE_MODEL,
+        model,
         status: "success",
-        estimatedCost: getEstimatedCost(GEMINI_IMAGE_MODEL),
+        estimatedCost: getEstimatedCost(model),
         durationMs: 0,
         userId,
         promptPreview: prompt.slice(0, 100),
@@ -99,14 +109,14 @@ export async function generateImageWithGemini(
       return { url: dataUrl, buffer };
     } catch (err: any) {
       lastError = err?.message || String(err);
-      console.error(JSON.stringify({ event: "gemini_model_error", model: GEMINI_IMAGE_MODEL, attempt, error: lastError }));
+      console.error(JSON.stringify({ event: "gemini_model_error", model, attempt, error: lastError }));
     }
   }
   console.error(JSON.stringify({ event: "gemini_all_attempts_failed", error: lastError }));
   logAICall({
     timestamp: new Date().toISOString(),
     provider: "gemini",
-    model: GEMINI_IMAGE_MODEL,
+    model,
     status: "error",
     estimatedCost: 0,
     durationMs: 0,
@@ -126,12 +136,15 @@ export async function generateImageWithGemini(
  *
  * @param prompt - Text description of the desired image
  * @param styleHints - Optional additional style guidance appended to the prompt
+ * @param userId - Optional user id for cost attribution
+ * @param premium - When true, use the premium pro model (Design Studio tier only)
  * @returns Object with `url` (data URL) and `buffer` (PNG bytes), or null if unavailable
  */
 export async function generateImageWithDallE(
   prompt: string,
   styleHints?: string,
   userId?: string,
+  premium = false,
 ): Promise<{ url: string; buffer: Buffer } | null> {
   if (!process.env.GEMINI_API_KEY) {
     console.error(JSON.stringify({
@@ -140,5 +153,5 @@ export async function generateImageWithDallE(
     }));
     return null;
   }
-  return generateImageWithGemini(prompt, styleHints, userId);
+  return generateImageWithGemini(prompt, styleHints, userId, premium);
 }

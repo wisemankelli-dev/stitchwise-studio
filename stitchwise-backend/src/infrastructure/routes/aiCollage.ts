@@ -11,7 +11,7 @@ import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/colla
 import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt, attachMockPiecesToCollage } from "../services/openaiCollageService";
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
-import { aiRateLimit, getAIUsage } from "../middleware/aiRateLimit";
+import { aiRateLimit, getAIUsage, isPremiumTier } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
 const upload = multer({
@@ -63,7 +63,8 @@ export function createAICollageRouter(): Router {
           });
           return;
         }
-        const { prompt, gridSize, blockSize, negativePrompt } = parsed.data;
+        const { prompt, gridSize, blockSize, negativePrompt, premiumModel } = parsed.data;
+        const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
         // Grid matches the quilt block size — minimum 12×12
         const resolvedGridSize = Math.max(12, blockSize || 12);
         // Slow AI path: run the whole pipeline (OpenAI artwork generation →
@@ -76,7 +77,7 @@ export function createAICollageRouter(): Router {
           let generation;
           try {
             generation = await Promise.race([
-              generateCollageImage(prompt, negativePrompt),
+              generateCollageImage(prompt, negativePrompt, premium),
               // Backstop only: the Gemini call itself is bounded (90s AbortSignal
               // per attempt, fail-fast on 4xx), and the premium pro model +
               // segmentation of rich art legitimately takes 2–4 minutes. 300s

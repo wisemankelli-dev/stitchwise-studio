@@ -15,6 +15,7 @@ import { z } from "zod";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 import { generatePatternFromImage } from "../../domain/stitch/pipeline";
 import { generateImageWithDallE } from "../services/openaiImageService";
+import { isPremiumTier } from "../middleware/aiRateLimit";
 
 export function createTextToImageRouter(): Router {
   const router = Router();
@@ -27,6 +28,7 @@ export function createTextToImageRouter(): Router {
         const schema = z.object({
           prompt: z.string().min(1).max(500),
           gridSize: z.number().int().optional(),
+          premiumModel: z.boolean().optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -37,12 +39,13 @@ export function createTextToImageRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize } = parsed.data;
+        const { prompt, gridSize, premiumModel } = parsed.data;
+        const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
         // Style hints for embroidery-suitable artwork
         const styleHints = "flat vector art, solid flat colors only, no gradients, no shading, no photorealistic details, clean simple shapes, clip art style, white background, suitable for cross-stitch embroidery pattern, needlepoint aesthetic";
 
-        const generateImage = (p: string) => generateImageWithDallE(p, styleHints);
+        const generateImage = (p: string) => generateImageWithDallE(p, styleHints, undefined, premium);
         const pattern = await generatePatternFromImage(
           prompt,
           gridSize,

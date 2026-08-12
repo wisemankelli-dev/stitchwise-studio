@@ -34,7 +34,7 @@ import {
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
-import { aiRateLimit } from "../middleware/aiRateLimit";
+import { aiRateLimit, isPremiumTier } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
 /** Subjects that can be rendered deterministically without an image-generation call. */
@@ -140,7 +140,8 @@ export function createAIEmbroideryRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches } = parsed.data;
+        const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches, premiumModel } = parsed.data;
+        const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
         // Resolve fabric-aware grid size and color limit
         const fc = fabricCount || DEFAULT_FABRIC_COUNT;
@@ -250,8 +251,8 @@ export function createAIEmbroideryRouter(): Router {
               finalPrompt: prompt,
             }));
 
-            // OpenAI DALL-E (sole provider)
-            const dalleResult = await generateImageWithDallE(prompt, undefined, userId);
+            // Gemini (sole provider)
+            const dalleResult = await generateImageWithDallE(prompt, undefined, userId, premium);
             if (!dalleResult?.buffer) {
               throw new Error("AI generation returned no image");
             }
