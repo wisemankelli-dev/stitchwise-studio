@@ -144,31 +144,24 @@ export function createLineArtRouter(): Router {
 
         const { prompt, gridSize, maxColors } = parsed.data;
 
-        // ── Pipeline Priority ──────────────────────────────────────────────
-        // 1. GPT-4o SVG → Clean single-subject line art (no repeating tiles)
-        // 2. DALL-E → OpenAI image generation fallback
-        //
-        // GPT-4o SVG is preferred because it produces crisp, single-subject
-        // vector line art that avoids the repeating-tile artifacts of diffusion
-        // models and converts cleanly to stitch grids.
-
+                // ── Pipeline ───────────────────────────────────────────────────────
+        // Gemini image generation (sole provider since 2026-08-12; OpenAI
+        // GPT-4o SVG and DALL-E paths removed — see openaiImageService.ts).
         let imageBuffer: Buffer | null = null;
         let previewUrl: string | undefined;
         let pipelineUsed: string = "unknown";
-
-        // Step 1: Try GPT-4o SVG (primary — avoids diffusion tile artifacts)
-        imageBuffer = await generateSVGWithGPT4o(prompt);
-        if (imageBuffer) {
-          pipelineUsed = "gpt4o-svg";
+        const geminiResult = await generateImageWithDallE(prompt);
+        if (geminiResult?.buffer) {
+          imageBuffer = geminiResult.buffer;
+          previewUrl = geminiResult.url;
+          pipelineUsed = "gemini";
           console.error(JSON.stringify({
             event: "text_to_pattern_pipeline",
             pipeline: pipelineUsed,
             prompt: prompt,
           }));
         }
-
-        // Step 2: Fall back to DALL-E
-        if (!imageBuffer) {
+if (!imageBuffer) {
           const dalleResult = await generateImageWithDallE(prompt);
           if (dalleResult?.buffer) {
             imageBuffer = dalleResult.buffer;
@@ -184,7 +177,7 @@ export function createLineArtRouter(): Router {
 
         if (!imageBuffer) {
           res.status(500).json({
-            error: "AI image generation failed. Both GPT-4o SVG and DALL-E returned no image.",
+            error: "AI image generation failed. Gemini returned no image.",
           });
           return;
         }
@@ -226,7 +219,7 @@ export function createLineArtRouter(): Router {
    * The caller shows the art to the user; if they approve, they call
    * /api/ai/transpose-to-pattern to convert it to a stitch grid.
    *
-   * Pipeline: OpenAI AI primary → DALL-E fallback
+   * Pipeline: Gemini image generation (sole provider)
    *
    * Request body: { prompt: string }
    * Response: { imageDataUrl, pipeline }
@@ -290,7 +283,7 @@ export function createLineArtRouter(): Router {
           "text, watermark, signature, letters, numbers",
         ].join(", ");
 
-        // OpenAI DALL-E / gpt-image-1 (sole provider) — slow (30-60s). Run in
+        // Gemini image generation — slow (30-60s). Run in
         // the background so the gateway's ~30s upstream timeout is never hit.
         const jobId = createAIJob(async () => {
           const dalleResult = await generateImageWithDallE(artPrompt);
@@ -298,7 +291,7 @@ export function createLineArtRouter(): Router {
             throw new Error("AI art generation failed. All pipelines returned no image.");
           }
           const imageDataUrl = dalleResult.url;
-          const pipelineUsed = "dall-e";
+          const pipelineUsed = "gemini";
           console.error(JSON.stringify({
             event: "generate_art_success",
             pipeline: pipelineUsed,
