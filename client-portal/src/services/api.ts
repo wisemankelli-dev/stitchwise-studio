@@ -945,7 +945,7 @@ class ApiClient {
    */
   async generatePatternFromText(
     prompt: string,
-    options?: { gridSize?: number; maxColors?: number }
+    options?: { gridSize?: number; maxColors?: number; premiumModel?: boolean }
   ): Promise<AIPatternResponse> {
     if (!this.isLiveBackend) {
       throw new Error('Backend not available. Pattern generation requires a live backend connection.');
@@ -1027,7 +1027,7 @@ class ApiClient {
   private async pollPatternJobWithRetry(
     firstJobId: string,
     prompt: string,
-    options?: { gridSize?: number; maxColors?: number },
+    options?: { gridSize?: number; maxColors?: number; premiumModel?: boolean },
   ): Promise<AIPatternResponse> {
     let lastError: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -1124,7 +1124,7 @@ class ApiClient {
    * POST text-to-collage and return the async jobId (throws on error/validation).
    * Used for the initial submit and for the one-shot retry (fresh job each time).
    */
-  private async postCollageJob(prompt: string, options?: { gridSize?: number }): Promise<string> {
+  private async postCollageJob(prompt: string, options?: { gridSize?: number; premiumModel?: boolean }): Promise<string> {
     const res = await fetch(`${this.apiBaseUrl}/ai/collage/text-to-collage`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -1301,7 +1301,7 @@ class ApiClient {
    */
   async generateCollageFromText(
     prompt: string,
-    options?: { gridSize?: number }
+    options?: { gridSize?: number; premiumModel?: boolean }
   ): Promise<AICollageResponse> {
     if (this.isLiveBackend) {
       const controller = new AbortController();
