@@ -82,7 +82,7 @@ export const Pricing: React.FC = () => {
       badge: 'Most Popular',
       description: 'For passionate crafters needing premium AI design & machine file outputs.',
       features: [
-        '30 AI pattern generations per day (200/month)',
+        '15 AI pattern generations per day (100/month)',
         'Machine exports (.DST, .PES, .EXP)',
         'Thread usage & DMC skein estimator',
         'Advanced design tools (Satin stitch auto-fill)',
@@ -100,7 +100,7 @@ export const Pricing: React.FC = () => {
       priceAnnually: 49,
       description: 'For professional digitizers, craft shops, and commercial studios.',
       features: [
-        '75 AI pattern generations per day (500/month)',
+        '30 AI pattern generations per day (200/month)',
         'Priority AI generation speeds',
         'Full commercial use licenses',
         'Bulk image-to-stitch processing queue',
@@ -278,6 +278,13 @@ export const Pricing: React.FC = () => {
                       </li>
                     ))}
                   </ul>
+
+                  {plan.id === 'Design Studio' && (
+                    <p className="flex items-start gap-2 text-[10px] leading-relaxed text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                      <Sparkles className="h-3 w-3 text-purple-500 shrink-0 mt-0.5" />
+                      <span>Premium art model available — toggle in Designer/Collage Studio for richer artwork at a higher per-image cost.</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-50">
@@ -325,8 +332,8 @@ export const Pricing: React.FC = () => {
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">AI Imagine-to-Pattern Digitizer</td>
                   <td className="p-4 text-center text-slate-500">5/day · 30/mo</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">30/day · 200/mo</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">75/day · 500/mo + Priority</td>
+                  <td className="p-4 text-center text-slate-900 font-semibold">15/day · 100/mo</td>
+                  <td className="p-4 text-center text-slate-900 font-semibold">30/day · 200/mo + Priority</td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Machine Embroidery Exports (.PES, .DST, .EXP)</td>

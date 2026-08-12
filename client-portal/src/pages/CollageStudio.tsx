@@ -52,6 +52,9 @@ export const CollageStudio: React.FC = () => {
   // AI Generation state
   const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
   const [promptInput, setPromptInput] = useState('');
+  // Premium art model toggle (Design Studio only; server enforces the tier gate).
+  const [premiumModel, setPremiumModel] = useState(false);
+  const isStudioTier = (typeof window !== 'undefined' && localStorage.getItem('stitchwise_tier')) === 'Design Studio';
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; previewUrl: string } | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -594,7 +597,9 @@ export const CollageStudio: React.FC = () => {
       );
     }, 100);
     try {
-      const result = await api.generateCollageFromText(promptInput);
+      const result = await api.generateCollageFromText(promptInput, {
+        premiumModel: premiumModel && isStudioTier ? true : undefined,
+      });
       clearInterval(interval);
       setGeneratorProgress(100);
       setProgressPhase('Collage complete!');
@@ -1096,6 +1101,25 @@ export const CollageStudio: React.FC = () => {
                       onChange={(e) => setPromptInput(e.target.value)}
                       placeholder="e.g., A floral garden with pink roses and green leaves on a white background"
                       className="w-full rounded-xl border-blush-100 text-sm text-slate-800 shadow-sm focus:border-blush-500 focus:ring-blush-500 disabled:opacity-50 placeholder:text-blush-300" />
+                    {isStudioTier && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={premiumModel}
+                          onClick={() => setPremiumModel(v => !v)}
+                          disabled={isGenerating}
+                          title="Higher-quality pro model (~2x image cost)."
+                          className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full border border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${premiumModel ? 'bg-purple-500' : 'bg-slate-200'}`}
+                        >
+                          <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${premiumModel ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                        <span className="text-[10px] text-slate-500">
+                          Premium art model
+                          <span className="text-slate-400"> — Higher-quality pro model (~2x image cost)</span>
+                        </span>
+                      </div>
+                    )}
                     {isGenerating ? (
                       <div className="space-y-2 p-3 bg-blush-50 rounded-xl border border-blush-100">
                         <div className="flex items-center gap-2 text-[11px] text-blush-700 font-semibold">
@@ -1106,7 +1130,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
-                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take 1–3 minutes with the premium art model…</p>
+                        <p className="text-[10px] text-blush-500">{premiumModel && isStudioTier ? 'Generating your collage art with the premium art model — this can take 1–3 minutes…' : 'Generating your collage art — this usually takes about a minute…'}</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!promptInput.trim()}
@@ -1163,7 +1187,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
-                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take 1–3 minutes with the premium art model…</p>
+                        <p className="text-[10px] text-blush-500">Generating your collage art — this usually takes about a minute…</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!uploadedFile}

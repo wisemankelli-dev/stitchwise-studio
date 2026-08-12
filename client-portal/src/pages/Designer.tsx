@@ -493,6 +493,9 @@ export const Designer: React.FC = () => {
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
   const [pollingStatus, setPollingStatus] = useState('');
+  // Premium art model toggle (Design Studio only; server enforces the tier gate).
+  const [premiumModel, setPremiumModel] = useState(false);
+  const isStudioTier = (typeof window !== 'undefined' && localStorage.getItem('stitchwise_tier')) === 'Design Studio';
 
   // Material Estimator state
   const [fabricCount, setFabricCount] = useState(14);
@@ -947,9 +950,17 @@ export const Designer: React.FC = () => {
     setPollingStatus('');
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      setPollingStatus('Generating your pattern — this can take 1–3 minutes with the premium art model…');
+      setPollingStatus(
+        premiumModel && isStudioTier
+          ? 'Generating with the premium art model — this can take 1–3 minutes…'
+          : 'Generating your pattern — this usually takes about a minute…'
+      );
 
-      const data = await api.generatePatternFromText(aiPrompt.trim(), { gridSize, maxColors: 6 });
+      const data = await api.generatePatternFromText(aiPrompt.trim(), {
+        gridSize,
+        maxColors: 6,
+        premiumModel: premiumModel && isStudioTier ? true : undefined,
+      });
 
       // Process the response into the grid
       const newGrid: Record<string, string> = {};
@@ -1003,7 +1014,7 @@ export const Designer: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -1527,6 +1538,26 @@ export const Designer: React.FC = () => {
                     {isGenerating ? (pollingStatus || 'Generating…') : 'Generate'}
                   </button>
                 </div>
+
+                {isStudioTier && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={premiumModel}
+                      onClick={() => setPremiumModel(v => !v)}
+                      disabled={isGenerating}
+                      title="Higher-quality pro model (~2x image cost)."
+                      className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full border border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${premiumModel ? 'bg-purple-500' : 'bg-slate-200'}`}
+                    >
+                      <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${premiumModel ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </button>
+                    <span className="text-[10px] text-slate-500">
+                      Premium art model
+                      <span className="text-slate-400"> — Higher-quality pro model (~2x image cost)</span>
+                    </span>
+                  </div>
+                )}
 
                 {aiError && (
                   <p className="mt-2 text-[10px] text-red-500 flex items-center gap-1">
