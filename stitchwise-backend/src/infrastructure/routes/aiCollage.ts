@@ -12,6 +12,7 @@ import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLaye
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
 import { aiRateLimit, getAIUsage } from "../middleware/aiRateLimit";
+import { createAIJob } from "../services/aiJobStore";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -65,43 +66,43 @@ export function createAICollageRouter(): Router {
         const { prompt, gridSize, blockSize, negativePrompt } = parsed.data;
         // Grid matches the quilt block size — minimum 12×12
         const resolvedGridSize = Math.max(12, blockSize || 12);
-
-        // Two phases: OpenAI artwork generation, then organic quilt conversion.
-        // gpt-image-1 routinely takes 30s–3min under load — allow up to 3 minutes
-        // before falling back to the deterministic layout.
-        let generation;
-        try {
-          generation = await Promise.race([
-            generateCollageImage(prompt, negativePrompt),
-            new Promise< never>((_, reject) =>
-              setTimeout(() => reject(new Error("AI generation timed out")), 180_000),
-            ),
-          ]);
-        } catch (err) {
-          console.warn({ event: "collage_ai_fallback", error: String(err) });
-          const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
-          // Mock fallback still produces scrapbook pieces (rendered mock art cutouts).
-          const withPieces = await attachMockPiecesToCollage(collage);
-          res.json({ success: true, data: withPieces });
-          return;
-        }
-        if (generation?.url) {
-          // Real AI generation — convert image to collage layers
-          const collage = await imageUrlToCollageLayers(generation.url, resolvedGridSize);
-          res.json({
-            success: true,
-            data: {
-              ...collage,
-              previewUrl: generation.url,
-              prompt,
-              blockSize,
-              artworkUrl: generation.url,
-            },
-          });
-        } else {
-          res.status(502).json({ success: false, error: "OpenAI image generation returned no image" });
-          return;
-        }
+        // Slow AI path: run the whole pipeline (OpenAI artwork generation →
+        // organic quilt conversion, deterministic fallback included) in the
+        // background. Respond 202 + jobId so the request never exceeds the
+        // platform gateway's ~30s upstream timeout.
+        const jobId = createAIJob(async () => {
+          let generation;
+          try {
+            generation = await Promise.race([
+              generateCollageImage(prompt, negativePrompt),
+              new Promise< never>((_, reject) =>
+                setTimeout(() => reject(new Error("AI generation timed out")), 180_000),
+              ),
+            ]);
+          } catch (err) {
+            console.warn({ event: "collage_ai_fallback", error: String(err) });
+            const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
+            // Mock fallback still produces scrapbook pieces (rendered mock art cutouts).
+            const withPieces = await attachMockPiecesToCollage(collage);
+            return { success: true, data: withPieces };
+          }
+          if (generation?.url) {
+            // Real AI generation — convert image to collage layers
+            const collage = await imageUrlToCollageLayers(generation.url, resolvedGridSize);
+            return {
+              success: true,
+              data: {
+                ...collage,
+                previewUrl: generation.url,
+                prompt,
+                blockSize,
+                artworkUrl: generation.url,
+              },
+            };
+          }
+          throw new Error("OpenAI image generation returned no image");
+        });
+        res.status(202).json({ jobId });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "text_to_collage_error", error: message });

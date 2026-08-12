@@ -11,6 +11,7 @@ export { createShowcaseRouter } from "./showcase";
 export { createFabricEstimatorRouter } from "./fabricEstimator";
 export { createQuiltBlockRouter } from "./quiltBlock";
 export { createAIEmbroideryRouter } from "./aiEmbroidery";
+export { createAIJobsRouter } from "./aiJobs";
 export { createAICollageRouter } from "./aiCollage";
 export { createEstimatorRouter } from "./estimator";
 export { createPatternEditorRouter } from "./patternEditor";

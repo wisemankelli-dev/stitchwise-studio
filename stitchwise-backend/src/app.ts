@@ -3,7 +3,7 @@ import path from "node:path";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createPatternPersistenceRouter } from "./infrastructure/routes";
+import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter } from "./infrastructure/routes";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -72,6 +72,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createAIEmbroideryRouter());
   app.use("/api", createAICollageRouter());
   app.use("/api", createLineArtRouter());
+  app.use("/api", createAIJobsRouter());
   app.use("/api", createTextToImageRouter());
   app.use("/api", createEstimatorRouter());
   app.use("/api/patterns", createPatternPersistenceRouter(prisma));

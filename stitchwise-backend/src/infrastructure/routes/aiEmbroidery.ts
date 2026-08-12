@@ -35,6 +35,7 @@ import {
 } from "../../domain/stitch/fabricCounts";
 import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
 import { aiRateLimit } from "../middleware/aiRateLimit";
+import { createAIJob } from "../services/aiJobStore";
 
 /** Subjects that can be rendered deterministically without an image-generation call. */
 export const PROCEDURAL_SUBJECT_NAMES = new Set([
@@ -236,27 +237,35 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
-          const userId = (req as any).user?.userId;
-          // The image service applies its own flat-illustration defaults.
-          // Keep the user's description intact so qualifiers reach OpenAI.
-          console.error(JSON.stringify({
-            event: "ai_prompt_sent",
-            originalPrompt: prompt,
-            finalPrompt: prompt,
-          }));
+          // Slow AI path (DALL-E/gpt-image routinely takes 30-60s). Return
+          // 202 + jobId immediately and run the pipeline in the background so
+          // the platform gateway's ~30s upstream timeout is never hit.
+          const jobId = createAIJob(async () => {
+            const userId = (req as any).user?.userId;
+            // The image service applies its own flat-illustration defaults.
+            // Keep the user's description intact so qualifiers reach OpenAI.
+            console.error(JSON.stringify({
+              event: "ai_prompt_sent",
+              originalPrompt: prompt,
+              finalPrompt: prompt,
+            }));
 
-          // OpenAI DALL-E (sole provider)
-          const dalleResult = await generateImageWithDallE(prompt, undefined, userId);
-          if (dalleResult?.buffer) {
-            previewUrl = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-            pattern = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
-          } else {
-            res.status(500).json({
-              success: false,
-              error: "AI generation returned no image",
+            // OpenAI DALL-E (sole provider)
+            const dalleResult = await generateImageWithDallE(prompt, undefined, userId);
+            if (!dalleResult?.buffer) {
+              throw new Error("AI generation returned no image");
+            }
+            const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
+            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
+            return buildPatternResponse(grid, {
+              promptUsed: prompt,
+              processingTimeMs: 0,
+              fabric: { count: fc, inches: +fabricInches.toFixed(2) },
+              previewUrl: preview,
             });
-            return;
-          }
+          });
+          res.status(202).json({ jobId });
+          return;
         }
 
         res.json(buildPatternResponse(pattern, {
