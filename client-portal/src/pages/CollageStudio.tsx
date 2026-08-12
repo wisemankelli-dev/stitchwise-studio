@@ -1012,7 +1012,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
-                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take up to a minute…</p>
+                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take 1–3 minutes with the premium art model…</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!promptInput.trim()}
@@ -1069,7 +1069,7 @@ export const CollageStudio: React.FC = () => {
                         <div className="w-full bg-blush-100 h-2 rounded-full overflow-hidden">
                           <div className="bg-gradient-to-r from-blush-400 to-blush-500 h-full transition-all duration-300 ease-out rounded-full" style={{ width: `${generatorProgress}%` }} />
                         </div>
-                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take up to a minute…</p>
+                        <p className="text-[10px] text-blush-500">Generating your collage art — this can take 1–3 minutes with the premium art model…</p>
                       </div>
                     ) : (
                       <button type="submit" disabled={!uploadedFile}

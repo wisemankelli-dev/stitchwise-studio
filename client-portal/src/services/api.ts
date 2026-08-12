@@ -983,7 +983,7 @@ class ApiClient {
    * GET /api/ai/embroidery/jobs/:jobId
    */
   private async pollPatternJob(jobId: string): Promise<AIPatternResponse> {
-    const MAX_POLLS = 60; // 2 minutes max at 2s intervals
+    const MAX_POLLS = 150; // 5 minutes max at 2s intervals (premium pro model can take 2–4 min)
     const POLL_INTERVAL = 2000; // 2 seconds
 
     for (let i = 0; i < MAX_POLLS; i++) {
@@ -1023,7 +1023,7 @@ class ApiClient {
    * Poll an async AI job (GET /api/ai/jobs/:id) every 2s until it finishes.
    * Throws on error/failed status or when the deadline passes.
    */
-  private async pollAIJob(jobId: string, timeoutMs = 180_000): Promise<{ status: string; result: unknown; error?: string }> {
+  private async pollAIJob(jobId: string, timeoutMs = 300_000): Promise<{ status: string; result: unknown; error?: string }> {
     const POLL_INTERVAL = 2000; // 2 seconds
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {

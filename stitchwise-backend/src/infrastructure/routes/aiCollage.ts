@@ -71,24 +71,34 @@ export function createAICollageRouter(): Router {
         // background. Respond 202 + jobId so the request never exceeds the
         // platform gateway's ~30s upstream timeout.
         const jobId = createAIJob(async () => {
+          const t0 = Date.now();
+          console.info(JSON.stringify({ event: "collage_job_start", prompt, t: new Date().toISOString() }));
           let generation;
           try {
             generation = await Promise.race([
               generateCollageImage(prompt, negativePrompt),
+              // Backstop only: the Gemini call itself is bounded (90s AbortSignal
+              // per attempt, fail-fast on 4xx), and the premium pro model +
+              // segmentation of rich art legitimately takes 2–4 minutes. 300s
+              // gives the real pipeline room; mock fallback is a last resort.
               new Promise< never>((_, reject) =>
-                setTimeout(() => reject(new Error("AI generation timed out")), 180_000),
+                setTimeout(() => reject(new Error("AI generation timed out")), 300_000),
               ),
             ]);
           } catch (err) {
-            console.warn({ event: "collage_ai_fallback", error: String(err) });
+            console.warn({ event: "collage_ai_fallback", error: String(err), elapsedMs: Date.now() - t0 });
             const collage = generateCollageLayoutFromPrompt(prompt, gridSize);
-            // Mock fallback still produces scrapbook pieces (rendered mock art cutouts).
+            // Mock fallback still produces scrapbook pieces (rendered mock art cutouts),
+            // but it is flagged so the UI can be honest that this is a placeholder,
+            // not the real artwork.
             const withPieces = await attachMockPiecesToCollage(collage);
-            return { success: true, data: withPieces };
+            return { success: true, data: { ...withPieces, isFallback: true, prompt } };
           }
           if (generation?.url) {
             // Real AI generation — convert image to collage layers
+            console.info(JSON.stringify({ event: "collage_image_ok", elapsedMs: Date.now() - t0 }));
             const collage = await imageUrlToCollageLayers(generation.url, resolvedGridSize);
+            console.info(JSON.stringify({ event: "collage_job_done", elapsedMs: Date.now() - t0, pieces: Array.isArray(collage.pieces) ? collage.pieces.length : undefined }));
             return {
               success: true,
               data: {
@@ -100,7 +110,7 @@ export function createAICollageRouter(): Router {
               },
             };
           }
-          throw new Error("OpenAI image generation returned no image");
+          throw new Error("AI image generation returned no image");
         });
         res.status(202).json({ jobId });
       } catch (err) {

@@ -947,7 +947,7 @@ export const Designer: React.FC = () => {
     setPollingStatus('');
     try {
       const gridSize = Math.max(gridWidth, gridHeight);
-      setPollingStatus('Generating your pattern — this can take up to a minute…');
+      setPollingStatus('Generating your pattern — this can take 1–3 minutes with the premium art model…');
 
       const data = await api.generatePatternFromText(aiPrompt.trim(), { gridSize, maxColors: 6 });
 
