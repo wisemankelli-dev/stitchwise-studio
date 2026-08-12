@@ -34,6 +34,13 @@ export function describeAiGenerationError(err: unknown, fallback: string): strin
     if (e.name === 'TypeError' || e.status === 0) {
       return "We couldn't reach the generation service. Please check your connection and try again.";
     }
+    // Provider-side image failures surface as opaque backend messages
+    // (e.g. "AI generation returned no image" when the upstream OpenAI call
+    // fails after retries — 429 no-credits, 5xx, timeouts). Translate them
+    // into an honest, friendly status instead of the technical string.
+    if (e.message && /no image|credits|billing|image service/i.test(e.message)) {
+      return 'The AI image service is temporarily unavailable. Please try again in a little while.';
+    }
     // Surface a specific backend-provided message if it isn't a generic client stub.
     if (e.message && !/generation failed|request failed/i.test(e.message)) {
       return e.message;

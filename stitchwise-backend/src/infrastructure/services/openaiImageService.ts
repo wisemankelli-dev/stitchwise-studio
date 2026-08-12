@@ -132,6 +132,13 @@ export async function generateImageWithDallE(
         error: lastError,
         details: String(errorBody).substring(0, 300),
       }));
+      // Hard provider/billing errors (e.g. 429 no-credits, invalid key, bad
+      // request) will NOT resolve by retrying — fail fast instead of burning
+      // the backoff window on attempts that cannot succeed.
+      const status = err?.status ?? err?.response?.status;
+      if (typeof status === "number" && status >= 400 && status < 500) {
+        break;
+      }
       // Continue to next model / retry
     }
   }
