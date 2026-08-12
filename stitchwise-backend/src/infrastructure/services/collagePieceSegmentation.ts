@@ -124,9 +124,13 @@ export async function segmentImageIntoPieces(
   // ── 3. Watershed by immersion (priority flood) ─────────────────────────────
   // Every pixel is claimed by the seed that floods it first, expanding in
   // order of gradient cost → boundaries land on high-gradient (edge) lines and
-  // the canvas is perfectly tiled (no unassigned pixels).
+  // the canvas is perfectly tiled (no unassigned pixels). Equal-cost pixels are
+  // popped in FIFO order (monotonic seq) so flat regions expand uniformly from
+  // ALL seeds — without the tie-break, early seeds swallow the whole background
+  // and later seeds end up as tiny slivers that get merged away.
   const labels = new Int32Array(n).fill(-1);
-  const heap: number[][] = []; // [cost, idx, owner]
+  const heap: number[][] = []; // [cost, seq, idx, owner]
+  let seq = 0;
   const heapPop = (): number[] | undefined => {
     if (heap.length === 0) return undefined;
     const top = heap[0];
@@ -138,8 +142,8 @@ export async function segmentImageIntoPieces(
         const l = c * 2 + 1;
         const r = l + 1;
         let m = c;
-        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
-        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (l < heap.length && less(heap[l], heap[m])) m = l;
+        if (r < heap.length && less(heap[r], heap[m])) m = r;
         if (m === c) break;
         [heap[m], heap[c]] = [heap[c], heap[m]];
         c = m;
@@ -150,15 +154,15 @@ export async function segmentImageIntoPieces(
 
   for (let s = 0; s < seeds.length; s++) {
     labels[seeds[s]] = s;
-    pushNeighbors(seeds[s], w, h, grad, labels, heap, s);
+    pushNeighbors(seeds[s], w, h, grad, labels, heap, s, () => ++seq);
   }
   while (true) {
     const entry = heapPop();
     if (!entry) break;
-    const [, idx, owner] = entry;
+    const [, , idx, owner] = entry;
     if (labels[idx] !== -1) continue;
     labels[idx] = owner;
-    pushNeighbors(idx, w, h, grad, labels, heap, owner);
+    pushNeighbors(idx, w, h, grad, labels, heap, owner, () => ++seq);
   }
 
   // ── 4. Regions from labels + merge to maxPieces ───────────────────────────
@@ -182,8 +186,10 @@ export async function segmentImageIntoPieces(
     if (labels[i] >= 0) regions[remap[labels[i]]].cells.push(i);
   }
 
+  // Merge tiny regions into their largest neighbor (NEVER drop pixels — every
+  // pixel must belong to exactly one piece or the reassembly has holes).
   const minArea = Math.max(4, Math.floor(n * MIN_PIECE_FRACTION));
-  let kept = regions.filter((r) => r.cells.length >= minArea);
+  let kept = mergeTinyRegions(regions, labels, w, h, minArea);
   if (kept.length === 0) {
     kept = [{ id: 0, cells: Array.from({ length: n }, (_, i) => i) }];
   }
@@ -296,6 +302,28 @@ function hash01(seed: number): number {
   return x - Math.floor(x);
 }
 
+function heapPush(
+  heap: number[][],
+  cost: number,
+  idx: number,
+  owner: number,
+  nextSeq: () => number,
+): void {
+  heap.push([cost, nextSeq(), idx, owner]);
+  let c = heap.length - 1;
+  while (c > 0) {
+    const p = (c - 1) >> 1;
+    if (!less(heap[c], heap[p])) break;
+    [heap[p], heap[c]] = [heap[c], heap[p]];
+    c = p;
+  }
+}
+
+/** Min-heap ordering: cost first, then FIFO seq (stable expansion in flat areas). */
+function less(a: number[], b: number[]): boolean {
+  return a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+}
+
 function pushNeighbors(
   idx: number,
   w: number,
@@ -304,35 +332,25 @@ function pushNeighbors(
   labels: Int32Array,
   heap: number[][],
   owner: number,
+  nextSeq: () => number,
 ): void {
   const r = Math.floor(idx / w);
   const c = idx % w;
   if (r > 0) {
     const nb = idx - w;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
   }
   if (r < h - 1) {
     const nb = idx + w;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
   }
   if (c > 0) {
     const nb = idx - 1;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
   }
   if (c < w - 1) {
     const nb = idx + 1;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
-  }
-}
-
-function heapPush(heap: number[][], cost: number, idx: number, owner: number): void {
-  heap.push([cost, idx, owner]);
-  let c = heap.length - 1;
-  while (c > 0) {
-    const p = (c - 1) >> 1;
-    if (heap[p][0] <= heap[c][0]) break;
-    [heap[p], heap[c]] = [heap[c], heap[p]];
-    c = p;
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
   }
 }
 
@@ -341,6 +359,86 @@ function heapPush(heap: number[][], cost: number, idx: number, owner: number): v
 interface Region {
   id: number;
   cells: number[];
+}
+
+/**
+ * Merge every region smaller than minArea into its largest neighbor (by shared
+ * border). Pixels are NEVER dropped — the canvas stays fully tiled.
+ */
+function mergeTinyRegions(
+  regions: Region[],
+  labels: Uint8Array | Int32Array,
+  w: number,
+  h: number,
+  minArea: number,
+): Region[] {
+  let current = regions.map((r) => ({ ...r, cells: [...r.cells] }));
+  const n = w * h;
+  const regionIdOf = new Int32Array(n).fill(-1);
+
+  const rebuildIdMap = () => {
+    regionIdOf.fill(-1);
+    for (let i = 0; i < current.length; i++) {
+      for (const cell of current[i].cells) regionIdOf[cell] = i;
+    }
+  };
+  rebuildIdMap();
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // Find the smallest region below minArea
+    let tinyIdx = -1;
+    let tinySize = Infinity;
+    for (let i = 0; i < current.length; i++) {
+      if (current[i].cells.length < minArea && current[i].cells.length < tinySize) {
+        tinySize = current[i].cells.length;
+        tinyIdx = i;
+      }
+    }
+    if (tinyIdx === -1) break;
+
+    // Pick neighbor with the largest shared border
+    const borderCounts = new Map<number, number>();
+    for (const cell of current[tinyIdx].cells) {
+      const r = Math.floor(cell / w);
+      const c = cell % w;
+      const neighbors = [
+        r > 0 ? cell - w : -1,
+        r < h - 1 ? cell + w : -1,
+        c > 0 ? cell - 1 : -1,
+        c < w - 1 ? cell + 1 : -1,
+      ];
+      for (const nb of neighbors) {
+        if (nb >= 0) {
+          const nbRegion = regionIdOf[nb];
+          if (nbRegion >= 0 && nbRegion !== tinyIdx) {
+            borderCounts.set(nbRegion, (borderCounts.get(nbRegion) ?? 0) + 1);
+          }
+        }
+      }
+    }
+
+    if (borderCounts.size === 0) break; // isolated — leave it
+
+    let bestNeighbor = -1;
+    let bestBorder = -1;
+    for (const [rid, count] of borderCounts) {
+      if (count > bestBorder) {
+        bestBorder = count;
+        bestNeighbor = rid;
+      }
+    }
+
+    const absorbed = current[tinyIdx].cells;
+    current[bestNeighbor].cells.push(...absorbed);
+    for (const cell of absorbed) regionIdOf[cell] = bestNeighbor;
+    current.splice(tinyIdx, 1);
+    rebuildIdMap();
+    changed = true;
+  }
+
+  return current.map((r, i) => ({ id: i, cells: r.cells }));
 }
 
 /**
@@ -601,12 +699,22 @@ async function makePieceImage(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Build alpha channel: upscale working mask (nearest) to crop size
+  // Build alpha channel: upscale working mask (nearest) to crop size.
+  // CRITICAL: sample from the piece's OWN region of the working mask — the
+  // crop is the piece's bbox in ORIGINAL resolution, so the mask must be
+  // offset by (bounds.x*w, bounds.y*h) and scaled by (bounds.width*w/h).
+  // Without the offset, every piece sampled the top-left corner of the mask,
+  // so pieces below/right of the origin got transparency from the wrong
+  // region (the CSS clip-path hid this on canvas, but exports were wrong).
   const alpha = new Uint8Array(cw * ch);
+  const mx0 = Math.round(bounds.x * w);
+  const my0 = Math.round(bounds.y * h);
+  const mw = Math.max(1, Math.round(bounds.width * w));
+  const mh = Math.max(1, Math.round(bounds.height * h));
   for (let y = 0; y < ch; y++) {
-    const sy = Math.min(h - 1, Math.floor((y / ch) * h));
+    const sy = Math.min(h - 1, my0 + Math.floor((y / ch) * mh));
     for (let x = 0; x < cw; x++) {
-      const sx = Math.min(w - 1, Math.floor((x / cw) * w));
+      const sx = Math.min(w - 1, mx0 + Math.floor((x / cw) * mw));
       alpha[y * cw + x] = maskWorking[sy * w + sx] ? 255 : 0;
     }
   }
