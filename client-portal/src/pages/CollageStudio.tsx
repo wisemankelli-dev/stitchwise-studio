@@ -931,8 +931,8 @@ export const CollageStudio: React.FC = () => {
               {/* Canvas Area */}
               <div
                 ref={canvasRef}
-                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
-                style={{ height: '500px' }}
+                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden mx-auto"
+                style={{ height: '500px', width: '500px', maxWidth: '100%' }}
                 onPointerMove={handleCanvasPointerMove}
                 onPointerUp={handleCanvasPointerUp}
                 onPointerLeave={handleCanvasPointerUp}
