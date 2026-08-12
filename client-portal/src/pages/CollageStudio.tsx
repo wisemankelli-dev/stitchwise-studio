@@ -67,6 +67,7 @@ export const CollageStudio: React.FC = () => {
 
   // Save/Load state
   const [collageName, setCollageName] = useState('');
+  const [blockSize, setBlockSize] = useState(12); // quilt block size in inches (12–24, 2" steps) — full-scale PDF prints at this real size
   const [isSaving, setIsSaving] = useState(false);
   const [savedProjects, setSavedProjects] = useState<CollageProject[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
@@ -231,56 +232,90 @@ export const CollageStudio: React.FC = () => {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const title = (collageName.trim() || 'collage').replace(/\s+/g, '-');
       const pieces = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
-        instanceId: `tray-${i}`, pieceId: piece.id, piece, x: 40 + i * 24, y: 40 + i * 24, scale: 1, rotation: 0, zIndex: i,
+        instanceId: `tray-${i}`, pieceId: piece.id, piece,
+        x: piece.bounds.x * 500, y: piece.bounds.y * 500, scale: 1, rotation: 0, zIndex: i,
       }));
       const hasPieces = pieces.length > 0;
 
-      // Page 1: Title + layout diagram with numbered pieces
-      doc.setFontSize(16);
-      doc.setTextColor(139, 92, 118);
-      doc.text('Collage Quilt Pattern', 20, 20);
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`${hasPieces ? pieces.length : 0} pieces · Block ${12}"" × ${12}""`, 20, 28);
-
+      // ── Full-scale pattern pages: complete assembled pattern at REAL size ──
+      // Canvas is 500px square → blockSize inches. 1 canvas px = blockSize*25.4/500 mm.
+      const blockMm = blockSize * 25.4;                       // e.g. 12" → 304.8 mm, 24" → 609.6 mm
+      const usableMm = 190;                                   // A4 (210mm) minus ~10mm side margins
+      const tilesPerAxis = Math.max(1, Math.ceil(blockMm / usableMm));
+      const tileMm = blockMm / tilesPerAxis;                  // e.g. 304.8/2 = 152.4 mm per tile
+      const mmPerPx = blockMm / 500;
+      const pageW = 210;
+      const tileTop = 36;                                     // header area on each tile page
+      const tileX0 = (pageW - tileMm) / 2;                    // center the tile horizontally
+      /** Rotate a normalized outline point (0..1) into pattern-mm coords (rotation around the piece center, matching the canvas). */
+      const piecePointMm = (p: PlacedCollagePiece, ox: number, oy: number): [number, number] => {
+        const w = p.piece.bounds.width * 500 * p.scale;
+        const h = p.piece.bounds.height * 500 * p.scale;
+        const rad = (p.rotation * Math.PI) / 180;
+        const px = ox * w, py = oy * h;
+        const cxr = w / 2, cyr = h / 2;
+        const rx = cxr + (px - cxr) * Math.cos(rad) - (py - cyr) * Math.sin(rad);
+        const ry = cyr + (px - cxr) * Math.sin(rad) + (py - cyr) * Math.cos(rad);
+        return [(p.x + rx) * mmPerPx, (p.y + ry) * mmPerPx];
+      };
+      const pieceCentroidMm = (p: PlacedCollagePiece): [number, number] => {
+        const o = p.piece.outline || [];
+        let sx = 0, sy = 0;
+        for (const [ox, oy] of o) { const [mx, my] = piecePointMm(p, ox, oy); sx += mx; sy += my; }
+        return o.length ? [sx / o.length, sy / o.length] : [0, 0];
+      };
+      const drawPatternPiece = (p: PlacedCollagePiece, idx: number) => {
+        const outline = (p.piece.outline || []).map(([ox, oy]) => piecePointMm(p, ox, oy));
+        if (outline.length < 3) return;
+        doc.setDrawColor(71, 85, 105);
+        doc.setLineWidth(0.4);
+        for (let k = 0; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
+        doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
+        const [cxr, cyr] = pieceCentroidMm(p);
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
+      };
       if (hasPieces) {
-        // Draw a scaled layout diagram: canvas 500x500 → ~160mm box
-        const boxX = 25, boxY = 38, boxMm = 160;
-        const scale = boxMm / 500;
-        doc.setDrawColor(220, 200, 210);
-        doc.rect(boxX, boxY, boxMm, boxMm);
-        pieces.forEach((p, i) => {
-          const w = p.piece.bounds.width * 500 * p.scale;
-          const h = p.piece.bounds.height * 500 * p.scale;
-          const cx = boxX + p.x * scale;
-          const cy = boxY + p.y * scale;
-          const rad = (p.rotation * Math.PI) / 180;
-          const outline = (p.piece.outline || []).map(([ox, oy]) => {
-            // rotate + translate outline points
-            const rx = ox * w * Math.cos(rad) - oy * h * Math.sin(rad);
-            const ry = ox * w * Math.sin(rad) + oy * h * Math.cos(rad);
-            return [cx + rx, cy + ry] as [number, number];
-          });
-          if (outline.length >= 3) {
-            const [r, g, b] = hexToRgb(p.piece.color || '#f472b6');
-            doc.setFillColor(r, g, b);
-            doc.setDrawColor(120, 90, 110);
-            doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
-            // remainder as lines
-            for (let k = 2; k < outline.length; k++) {
-              doc.line(outline[k - 1][0], outline[k - 1][1], outline[k][0], outline[k][1]);
-            }
-            doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
-            // number label
+        const n = tilesPerAxis;
+        for (let tj = 0; tj < n; tj++) {
+          for (let ti = 0; ti < n; ti++) {
+            if (ti > 0 || tj > 0) doc.addPage();
+            doc.setFontSize(14);
+            doc.setTextColor(139, 92, 118);
+            doc.text('Collage Quilt Pattern — Print & Cut', pageW / 2, 14, { align: 'center' });
             doc.setFontSize(8);
-            doc.setTextColor(255, 255, 255);
-            const cxr = outline.reduce((s, pt) => s + pt[0], 0) / outline.length;
-            const cyr = outline.reduce((s, pt) => s + pt[1], 0) / outline.length;
-            doc.text(String(i + 1), cxr, cyr);
-          }
-        });
-      }
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Tile ${tj * n + ti + 1} of ${n * n} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setTextColor(160, 60, 80);
+            doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit)', pageW / 2, 26, { align: 'center' });
 
+            const tLeft = tileX0, tTop = tileTop, tRight = tileX0 + tileMm, tBottom = tileTop + tileMm;
+            doc.setDrawColor(190, 190, 200);
+            doc.setLineWidth(0.2);
+            doc.rect(tLeft, tTop, tileMm, tileMm);
+            // draw the pattern clipped to this tile (pieces crossing seams continue on the neighbour page)
+            doc.saveGraphicsState();
+            doc.rect(tLeft, tTop, tileMm, tileMm);
+            doc.clip();
+            doc.discardPath();
+            pieces.forEach((p, idx) => drawPatternPiece(p, idx));
+            doc.restoreGraphicsState();
+            // crop/alignment "+" marks at the tile corners
+            doc.setDrawColor(60, 60, 70);
+            doc.setLineWidth(0.3);
+            const arm = 7;
+            doc.line(tLeft - arm, tTop, tLeft + arm, tTop); doc.line(tLeft, tTop - arm, tLeft, tTop + arm);
+            doc.line(tRight - arm, tTop, tRight + arm, tTop); doc.line(tRight, tTop - arm, tRight, tTop + arm);
+            doc.line(tLeft - arm, tBottom, tLeft + arm, tBottom); doc.line(tLeft, tBottom - arm, tLeft, tBottom + arm);
+            doc.line(tRight - arm, tBottom, tRight + arm, tBottom); doc.line(tRight, tBottom - arm, tRight, tBottom + arm);
+            doc.setFontSize(6.5);
+            doc.setTextColor(120, 120, 130);
+            doc.text('Trim along the seam lines and match the "+" corner marks. Pieces crossing a seam continue on the neighbouring tile.', tLeft, tBottom + 6);
+          }
+        }
+      }
       // Page 2: Reference art (if any)
       if (referenceArt) {
         doc.addPage();
@@ -732,6 +767,16 @@ export const CollageStudio: React.FC = () => {
                 </div>
                 {/* Export */}
                 <div className="flex items-center gap-1.5">
+                  <select
+                    value={blockSize}
+                    onChange={(e) => setBlockSize(Number(e.target.value))}
+                    className="rounded-lg border border-blush-200 text-xs text-slate-700 px-2 py-1.5 bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                    title="Quilt block size (inches) — the full-scale PDF pattern prints at this real size"
+                  >
+                    {[12, 14, 16, 18, 20, 22, 24].map((n) => (
+                      <option key={n} value={n}>{n}&quot; block</option>
+                    ))}
+                  </select>
                   <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
                     <Download className="h-3.5 w-3.5 mr-1" />
                     PNG
@@ -944,11 +989,16 @@ export const CollageStudio: React.FC = () => {
                       </div>
                     );
                   })}
-                  {/* Scrapbook cutout pieces (owner direction: pieces carry the art inside the shape) */}
-                  {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed) => {
+                  {/* Scrapbook cutout pieces — rendered as a COMPLETE coloring-book pattern:
+                      blank interiors + numbered contour outlines, assembled edge-to-edge at
+                      their original artwork positions (no interior art on the pattern page). */}
+                  {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed, placedIdx) => {
                     const w = placed.piece.bounds.width * 500 * placed.scale;
                     const h = placed.piece.bounds.height * 500 * placed.scale;
                     const isSelected = selectedPieceId === placed.instanceId && activeTool === 'select';
+                    const placedOutline = placed.piece.outline || [];
+                    const cxPct = placedOutline.length ? (placedOutline.reduce((s, [ox]) => s + ox, 0) / placedOutline.length) * 100 : 50;
+                    const cyPct = placedOutline.length ? (placedOutline.reduce((s, [, oy]) => s + oy, 0) / placedOutline.length) * 100 : 50;
                     return (
                       <div
                         key={placed.instanceId}
@@ -966,19 +1016,33 @@ export const CollageStudio: React.FC = () => {
                         }}
                       >
                         {placed.piece.image ? (
-                          <img
-                            src={placed.piece.image}
-                            alt={placed.piece.label || 'piece'}
-                            draggable={false}
-                            className="w-full h-full select-none pointer-events-none"
-                            style={{ clipPath: outlineClipPath(placed.piece.outline) }}
-                          />
+                          <svg
+                            className="absolute inset-0 w-full h-full pointer-events-none select-none"
+                            viewBox="0 0 100 100"
+                            preserveAspectRatio="none"
+                          >
+                            <polygon
+                              points={(placed.piece.outline || []).map(([ox, oy]) => `${(ox * 100).toFixed(2)},${(oy * 100).toFixed(2)}`).join(' ')}
+                              fill="#ffffff"
+                              stroke="#475569"
+                              strokeWidth={1.6}
+                              strokeLinejoin="round"
+                              style={{ vectorEffect: 'non-scaling-stroke' }}
+                            />
+                          </svg>
                         ) : (
                           <div
-                            className="w-full h-full border border-blush-400"
-                            style={{ backgroundColor: placed.piece.color, clipPath: outlineClipPath(placed.piece.outline) }}
+                            className="w-full h-full"
+                            style={{ backgroundColor: '#ffffff', clipPath: outlineClipPath(placed.piece.outline) }}
                           />
                         )}
+                        {/* Piece number (coloring-book numbering) */}
+                        <span
+                          className="absolute text-[10px] font-bold text-slate-600 pointer-events-none select-none"
+                          style={{ left: `${cxPct}%`, top: `${cyPct}%`, transform: 'translate(-50%, -50%)' }}
+                        >
+                          {placedIdx + 1}
+                        </span>
                         {/* Selection ring + label */}
                         {isSelected && (
                           <div className="absolute inset-0 pointer-events-none">
