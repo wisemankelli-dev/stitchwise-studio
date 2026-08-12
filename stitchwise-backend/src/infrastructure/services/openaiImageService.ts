@@ -17,10 +17,16 @@ import { logAICall, getEstimatedCost } from "./aiCostLogger";
 
 /**
  * Google Gemini image generation (REST, no SDK dependency).
- * ~$0.067 per 1024x1024 image (1120 output tokens at $60/1M tokens) per
- * Google's published pricing. Returns { url (data URL), buffer } or null.
+ *
+ * MODEL: gemini-3-pro-image (premium tier) — owner standard is BEAUTIFUL
+ * artwork FIRST, converted to stitch patterns downstream. The flat/posterized
+ * prompt constraints (tried 2026-08-12 with the flash model) produced
+ * childish flat drawings — removed. Art prompts now ask for rich, professional
+ * illustrations; the image-to-grid pipeline quantizes to stitchable colors.
+ *
+ * Configurable via GEMINI_IMAGE_MODEL. Returns { url, buffer } or null.
  */
-const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image";
 export async function generateImageWithGemini(
   prompt: string,
   styleHints?: string,
@@ -29,12 +35,12 @@ export async function generateImageWithGemini(
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   const defaultStyle = [
-    "a single flat illustration, one complete composition",
-    "not tiled, not repeating, not a pattern, not a fabric swatch, not a wallpaper",
-    "clean flat illustration style, posterized, solid color regions, no gradients",
-    "the subject is the single clear focus and fills at least 70 percent of the frame",
-    "clean well-defined shapes, limited palette of distinct colors",
-    "white background, no borders, no frames, no text, no labels",
+    "beautiful professional illustration, elegant refined artwork",
+    "rich detail, soft painterly shading and depth",
+    "graceful composition, one clear subject",
+    "subject fills most of the frame",
+    "clean white background",
+    "no text, no watermark, no frame, no border",
   ].join(", ");
   const enhancedPrompt = styleHints
     ? `${prompt}, ${styleHints}`
