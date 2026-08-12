@@ -59,15 +59,25 @@ export async function generateImageWithDallE(
     ? `${prompt}, ${styleHints}`
     : `${prompt}, ${defaultStyle}`;
 
-  // Try model names in order: gpt-image-1 primary, gpt-image-2 fallback (both confirmed working)
-  const models = ["gpt-image-1", "gpt-image-2"];
+  // Retry across model variants with backoff. OpenAI's gpt-image models
+  // intermittently return 503 "Upstream unavailable" after ~30s of queueing
+  // during load bursts (observed 2026-08-12 repeatedly, incl. while a direct
+  // API call with the same key succeeded). Retrying a few seconds later
+  // re-rolls the request; gpt-image-2 covers a different shard.
+  const models = ["gpt-image-1", "gpt-image-2", "gpt-image-1"];
+  const backoffMs = [0, 4_000, 12_000];
   let lastError: string | null = null;
 
-  for (const model of models) {
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    const model = models[attempt];
     try {
+      if (backoffMs[attempt]) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
+      }
       console.error(JSON.stringify({
         event: "openai_image_request",
         model,
+        attempt,
         originalPrompt: prompt,
       }));
 
@@ -118,10 +128,11 @@ export async function generateImageWithDallE(
       console.error(JSON.stringify({
         event: "openai_model_error",
         model,
+        attempt,
         error: lastError,
         details: String(errorBody).substring(0, 300),
       }));
-      // Continue to next model
+      // Continue to next model / retry
     }
   }
 
