@@ -1148,11 +1148,12 @@ class ApiClient {
       json && typeof json === 'object' && (json as { data?: unknown }).data && typeof (json as { data?: unknown }).data === 'object'
         ? (json as { data?: unknown }).data
         : json;
-    const d = (data ?? {}) as { layers?: FabricLayer[]; pieces?: CollagePiece[]; referenceImage?: string; artworkUrl?: string; previewUrl?: string; canvasWidth?: number; canvasHeight?: number; processingTimeMs?: number };
+    const d = (data ?? {}) as { layers?: FabricLayer[]; pieces?: CollagePiece[]; referenceImage?: string; artworkUrl?: string; previewUrl?: string; canvasWidth?: number; canvasHeight?: number; processingTimeMs?: number; isFallback?: boolean };
     return {
       success: true,
       layers: Array.isArray(d.layers) ? d.layers : [],
       pieces: Array.isArray(d.pieces) ? d.pieces : undefined,
+      isFallback: d.isFallback === true,
       // referenceImage is the exact full art the pieces were cut from (normalized
       // outlines are relative to it) — use it as the primary reference; fall back
       // to the preview/artwork URLs for older backend responses.
@@ -2313,6 +2314,8 @@ export interface AICollageResponse {
   pieces?: CollagePiece[];
   /** Reference art image (data-URL or URL) the pieces were cut from */
   referenceArt?: string;
+  /** True when the backend fell back to a placeholder (mock) layout because the AI image service hiccuped — pieces are NOT real artwork cutouts. */
+  isFallback?: boolean;
 }
 
 // ── Collage Persistence ──────────────────────────────

@@ -454,6 +454,15 @@ export const CollageStudio: React.FC = () => {
     if (result?.pieces && result.pieces.length > 0) {
       setAvailablePieces(result.pieces);
       if (result.referenceArt) setReferenceArt(result.referenceArt);
+      // Never auto-assemble a fallback/placeholder layout as if it were the real
+      // artwork: the backend flags mock pieces (isFallback) when the AI image
+      // service hiccuped, and those scattered blobs are NOT the user's design.
+      // The honest UX is a warning banner + a manual Apply if they want it.
+      if (result.isFallback) {
+        setPlacedPieces([]);
+        setSelectedPieceId(null);
+        return;
+      }
       // Assemble pieces at their ORIGINAL artwork positions so the cutouts
       // reconstruct the full pattern (bounds are normalized 0..1 coords).
       const placed: PlacedCollagePiece[] = result.pieces.map((piece, i) => {
@@ -1200,6 +1209,16 @@ export const CollageStudio: React.FC = () => {
               )}
 
               {aiResult && !isGenerating && (
+                aiResult.isFallback ? (
+                  <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                    <p className="text-[11px] text-amber-800">
+                      <strong>AI service hiccup — placeholder shown.</strong>{' '}
+                      The image service didn't return artwork this time, so the pieces below are a
+                      temporary placeholder, not your real design. Please try generating again.
+                    </p>
+                  </div>
+                ) : (
                 <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                   <p className="text-[11px] text-emerald-800">
@@ -1209,6 +1228,7 @@ export const CollageStudio: React.FC = () => {
                       : `${aiResult.totalLayers} layers generated. Click "Apply to Canvas" above to use them.`}
                   </p>
                 </div>
+                )
               )}
 
               {aiError && (
