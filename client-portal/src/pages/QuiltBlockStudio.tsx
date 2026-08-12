@@ -196,6 +196,7 @@ export const QuiltBlockStudio: React.FC = () => {
   const [dragOp, setDragOp] = useState<DragOp | null>(null);
   // Save/Load state
   const [blockName, setBlockName] = useState('');
+  const [currentBlockId, setCurrentBlockId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedBlocks, setSavedBlocks] = useState<QuiltBlockDesign[]>([]);
   const [showLoadDropdown, setShowLoadDropdown] = useState(false);
@@ -278,6 +279,9 @@ export const QuiltBlockStudio: React.FC = () => {
   const handleReset = useCallback(() => {
     setShapes([]);
     setSelectedShapeId('');
+    // A fresh canvas is a new block — don't let a later Save overwrite the loaded one
+    setCurrentBlockId(null);
+    setBlockName('');
   }, []);
 
   // ── Pointer interactions (move / resize / rotate) ──
@@ -397,6 +401,15 @@ export const QuiltBlockStudio: React.FC = () => {
         scale: s.scale,
         zIndex: s.zIndex,
       })) as QuiltBlockShape[], blockSize);
+      // F-1 fix: saving again (e.g. after renaming) must NOT create a second
+      // record. The backend adapter only supports create — so when this working
+      // block already has a saved record, replace it (create new, drop old) so
+      // exactly one block exists on the server.
+      if (currentBlockId && currentBlockId !== block.id) {
+        try { await api.deleteQuiltBlock(currentBlockId); } catch { /* keep new record */ }
+        setSavedBlocks(prev => prev.filter(b => b.id !== currentBlockId));
+      }
+      setCurrentBlockId(block.id);
       setBlockName('');
       setSavedBlocks(prev => [block, ...prev.filter(b => b.id !== block.id)]);
       setSaveMessage(`Saved "${block.name}"!`);
@@ -427,6 +440,7 @@ export const QuiltBlockStudio: React.FC = () => {
       setSelectedShapeId('');
       if (BLOCK_SIZES.includes(block.blockSize)) setBlockSize(block.blockSize);
       setBlockName(block.name);
+      setCurrentBlockId(block.id);
       setShowLoadDropdown(false);
     } catch {
       setSaveMessage('Load failed.');
@@ -438,6 +452,7 @@ export const QuiltBlockStudio: React.FC = () => {
     e.stopPropagation();
     await api.deleteQuiltBlock(id);
     setSavedBlocks(prev => prev.filter(b => b.id !== id));
+    if (currentBlockId === id) setCurrentBlockId(null);
   };
 
   const handleBlockSizeChange = (s: number) => {

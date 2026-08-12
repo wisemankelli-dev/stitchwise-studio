@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2
+  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
@@ -15,7 +15,7 @@ import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
-import { api } from '../services/api';
+import { api, type SavedPatternSummary, type SavedPatternCell } from '../services/api';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -411,6 +411,12 @@ export const Designer: React.FC = () => {
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
   const [cellFractions, setCellFractions] = useState<Record<string, number>>({});
   const lastSaved = useRef<Record<string, string>>({});
+  // Save/Load state (F-2: studio toolbar Save/Load wired to /api/patterns)
+  const [patternName, setPatternName] = useState('');
+  const [isSavingPattern, setIsSavingPattern] = useState(false);
+  const [savedPatterns, setSavedPatterns] = useState<SavedPatternSummary[]>([]);
+  const [showPatternLoad, setShowPatternLoad] = useState(false);
+  const [patternSaveMsg, setPatternSaveMsg] = useState<string | null>(null);
 
   // Editing Tools state
   const [activeTool, setActiveTool] = useState<EditTool>('select');
@@ -860,6 +866,76 @@ export const Designer: React.FC = () => {
     setAiError('');
     setAiStats(null);
     setPollingStatus('');
+  };
+  // ── Pattern Save / Load (F-2) ──
+  const handleSavePattern = async () => {
+    const name = patternName.trim() || `Pattern ${new Date().toLocaleDateString()}`;
+    const stitchData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
+    const payloadGrid: SavedPatternCell[][] = stitchData.grid.map(row =>
+      row.map(cell => {
+        const c: SavedPatternCell = { color: cell.color || '' };
+        // Carry non-cross stitch type through dmcCode so it round-trips
+        if (cell.stitchType && cell.stitchType !== 'cross') c.dmcCode = cell.stitchType;
+        return c;
+      }),
+    );
+    const gridSize = Math.max(16, Math.min(500, Math.max(gridWidth, gridHeight)));
+    setIsSavingPattern(true);
+    setPatternSaveMsg(null);
+    try {
+      await api.savePattern(name, payloadGrid, stitchData.dmcPalette, gridSize, stitchData.totalStitches);
+      setPatternName('');
+      setShowPatternLoad(false);
+      setPatternSaveMsg(`Saved "${name}"!`);
+      setTimeout(() => setPatternSaveMsg(null), 2500);
+    } catch {
+      setPatternSaveMsg('Save failed.');
+      setTimeout(() => setPatternSaveMsg(null), 2500);
+    } finally {
+      setIsSavingPattern(false);
+    }
+  };
+  const handleLoadPatterns = async () => {
+    try {
+      const patterns = await api.listPatterns();
+      setSavedPatterns(patterns);
+    } catch {
+      setSavedPatterns([]);
+    }
+    setShowPatternLoad(prev => !prev);
+  };
+  const handleLoadPattern = async (id: string) => {
+    try {
+      const p = await api.loadPattern(id);
+      if (!p) return;
+      // Restore grid dims + cells from the persisted grid
+      const height = p.grid.length;
+      const width = p.grid[0]?.length || p.gridSize;
+      setGridWidth(width);
+      setGridHeight(height);
+      const restored: Record<string, string> = {};
+      const restoredTypes: Record<string, string> = {};
+      p.grid.forEach((row, r) => {
+        row.forEach((cell, c) => {
+          if (cell.color) restored[`${r},${c}`] = cell.color;
+          if (cell.dmcCode) restoredTypes[`${r},${c}`] = cell.dmcCode;
+        });
+      });
+      setGrid(restored);
+      setGridStitchTypes(restoredTypes);
+      setPatternName(p.name);
+      setShowPatternLoad(false);
+      setPatternSaveMsg(`Loaded "${p.name}" (${width}×${height}).`);
+      setTimeout(() => setPatternSaveMsg(null), 2500);
+    } catch {
+      setPatternSaveMsg('Load failed.');
+      setTimeout(() => setPatternSaveMsg(null), 2500);
+    }
+  };
+  const handleDeletePattern = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await api.deletePattern(id);
+    setSavedPatterns(prev => prev.filter(p => p.id !== id));
   };
 
   /** Single-phase generation: prompt → pattern (handles sync 200 and async 202 with polling) */
@@ -1332,6 +1408,62 @@ export const Designer: React.FC = () => {
                     )}
                     {isProcessingImage ? 'Processing...' : 'Upload Image'}
                   </label>
+                  <div className="flex items-center gap-1.5 relative">
+                    <input
+                      type="text"
+                      value={patternName}
+                      onChange={(e) => setPatternName(e.target.value)}
+                      placeholder="Pattern name..."
+                      className="w-24 rounded-lg border border-blush-100 text-[10px] font-bold text-slate-600 px-1.5 py-2 bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSavePattern(); }}
+                      title="Name this pattern, then Save"
+                    />
+                    <button
+                      onClick={handleSavePattern}
+                      disabled={isSavingPattern}
+                      className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                      title="Save pattern to your library"
+                    >
+                      {isSavingPattern ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Save
+                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={handleLoadPatterns}
+                        className="p-2 rounded-lg border border-blush-100 hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5"
+                        title="Load a saved pattern"
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" /> Load <ChevronDown className="h-3 w-3" />
+                      </button>
+                      {showPatternLoad && (
+                        <div className="absolute right-0 top-full mt-1 w-60 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
+                          {savedPatterns.length === 0 ? (
+                            <p className="p-3 text-[11px] text-slate-400 text-center">No saved patterns yet</p>
+                          ) : (
+                            savedPatterns.map(p => (
+                              <div
+                                key={p.id}
+                                onClick={() => handleLoadPattern(p.id)}
+                                className="flex items-center justify-between p-2 hover:bg-blush-50 cursor-pointer border-b border-blush-50 last:border-0"
+                              >
+                                <span className="text-xs text-slate-700 truncate flex-1">
+                                  {p.name}
+                                  <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                                </span>
+                                <button
+                                  onClick={(e) => handleDeletePattern(p.id, e)}
+                                  className="text-slate-300 hover:text-red-500 p-1"
+                                  title="Delete pattern"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <button onClick={handleExportPdf} className="p-2 rounded-lg bg-blush-500 hover:bg-blush-600 text-white text-xs font-semibold flex items-center gap-1.5">
                     <Download className="h-3.5 w-3.5" /> Export PDF
                   </button>
@@ -1362,6 +1494,12 @@ export const Designer: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {patternSaveMsg && (
+                <p className={`w-full mb-4 text-[11px] px-2 py-1 rounded ${patternSaveMsg.startsWith('Save failed') || patternSaveMsg.startsWith('Load failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+                  {patternSaveMsg}
+                </p>
+              )}
 
               {/* AI Prompt Bar */}
               <div className="w-full mb-4 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">

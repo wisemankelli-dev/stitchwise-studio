@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { QuiltBlockStudio, migrateShape } from '../pages/QuiltBlockStudio';
+import { api } from '../services/api';
 
 const renderStudio = () => render(
   <BrowserRouter>
@@ -117,5 +118,22 @@ describe('Quilt Block Studio — owner-spec redesign', () => {
     expect(m.y).toBe(45);
     expect(m.width).toBe(80);
     expect(m.scale).toBe(1.4);
+  });
+  it('F-1: saving again (rename) does NOT create a duplicate block record', async () => {
+    renderStudio();
+    // Add a shape so the save is meaningful
+    fireEvent.click(screen.getByTitle('Add Square to the block'));
+    // First save — default name
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await screen.findByText(/Saved "Block /);
+    let blocks = await api.listQuiltBlocks();
+    expect(blocks).toHaveLength(1);
+    // Rename + save again — must update the SAME record, not create a second one
+    fireEvent.change(screen.getByPlaceholderText('Block name...'), { target: { value: 'My Renamed Block' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await screen.findByText(/Saved "My Renamed Block"!/);
+    blocks = await api.listQuiltBlocks();
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].name).toBe('My Renamed Block');
   });
 });
