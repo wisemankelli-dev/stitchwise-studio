@@ -755,12 +755,52 @@ export const CollageStudio: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left: Canvas (8 cols) */}
+          {/* Left: Persistent Artwork panel (top on mobile, beside the pattern on lg) */}
+          <div className="lg:col-span-4">
+            <div className="floral-card p-5 flex flex-col h-full">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                  <Image className="h-4 w-4 text-blush-500" />
+                  Artwork
+                </h2>
+                <span className="text-[9px] font-bold text-blush-500 uppercase tracking-wider bg-blush-50 border border-blush-100 px-2 py-0.5 rounded-full">Reference</span>
+              </div>
+              {referenceArt ? (
+                <div className="flex-1 rounded-2xl bg-white border border-blush-100 overflow-hidden relative flex items-center justify-center p-3"
+                  style={{ minHeight: '340px' }}>
+                  <img
+                    src={referenceArt}
+                    alt="Generated reference artwork"
+                    draggable={false}
+                    className="max-w-full max-h-full object-contain rounded-xl shadow-sm select-none pointer-events-none"
+                  />
+                  <p className="absolute bottom-1.5 inset-x-0 text-center text-[9px] text-slate-400">
+                    Reference artwork — your pattern pieces are cut from this image
+                  </p>
+                </div>
+              ) : (
+                <div className="flex-1 rounded-2xl bg-blush-50/60 border-2 border-dashed border-blush-200 flex flex-col items-center justify-center text-center p-8"
+                  style={{ minHeight: '340px' }}>
+                  <Sparkles className="h-8 w-8 text-blush-300 mb-3" />
+                  <p className="text-xs font-semibold text-blush-600">Your artwork will appear here</p>
+                  <p className="text-[10px] text-slate-400 mt-1 max-w-[220px]">
+                    Generate a collage below and the reference art will show up in this panel, beside your pattern.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Right: Pattern canvas (8 cols) */}
           <div className="lg:col-span-8">
             <div className="floral-card p-4">
               {/* Canvas Toolbar */}
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
                 <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-slate-700 mr-1 flex items-center gap-1.5">
+                    <Grid3X3 className="h-4 w-4 text-blush-500" />
+                    Pattern
+                  </span>
+                  <span className="mx-0.5 text-blush-200">|</span>
                   <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5"><ZoomIn className="h-4 w-4" /></button>
                   <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
                   <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
@@ -850,15 +890,7 @@ export const CollageStudio: React.FC = () => {
                     transformOrigin: 'center center',
                   }}
                 >
-                  {/* Reference art overlay — preview guide ONLY before the pattern is assembled */}
-                  {referenceArt && placedPieces.length === 0 && (
-                    <img
-                      src={referenceArt}
-                      alt="Reference art"
-                      className="absolute inset-0 w-full h-full object-contain opacity-25 pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  )}
+                  {/* Reference art lives in its own persistent Artwork panel — no underlay here */}
                   {layers.sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
                     const isEraseTool = activeTool === 'erase' && layer.id !== 'bg';
                     const isCloneTool = activeTool === 'clone' && layer.id !== 'bg';
@@ -963,8 +995,10 @@ export const CollageStudio: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Right: Inspector (4 cols) */}
+        {/* Tools row: AI generator · piece tray · layers */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
             {/* AI Generation Panel */}
             <div className="floral-card p-5">
@@ -1126,6 +1160,8 @@ export const CollageStudio: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+          <div className="lg:col-span-4 space-y-6">
 
             {/* Scrapbook Piece Tray */}
             {availablePieces.length > 0 && (
@@ -1174,12 +1210,6 @@ export const CollageStudio: React.FC = () => {
                     </div>
                   ))}
                 </div>
-                {referenceArt && (
-                  <div className="mt-3 pt-3 border-t border-blush-100">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Reference Art</p>
-                    <img src={referenceArt} alt="Reference art" className="w-full rounded-xl border border-blush-100 max-h-32 object-contain" />
-                  </div>
-                )}
               </div>
             )}
 
@@ -1230,6 +1260,8 @@ export const CollageStudio: React.FC = () => {
                 </div>
               );
             })()}
+          </div>
+          <div className="lg:col-span-4 space-y-6">
 
             {/* Layers Panel */}
             <div className="floral-card p-5">
