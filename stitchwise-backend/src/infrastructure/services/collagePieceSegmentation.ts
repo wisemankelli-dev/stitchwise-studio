@@ -1,46 +1,47 @@
 /**
  * Collage Piece Segmentation — Scrapbook cutout pieces from the actual art image.
  *
- * The collage-quilting flow (owner direction, reference: collagequilter.com)
- * treats the requested art like a fabric scrapbook: the image is segmented into
- * natural regions, and each region becomes a PIECE that carries the real art
- * pixels inside its outline shape, with transparency outside the mask. The
- * customer then arranges these cutout pieces on the block.
+ * The collage-quilting flow (owner direction, reference: collagequilters.com)
+ * treats the requested art like a fabric collage: the image is divided into
+ * ORGANIC, CONTOUR-FOLLOWING pieces that tile the canvas EDGE-TO-EDGE (like a
+ * stained-glass window / jigsaw). Each piece carries the real art pixels inside
+ * its outline, with transparency outside the mask. The customer cuts each piece
+ * from fabric, lays the pieces on the quilt block, and reassembles them into
+ * the lifelike design.
  *
- * Pipeline:
- *   1. Downscale to a working resolution and quantize colors (k-means).
- *   2. Find connected components per quantized color (4-connectivity flood fill).
- *   3. Drop specks (< 0.5% of image), merge smallest regions into largest
- *      neighbor until at most maxPieces (default 40) remain.
- *   4. For each region emit a CollagePiece:
+ * Segmentation algorithm (replaced k-means color blobs on 2026-08-12):
+ *   1. Compute the luminance image + Sobel gradient magnitude (smoothed).
+ *   2. Place seeds on a jittered grid (organic puzzle look), snapped to local
+ *      gradient minima so seeds never start on an edge.
+ *   3. Watershed by immersion (priority flood): pixels are claimed by the seed
+ *      that reaches them first, ordered by gradient cost, so region boundaries
+ *      settle along the strongest image edges.
+ *   4. Merge tiny regions into their largest neighbor until at most maxPieces
+ *      remain. EVERY pixel belongs to exactly one piece — the reassembly is
+ *      complete with no gaps (this was the "splattered marks" bug: the old
+ *      k-means path dropped specks and left holes).
+ *   5. For each region emit a CollagePiece:
  *        { id, label, outline: [[x,y] normalized 0-1] (simplified polygon),
  *          bounds (normalized bbox), color (dominant fabric hex),
  *          image: data-URL PNG cutout with transparency outside the mask }
- *   5. Also return the full art image as a data-URL reference.
+ *   6. Also return the full art image as a data-URL reference.
  */
 import sharp from "sharp";
 import { closestFabricColor } from "../../domain/collage/fabricColors";
 import type { CollagePiece } from "../../domain/ai/collageAI";
 
 /** Working resolution (max dimension) used for segmentation analysis. */
-const WORK_SIZE = 160;
+const WORK_SIZE = 256;
 /** Default maximum number of pieces. */
 const MAX_PIECES = 40;
 /**
- * Regions smaller than this fraction of the image are dropped as specks.
- * 0.2% (was 0.5%): real AI art is noisy and its legitimate regions are
- * smaller than flat mock renders — 0.5% threw away every region of a
- * dark, textured generation and collapsed to one whole-canvas piece.
+ * Regions smaller than this fraction of the image are merged into a neighbor.
+ * With grid-seeded watershed every pixel is already assigned, so this only
+ * cleans up accidental slivers (e.g. a 2px boundary artifact).
  */
-const MIN_PIECE_FRACTION = 0.002;
+const MIN_PIECE_FRACTION = 0.001;
 /** Maximum pixel dimension of a piece image crop (keeps payloads sane). */
 const PIECE_MAX_DIM = 256;
-/** k-means palette size. 16 (was 12): more separation for noisy art. */
-const PALETTE_K = 16;
-/** k-means Lloyd iterations. 24 (was 8): real images need to converge. */
-const KMEANS_ITERATIONS = 24;
-/** Median filter radius applied before quantization (denoises speckle). */
-const MEDIAN_RADIUS = 3;
 
 export interface SegmentationOptions {
   maxPieces?: number;
@@ -59,7 +60,7 @@ export async function segmentImageIntoPieces(
   imageBuffer: Buffer,
   opts?: SegmentationOptions,
 ): Promise<SegmentationResult> {
-  const maxPieces = opts?.maxPieces ?? MAX_PIECES;
+  const maxPieces = Math.max(1, opts?.maxPieces ?? MAX_PIECES);
 
   const meta = await sharp(imageBuffer).metadata();
   const ow = meta.width ?? 400;
@@ -70,35 +71,125 @@ export async function segmentImageIntoPieces(
 
   const { data } = await sharp(imageBuffer)
     .resize(w, h, { fit: "fill" })
-    .median(MEDIAN_RADIUS)
+    .median(2)
     // CRITICAL: force 4 channels. Real AI art comes back as RGB (no alpha)
-    // (e.g. PNG without alpha) and the whole pipeline indexes pixels[i*4]
-    // assuming RGBA — misaligned reads produced NaN k-means centers and a
-    // single whole-canvas piece for real generations (mock renders had alpha
-    // so they worked). ensureAlpha() makes RGBA unconditionally.
+    // and the whole pipeline indexes pixels[i*4] assuming RGBA.
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
   const pixels = new Uint8ClampedArray(data);
   const n = w * h;
 
-  // ── 1. Quantize colors (deterministic k-means) ────────────────────────────
-  const { labels } = quantizePixels(pixels, w, h, PALETTE_K);
+  // ── 1. Luminance + gradient ────────────────────────────────────────────────
+  const lum = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    lum[i] = 0.299 * pixels[i * 4] + 0.587 * pixels[i * 4 + 1] + 0.114 * pixels[i * 4 + 2];
+  }
+  const grad = sobelGradient(lum, w, h);
+  smoothBox(grad, w, h, 2); // suppress noise so boundaries don't zigzag
 
-  // ── 2. Connected components per color label ───────────────────────────────
-  const regions = connectedComponents(labels, w, h);
-
-  // ── 3. Drop specks + cap piece count ──────────────────────────────────────
-  const minArea = Math.max(4, Math.floor(n * MIN_PIECE_FRACTION));
-  let kept = regions.filter((r) => r.cells.length >= minArea);
-  kept = capRegions(kept, labels, w, h, maxPieces);
-
-  if (kept.length === 0) {
-    // Extremely uniform image — treat the whole canvas as one piece.
-    kept = [{ id: 0, cells: Array.from({ length: n }, (_, i) => i) }];
+  // ── 2. Jittered grid seeds, snapped to local gradient minima ──────────────
+  const dim = Math.max(1, Math.ceil(Math.sqrt(maxPieces)));
+  const seeds: number[] = [];
+  const jitterAmp = 0.22; // fraction of a grid cell
+  let seedIndex = 0;
+  for (let gy = 0; gy < dim; gy++) {
+    for (let gx = 0; gx < dim; gx++) {
+      const jx = (hash01(seedIndex * 2 + 1) - 0.5) * 2 * jitterAmp;
+      const jy = (hash01(seedIndex * 2 + 2) - 0.5) * 2 * jitterAmp;
+      const cx = (gx + 0.5 + jx) / dim;
+      const cy = (gy + 0.5 + jy) / dim;
+      const px = Math.max(0, Math.min(w - 1, Math.round(cx * w)));
+      const py = Math.max(0, Math.min(h - 1, Math.round(cy * h)));
+      // Snap to lowest gradient in a 5x5 neighborhood so seeds don't sit on edges.
+      let best = py * w + px;
+      let bestG = grad[best];
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const yy = py + dy;
+          const xx = px + dx;
+          if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+          const idx = yy * w + xx;
+          if (grad[idx] < bestG) {
+            bestG = grad[idx];
+            best = idx;
+          }
+        }
+      }
+      seeds.push(best);
+      seedIndex++;
+    }
   }
 
-  // ── 4. Emit pieces ────────────────────────────────────────────────────────
+  // ── 3. Watershed by immersion (priority flood) ─────────────────────────────
+  // Every pixel is claimed by the seed that floods it first, expanding in
+  // order of gradient cost → boundaries land on high-gradient (edge) lines and
+  // the canvas is perfectly tiled (no unassigned pixels).
+  const labels = new Int32Array(n).fill(-1);
+  const heap: number[][] = []; // [cost, idx, owner]
+  const heapPop = (): number[] | undefined => {
+    if (heap.length === 0) return undefined;
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length > 0) {
+      heap[0] = last;
+      let c = 0;
+      for (;;) {
+        const l = c * 2 + 1;
+        const r = l + 1;
+        let m = c;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === c) break;
+        [heap[m], heap[c]] = [heap[c], heap[m]];
+        c = m;
+      }
+    }
+    return top;
+  };
+
+  for (let s = 0; s < seeds.length; s++) {
+    labels[seeds[s]] = s;
+    pushNeighbors(seeds[s], w, h, grad, labels, heap, s);
+  }
+  while (true) {
+    const entry = heapPop();
+    if (!entry) break;
+    const [, idx, owner] = entry;
+    if (labels[idx] !== -1) continue;
+    labels[idx] = owner;
+    pushNeighbors(idx, w, h, grad, labels, heap, owner);
+  }
+
+  // ── 4. Regions from labels + merge to maxPieces ───────────────────────────
+  const regionCount = seeds.length;
+  const regions: Region[] = [];
+  const sizes = new Int32Array(regionCount);
+  for (let i = 0; i < n; i++) {
+    if (labels[i] >= 0) sizes[labels[i]]++;
+  }
+  for (let r = 0; r < regionCount; r++) {
+    if (sizes[r] === 0) continue;
+    regions.push({ id: regions.length, cells: [] });
+  }
+  const remap = new Int32Array(regionCount).fill(-1);
+  let regionIdx = 0;
+  for (let r = 0; r < regionCount; r++) {
+    if (sizes[r] === 0) continue;
+    remap[r] = regionIdx++;
+  }
+  for (let i = 0; i < n; i++) {
+    if (labels[i] >= 0) regions[remap[labels[i]]].cells.push(i);
+  }
+
+  const minArea = Math.max(4, Math.floor(n * MIN_PIECE_FRACTION));
+  let kept = regions.filter((r) => r.cells.length >= minArea);
+  if (kept.length === 0) {
+    kept = [{ id: 0, cells: Array.from({ length: n }, (_, i) => i) }];
+  }
+  kept = capRegions(kept, labels, w, h, maxPieces);
+
+  // ── 5. Emit pieces ────────────────────────────────────────────────────────
   const pieces: CollagePiece[] = [];
   for (let i = 0; i < kept.length; i++) {
     const region = kept[i];
@@ -131,15 +222,7 @@ export async function segmentImageIntoPieces(
     const outline = traceOutline(mask, w, h, minR, maxR, minC, maxC);
 
     // Cutout image: crop bbox from ORIGINAL art, transparency outside mask
-    const image = await makePieceImage(
-      imageBuffer,
-      mask,
-      w,
-      h,
-      ow,
-      oh,
-      bounds,
-    );
+    const image = await makePieceImage(imageBuffer, mask, w, h, ow, oh, bounds);
 
     pieces.push({
       id: `piece-${i + 1}`,
@@ -151,7 +234,7 @@ export async function segmentImageIntoPieces(
     });
   }
 
-  // ── 5. Reference image (full art, downscaled) ─────────────────────────────
+  // ── 6. Reference image (full art, downscaled) ─────────────────────────────
   const ref = await sharp(imageBuffer)
     .resize(512, 512, { fit: "inside", withoutEnlargement: true })
     .png()
@@ -161,136 +244,104 @@ export async function segmentImageIntoPieces(
   return { pieces, referenceImage };
 }
 
-// ─── K-means quantization ────────────────────────────────────────────────────
+// ─── Gradient helpers ────────────────────────────────────────────────────────
 
-/**
- * Deterministic k-means color quantization. Returns per-pixel cluster labels.
- */
-function quantizePixels(
-  pixels: Uint8ClampedArray,
-  w: number,
-  h: number,
-  k: number,
-): { labels: Uint8Array; centers: Array<[number, number, number]> } {
-  const n = w * h;
-  const labels = new Uint8Array(n);
-
-  // Sample for deterministic farthest-first initialization
-  const sampleStep = Math.max(1, Math.floor(n / 2000));
-  const sample: Array<[number, number, number]> = [];
-  for (let i = 0; i < n; i += sampleStep) {
-    sample.push([pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]]);
+function sobelGradient(lum: Float32Array, w: number, h: number): Float32Array {
+  const grad = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const gx =
+        lum[i - w - 1] + 2 * lum[i - 1] + lum[i + w - 1] -
+        (lum[i - w + 1] + 2 * lum[i + 1] + lum[i + w + 1]);
+      const gy =
+        lum[i - w - 1] + 2 * lum[i - w] + lum[i - w + 1] -
+        (lum[i + w - 1] + 2 * lum[i + w] + lum[i + w + 1]);
+      grad[i] = Math.sqrt(gx * gx + gy * gy);
+    }
   }
-
-  // Farthest-first: first center = first sample; then always pick the sample
-  // farthest from the nearest existing center.
-  const centers: Array<[number, number, number]> = [sample[0]];
-  while (centers.length < k && centers.length < sample.length) {
-    let bestIdx = 0;
-    let bestDist = -1;
-    for (let s = 0; s < sample.length; s++) {
-      let minD = Infinity;
-      for (const c of centers) {
-        const dr = sample[s][0] - c[0];
-        const dg = sample[s][1] - c[1];
-        const db = sample[s][2] - c[2];
-        const d = dr * dr + dg * dg + db * db;
-        if (d < minD) minD = d;
-      }
-      if (minD > bestDist) {
-        bestDist = minD;
-        bestIdx = s;
-      }
-    }
-    centers.push(sample[bestIdx]);
-  }
-
-  // Lloyd iterations
-  for (let iter = 0; iter < KMEANS_ITERATIONS; iter++) {
-    for (let i = 0; i < n; i++) {
-      const r = pixels[i * 4];
-      const g = pixels[i * 4 + 1];
-      const b = pixels[i * 4 + 2];
-      let best = 0;
-      let bestD = Infinity;
-      for (let c = 0; c < centers.length; c++) {
-        const dr = r - centers[c][0];
-        const dg = g - centers[c][1];
-        const db = b - centers[c][2];
-        const d = dr * dr + dg * dg + db * db;
-        if (d < bestD) {
-          bestD = d;
-          best = c;
-        }
-      }
-      labels[i] = best;
-    }
-    const sums = centers.map(() => [0, 0, 0, 0]);
-    for (let i = 0; i < n; i++) {
-      const c = labels[i];
-      sums[c][0] += pixels[i * 4];
-      sums[c][1] += pixels[i * 4 + 1];
-      sums[c][2] += pixels[i * 4 + 2];
-      sums[c][3] += 1;
-    }
-    for (let c = 0; c < centers.length; c++) {
-      if (sums[c][3] > 0) {
-        centers[c] = [
-          Math.round(sums[c][0] / sums[c][3]),
-          Math.round(sums[c][1] / sums[c][3]),
-          Math.round(sums[c][2] / sums[c][3]),
-        ];
+  // Fill borders by copying the nearest interior value.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (y === 0 || y === h - 1 || x === 0 || x === w - 1) {
+        const yy = Math.max(1, Math.min(h - 2, y));
+        const xx = Math.max(1, Math.min(w - 2, x));
+        grad[y * w + x] = grad[yy * w + xx];
       }
     }
   }
-
-  return { labels, centers };
+  return grad;
 }
 
-// ─── Connected components ────────────────────────────────────────────────────
+/** In-place 3x3 box smoothing, `passes` times. */
+function smoothBox(grad: Float32Array, w: number, h: number, passes: number): void {
+  const src = new Float32Array(grad);
+  for (let p = 0; p < passes; p++) {
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        grad[i] =
+          (src[i - w - 1] + src[i - w] + src[i - w + 1] +
+           src[i - 1] + src[i] + src[i + 1] +
+           src[i + w - 1] + src[i + w] + src[i + w + 1]) / 9;
+      }
+    }
+    src.set(grad);
+  }
+}
+
+/** Deterministic pseudo-random in [0,1). */
+function hash01(seed: number): number {
+  let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function pushNeighbors(
+  idx: number,
+  w: number,
+  h: number,
+  grad: Float32Array,
+  labels: Int32Array,
+  heap: number[][],
+  owner: number,
+): void {
+  const r = Math.floor(idx / w);
+  const c = idx % w;
+  if (r > 0) {
+    const nb = idx - w;
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+  }
+  if (r < h - 1) {
+    const nb = idx + w;
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+  }
+  if (c > 0) {
+    const nb = idx - 1;
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+  }
+  if (c < w - 1) {
+    const nb = idx + 1;
+    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner);
+  }
+}
+
+function heapPush(heap: number[][], cost: number, idx: number, owner: number): void {
+  heap.push([cost, idx, owner]);
+  let c = heap.length - 1;
+  while (c > 0) {
+    const p = (c - 1) >> 1;
+    if (heap[p][0] <= heap[c][0]) break;
+    [heap[p], heap[c]] = [heap[c], heap[p]];
+    c = p;
+  }
+}
+
+// ─── Regions ─────────────────────────────────────────────────────────────────
 
 interface Region {
   id: number;
   cells: number[];
 }
-
-function connectedComponents(labels: Uint8Array, w: number, h: number): Region[] {
-  const n = w * h;
-  const visited = new Uint8Array(n);
-  const regions: Region[] = [];
-  const stack: number[] = [];
-
-  for (let start = 0; start < n; start++) {
-    if (visited[start]) continue;
-    const label = labels[start];
-    const cells: number[] = [];
-    stack.length = 0;
-    stack.push(start);
-    visited[start] = 1;
-    while (stack.length > 0) {
-      const cell = stack.pop()!;
-      cells.push(cell);
-      const r = Math.floor(cell / w);
-      const c = cell % w;
-      const neighbors = [
-        r > 0 ? cell - w : -1,
-        r < h - 1 ? cell + w : -1,
-        c > 0 ? cell - 1 : -1,
-        c < w - 1 ? cell + 1 : -1,
-      ];
-      for (const nb of neighbors) {
-        if (nb >= 0 && !visited[nb] && labels[nb] === label) {
-          visited[nb] = 1;
-          stack.push(nb);
-        }
-      }
-    }
-    regions.push({ id: regions.length, cells });
-  }
-  return regions;
-}
-
-// ─── Region capping ──────────────────────────────────────────────────────────
 
 /**
  * If there are more than maxPieces regions, repeatedly merge the smallest
@@ -298,7 +349,7 @@ function connectedComponents(labels: Uint8Array, w: number, h: number): Region[]
  */
 function capRegions(
   regions: Region[],
-  labels: Uint8Array,
+  labels: Uint8Array | Int32Array,
   w: number,
   h: number,
   maxPieces: number,
@@ -350,7 +401,6 @@ function capRegions(
     }
 
     if (borderCounts.size === 0) {
-      // No neighbor (shouldn't happen with connected regions) — merge into largest
       let largestIdx = 0;
       for (let i = 1; i < current.length; i++) {
         if (current[i].cells.length > current[largestIdx].cells.length) largestIdx = i;
@@ -453,7 +503,6 @@ function traceOutline(
     Math.max(0, Math.min(1, y / h)),
   ] as [number, number]);
 
-  // Ensure the polygon is closed (first point repeated not required by canvas clip)
   if (result.length < 3) return [[0, 0], [1, 0], [1, 1], [0, 1]];
   return result;
 }
@@ -464,7 +513,6 @@ function traceOutline(
 function rdp(points: Array<[number, number]>, epsilon: number): Array<[number, number]> {
   if (points.length <= 2) return points;
 
-  // Find the point with the maximum distance from the line between first and last
   const first = points[0];
   const last = points[points.length - 1];
   let maxDist = 0;
