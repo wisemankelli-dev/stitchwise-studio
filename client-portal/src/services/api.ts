@@ -2027,6 +2027,65 @@ class ApiClient {
     }
     this.quiltBlockStore = this.quiltBlockStore.filter(b => b.id !== id);
   }
+  // ==================== PATTERN PERSISTENCE ====================
+  private patternStore: SavedPatternDetail[] = [];
+  async savePattern(
+    name: string,
+    grid: SavedPatternCell[][],
+    palette: { code: string; name: string; hex: string; count: number }[],
+    gridSize: number,
+    stitchCount: number,
+  ): Promise<SavedPatternSummary> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/patterns`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ name, grid, palette, gridSize, stitchCount }),
+        });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    const now = new Date().toISOString();
+    const rec: SavedPatternDetail = {
+      id: `pattern-${Date.now()}`,
+      name,
+      gridSize,
+      stitchCount,
+      createdAt: now,
+      updatedAt: now,
+      grid,
+      palette,
+    };
+    this.patternStore.unshift(rec);
+    return rec;
+  }
+  async listPatterns(): Promise<SavedPatternSummary[]> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/patterns`, { headers: this.getHeaders() });
+        if (res.ok) return (await res.json()).patterns;
+      } catch { /* fall through to mock */ }
+    }
+    return this.patternStore.map(({ grid: _g, palette: _p, ...summary }) => summary);
+  }
+  async loadPattern(id: string): Promise<SavedPatternDetail | null> {
+    if (this.isLiveBackend) {
+      try {
+        const res = await fetch(`${this.apiBaseUrl}/patterns/${id}`, { headers: this.getHeaders() });
+        if (res.ok) return await res.json();
+      } catch { /* fall through to mock */ }
+    }
+    return this.patternStore.find(p => p.id === id) || null;
+  }
+  async deletePattern(id: string): Promise<void> {
+    if (this.isLiveBackend) {
+      try {
+        await fetch(`${this.apiBaseUrl}/patterns/${id}`, { method: 'DELETE', headers: this.getHeaders() });
+      } catch { /* fall through to mock */ }
+    }
+    this.patternStore = this.patternStore.filter(p => p.id !== id);
+  }
 }
 
 export const api = new ApiClient();
@@ -2128,4 +2187,23 @@ export interface QuiltBlockDesign {
   blockSize: number;
   createdAt: string;
   updatedAt: string;
+}
+export interface SavedPatternCell {
+  color: string;
+  dmcCode?: string;
+  dmcName?: string;
+}
+export interface SavedPatternSummary {
+  id: string;
+  name: string;
+  gridSize: number;
+  stitchCount: number;
+  previewUrl?: string | null;
+  prompt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface SavedPatternDetail extends SavedPatternSummary {
+  grid: SavedPatternCell[][];
+  palette: { code: string; name: string; hex: string; count: number }[];
 }
