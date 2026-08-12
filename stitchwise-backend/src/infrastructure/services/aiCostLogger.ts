@@ -31,7 +31,8 @@ const LOG_FILE = path.join(LOG_DIR, "ai-costs.jsonl");
 
 // Cost estimates per model (USD)
 const COSTS: Record<string, number> = {
-  "gpt-image-1": 0.04,  // 1024x1024
+  "gemini-3.1-flash-image": 0.067, // 1024x1024, Google published pricing (1120 tok @ $60/1M)
+  "gpt-image-1": 0.15,  // 1024x1024 per-token (2026); was 0.04 flat (stale DALL-E-era estimate)
   "dall-e-3": 0.04,      // 1024x1024
   "gpt-4o": 0.01,         // SVG generation (approximate token cost + raster)
 };
