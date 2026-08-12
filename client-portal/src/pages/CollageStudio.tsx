@@ -463,9 +463,35 @@ export const CollageStudio: React.FC = () => {
         setSelectedPieceId(null);
         return;
       }
-      // Assemble pieces at their ORIGINAL artwork positions so the cutouts
-      // reconstruct the full pattern (bounds are normalized 0..1 coords).
-      const placed: PlacedCollagePiece[] = result.pieces.map((piece, i) => {
+      // A "background piece" is the artwork's backdrop (e.g. the white area of a
+      // "red octopus on a white background" prompt). Watershed segments it as one
+      // or more huge near-white regions that touch the canvas edges. In a collage
+      // quilt the background is the BASE FABRIC, not a cutout piece — rendering
+      // those giant regions as pieces covers the subject and looks "scrambled".
+      // Detect them (near-white + touching >=2 canvas edges) and exclude them
+      // from the pattern; the white canvas becomes the base fabric underneath.
+      const hexBrightness = (hex?: string): number => {
+        if (!hex) return 0;
+        const h = hex.replace('#', '');
+        if (h.length !== 6) return 0;
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return (r + g + b) / 3;
+      };
+      const isBackgroundPiece = (p: CollagePiece): boolean => {
+        const b = p.bounds;
+        const touchesLeft = b.x <= 0.005;
+        const touchesTop = b.y <= 0.005;
+        const touchesRight = b.x + b.width >= 0.995;
+        const touchesBottom = b.y + b.height >= 0.995;
+        const edgeCount = (touchesLeft ? 1 : 0) + (touchesTop ? 1 : 0) + (touchesRight ? 1 : 0) + (touchesBottom ? 1 : 0);
+        return edgeCount >= 2 && hexBrightness(p.color) >= 200;
+      };
+      const subjectPieces = result.pieces.filter(p => !isBackgroundPiece(p));
+      // Assemble ONLY the subject pieces at their ORIGINAL artwork positions so
+      // the cutouts reconstruct the artwork shape (bounds are normalized 0..1).
+      const placed: PlacedCollagePiece[] = subjectPieces.map((piece, i) => {
         return {
           instanceId: `placed-${Date.now()}-${i}`,
           pieceId: piece.id,
@@ -477,6 +503,7 @@ export const CollageStudio: React.FC = () => {
           zIndex: i + 1,
         };
       });
+      setAvailablePieces(subjectPieces);
       setPlacedPieces(placed);
       setSelectedPieceId(null);
     }
