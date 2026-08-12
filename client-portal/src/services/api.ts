@@ -969,7 +969,7 @@ class ApiClient {
     // Async response (HTTP 202) - AI-generated patterns need polling
     if (response.status === 202) {
       const { jobId } = await response.json();
-      return this.pollPatternJob(jobId);
+      return this.pollPatternJobWithRetry(jobId, prompt, options);
     }
 
     const errData = await response.json().catch(() => ({}));
@@ -1020,6 +1020,45 @@ class ApiClient {
     throw new Error('Pattern generation timed out. Please try again.');
   }
   /**
+   * Poll a pattern job, re-POSTing once if the first job was lost (e.g. the
+   * backend restarted and the in-memory job store was wiped, so polling 404s).
+   * Mirrors submitAndPollAIJob's retry-once behaviour for the Designer path.
+   */
+  private async pollPatternJobWithRetry(
+    firstJobId: string,
+    prompt: string,
+    options?: { gridSize?: number; maxColors?: number },
+  ): Promise<AIPatternResponse> {
+    let lastError: string | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt === 0) {
+          return await this.pollPatternJob(firstJobId);
+        }
+        // Retry: re-POST so the backend creates a fresh job on the running process.
+        const res = await fetch(`${this.apiBaseUrl}/ai/embroidery/text-to-pattern`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ prompt, ...options }),
+        });
+        if (res.status === 202) {
+          const { jobId } = await res.json();
+          return await this.pollPatternJob(jobId);
+        }
+        if (res.status === 200) {
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || data.message || 'Pattern generation failed');
+          return data;
+        }
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || `Pattern generation failed (${res.status})`);
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+    }
+    throw new Error(lastError || 'Pattern generation failed. Please try again.');
+  }
+  /**
    * Poll an async AI job (GET /api/ai/jobs/:id) every 2s until it finishes.
    * Throws on error/failed status or when the deadline passes.
    */
@@ -1063,14 +1102,21 @@ class ApiClient {
   ): Promise<T> {
     let lastError: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
-      // First attempt reuses the job from the initial POST; a retry re-POSTs
-      // through submit() so the backend creates a fresh job.
-      const jobId = attempt === 0 && firstJobId ? firstJobId : await submit();
-      const job = await this.pollAIJob(jobId);
-      if (job.status === 'done') {
-        return await normalize(job.result);
+      try {
+        // First attempt reuses the job from the initial POST; a retry re-POSTs
+        // through submit() so the backend creates a fresh job.
+        const jobId = attempt === 0 && firstJobId ? firstJobId : await submit();
+        const job = await this.pollAIJob(jobId);
+        if (job.status === 'done') {
+          return await normalize(job.result);
+        }
+        lastError = job.error;
+      } catch (err) {
+        // A lost/unknown job (e.g. the backend restarted and the in-memory job
+        // store was wiped, so polling 404s) must NOT abort the generation — the
+        // retry below re-POSTs and creates a fresh job on the running backend.
+        lastError = err instanceof Error ? err.message : String(err);
       }
-      lastError = job.error;
     }
     throw new Error(lastError || 'AI generation failed. Please try again.');
   }
