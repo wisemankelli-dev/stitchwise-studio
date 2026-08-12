@@ -596,9 +596,16 @@ function traceOutline(
     finalPts = finalPts.filter((_, i) => i % step === 0);
   }
 
+  // Outline points MUST be normalized to the PIECE's own bounding box (0..1 across
+  // minR..maxR / minC..maxC), NOT the full image. The client draws each outline in a
+  // viewBox stretched to the piece box (piece-local coords), so full-image normalization
+  // made every piece render a tiny misplaced fragment of the artwork contour — the
+  // "scattered pieces" bug. Fix 2026-08-12.
+  const pw = maxC - minC + 1;
+  const ph = maxR - minR + 1;
   const result = finalPts.map(([x, y]) => [
-    Math.max(0, Math.min(1, x / w)),
-    Math.max(0, Math.min(1, y / h)),
+    Math.max(0, Math.min(1, (x - minC) / pw)),
+    Math.max(0, Math.min(1, (y - minR) / ph)),
   ] as [number, number]);
 
   if (result.length < 3) return [[0, 0], [1, 0], [1, 1], [0, 1]];
