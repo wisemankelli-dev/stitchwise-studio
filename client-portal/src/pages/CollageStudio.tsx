@@ -250,8 +250,8 @@ export const CollageStudio: React.FC = () => {
         doc.setDrawColor(220, 200, 210);
         doc.rect(boxX, boxY, boxMm, boxMm);
         pieces.forEach((p, i) => {
-          const w = Math.max(40, p.piece.bounds.width * 500) * p.scale;
-          const h = Math.max(40, p.piece.bounds.height * 500) * p.scale;
+          const w = p.piece.bounds.width * 500 * p.scale;
+          const h = p.piece.bounds.height * 500 * p.scale;
           const cx = boxX + p.x * scale;
           const cy = boxY + p.y * scale;
           const rad = (p.rotation * Math.PI) / 180;
@@ -416,19 +416,15 @@ export const CollageStudio: React.FC = () => {
     if (result?.pieces && result.pieces.length > 0) {
       setAvailablePieces(result.pieces);
       if (result.referenceArt) setReferenceArt(result.referenceArt);
-      // Auto-place each piece once near the center of the canvas, slightly cascaded.
+      // Assemble pieces at their ORIGINAL artwork positions so the cutouts
+      // reconstruct the full pattern (bounds are normalized 0..1 coords).
       const placed: PlacedCollagePiece[] = result.pieces.map((piece, i) => {
-        const w = Math.max(40, piece.bounds.width * 500);
-        const h = Math.max(40, piece.bounds.height * 500);
-        const cols = Math.ceil(Math.sqrt(result.pieces!.length));
-        const col = i % cols;
-        const row = Math.floor(i / cols);
         return {
           instanceId: `placed-${Date.now()}-${i}`,
           pieceId: piece.id,
           piece,
-          x: 40 + col * (w + 16),
-          y: 40 + row * (h + 16),
+          x: piece.bounds.x * 500,
+          y: piece.bounds.y * 500,
           scale: 1,
           rotation: 0,
           zIndex: i + 1,
@@ -854,12 +850,12 @@ export const CollageStudio: React.FC = () => {
                     transformOrigin: 'center center',
                   }}
                 >
-                  {/* Reference art overlay — faint guide behind pieces */}
-                  {referenceArt && placedPieces.length > 0 && (
+                  {/* Reference art overlay — preview guide ONLY before the pattern is assembled */}
+                  {referenceArt && placedPieces.length === 0 && (
                     <img
                       src={referenceArt}
                       alt="Reference art"
-                      className="absolute inset-0 w-full h-full object-contain opacity-10 pointer-events-none select-none"
+                      className="absolute inset-0 w-full h-full object-contain opacity-25 pointer-events-none select-none"
                       draggable={false}
                     />
                   )}
@@ -918,8 +914,8 @@ export const CollageStudio: React.FC = () => {
                   })}
                   {/* Scrapbook cutout pieces (owner direction: pieces carry the art inside the shape) */}
                   {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed) => {
-                    const w = Math.max(40, placed.piece.bounds.width * 500) * placed.scale;
-                    const h = Math.max(40, placed.piece.bounds.height * 500) * placed.scale;
+                    const w = placed.piece.bounds.width * 500 * placed.scale;
+                    const h = placed.piece.bounds.height * 500 * placed.scale;
                     const isSelected = selectedPieceId === placed.instanceId && activeTool === 'select';
                     return (
                       <div
@@ -1087,7 +1083,7 @@ export const CollageStudio: React.FC = () => {
                   <p className="text-[11px] text-emerald-800">
                     <strong>Success!</strong>{' '}
                     {aiResult.pieces && aiResult.pieces.length > 0
-                      ? `${aiResult.pieces.length} scrapbook cutout pieces generated. Click "Apply to Canvas" above to arrange them.`
+                      ? `${aiResult.pieces.length} fabric pieces assembled into your collage. Drag any piece to fine-tune, or use the tray below.`
                       : `${aiResult.totalLayers} layers generated. Click "Apply to Canvas" above to use them.`}
                   </p>
                 </div>
