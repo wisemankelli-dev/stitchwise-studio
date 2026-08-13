@@ -290,6 +290,9 @@ export const QuiltBlockStudio: React.FC = () => {
     e.stopPropagation();
     setSelectedShapeId(id);
     movedRef.current = false;
+    // Capture the pointer so the drag keeps tracking even if the finger/cursor
+    // leaves the shape or the canvas mid-drag (critical on touch devices).
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* already released */ }
     const pt = toLogical(e.clientX, e.clientY);
     const s = shapesRef.current.find(sh => sh.id === id);
     if (!pt || !s) return;
@@ -301,6 +304,7 @@ export const QuiltBlockStudio: React.FC = () => {
     e.stopPropagation();
     setSelectedShapeId(id);
     movedRef.current = false;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* already released */ }
     const pt = toLogical(e.clientX, e.clientY);
     const s = shapesRef.current.find(sh => sh.id === id);
     if (!pt || !s) return;
@@ -312,6 +316,7 @@ export const QuiltBlockStudio: React.FC = () => {
     e.stopPropagation();
     setSelectedShapeId(id);
     movedRef.current = false;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* already released */ }
     const s = shapesRef.current.find(sh => sh.id === id);
     if (!s) return;
     const cx = s.x + s.width / 2;
@@ -896,6 +901,8 @@ export const QuiltBlockStudio: React.FC = () => {
                           height: shape.height,
                           transform: `rotate(${shape.rotation}deg)`,
                           zIndex: 50 + shape.zIndex,
+                          // Allow touch dragging instead of the browser hijacking the gesture for scrolling.
+                          touchAction: 'none',
                           filter: dragOp?.id === shape.id ? 'drop-shadow(0 3px 6px rgba(190,24,93,0.35))' : undefined,
                         }}
                       >
@@ -908,12 +915,14 @@ export const QuiltBlockStudio: React.FC = () => {
                               onPointerDown={(e) => startRotate(e, shape.id)}
                               title="Drag to rotate"
                               className="absolute -top-5 left-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-white border-2 border-blush-500 cursor-grab hover:scale-110 transition-transform"
+                              style={{ touchAction: 'none' }}
                             />
                             {/* Resize handle (bottom-right corner) */}
                             <div
                               onPointerDown={(e) => startResize(e, shape.id)}
                               title="Drag to resize"
                               className="absolute -right-1.5 -bottom-1.5 h-3.5 w-3.5 rounded-full bg-blush-500 border-2 border-white cursor-nwse-resize hover:scale-110 transition-transform"
+                              style={{ touchAction: 'none' }}
                             />
                           </>
                         )}
