@@ -6,7 +6,6 @@ import { Dashboard } from './pages/Dashboard';
 import { Pricing } from './pages/Pricing';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { FloralThemeShowcase } from './pages/FloralThemeShowcase';
-import { FeaturedGallery } from './pages/FeaturedGallery';
 import { CollageStudio } from './pages/CollageStudio';
 import { CommunityShowcase } from './pages/CommunityShowcase';
 import { QuiltBlockStudio } from './pages/QuiltBlockStudio';
@@ -15,7 +14,7 @@ import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image, Camera, Grid3X3, LogIn, UserPlus, LogOut, User, ShoppingBag } from 'lucide-react';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Camera, Grid3X3, LogIn, UserPlus, LogOut, User, ShoppingBag } from 'lucide-react';
 import { FloralDivider, DecorativeFlower } from './components/DecorativeSVGs';
 
 /**
@@ -108,10 +107,6 @@ function AppContent() {
                 <LayoutDashboard className="h-4 w-4 text-blush-400" />
                 Dashboard
               </Link>
-              <Link to="/gallery" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
-                <Image className="h-3.5 w-3.5 text-slate-400" />
-                Gallery
-              </Link>
               <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
                 <Camera className="h-3.5 w-3.5 text-slate-400" />
                 Showcase
@@ -181,7 +176,6 @@ function AppContent() {
           <Route path="/patterns" element={<PatternLibrary />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/floral-theme" element={<FloralThemeShowcase />} />
-          <Route path="/gallery" element={<FeaturedGallery />} />
           <Route path="/showcase" element={<CommunityShowcase />} />
           <Route path="/quilt-block" element={<QuiltBlockStudio />} />
           <Route path="/collage" element={<CollageStudio />} />
@@ -226,7 +220,6 @@ function AppContent() {
                 <Link to="/signup" className="text-slate-400 hover:text-blush-600 transition-colors">Sign Up</Link>
                 <Link to="/pricing" className="text-slate-400 hover:text-blush-600 transition-colors">Plans & Pricing</Link>
                 <Link to="/dashboard" className="text-slate-400 hover:text-blush-600 transition-colors">Dashboard</Link>
-                <Link to="/gallery" className="text-slate-400 hover:text-blush-600 transition-colors">Gallery</Link>
                 <Link to="/showcase" className="text-slate-400 hover:text-blush-600 transition-colors">Showcase</Link>
                 <Link to="/submit-project" className="text-slate-400 hover:text-blush-600 transition-colors">Custom Request</Link>
               </div>
