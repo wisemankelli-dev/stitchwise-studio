@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShoppingBag, Sparkles, Scissors, PackageOpen, RefreshCcw } from 'lucide-react';
+import { ShoppingBag, Sparkles, Scissors, PackageOpen, RefreshCcw, Mail } from 'lucide-react';
 import { FloralDivider } from '../components/DecorativeSVGs';
 
 /** One buyable pattern as served by GET /api/library/patterns (public, no auth). */
@@ -63,6 +63,45 @@ export const PatternLibrary: React.FC = () => {
             <p className="text-base text-slate-500 max-w-2xl mx-auto">
               Buy individual patterns for small projects — no account or subscription needed.
               Each purchase includes everything you need to stitch it yourself.
+            </p>
+            {/* What you receive — process explained */}
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+              <div className="rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-blush-200/70 px-4 py-3.5 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blush-100 text-blush-600">
+                  <ShoppingBag className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">1. Buy</p>
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    Secure one-off checkout — no account or subscription required.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-blush-200/70 px-4 py-3.5 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blush-100 text-blush-600">
+                  <Mail className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">2. Receive</p>
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    Your pattern PDF is emailed to you after purchase — ready to download and print.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-blush-200/70 px-4 py-3.5 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blush-100 text-blush-600">
+                  <Scissors className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">3. Stitch</p>
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    Follow the chart and DMC color key included with your pattern.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-slate-400">
+              Buy it once, keep it forever — no subscription, ever.
             </p>
             <div className="mt-8">
               <FloralDivider className="w-40 mx-auto" />
