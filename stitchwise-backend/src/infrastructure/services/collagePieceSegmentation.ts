@@ -101,6 +101,20 @@ export async function segmentImageIntoPieces(
   const k = Math.max(COLOR_MIN, Math.min(COLOR_MAX, Math.round(maxPieces * COLOR_FACTOR)));
   const { labels, centroids } = kmeansQuantize(pixels, w, h, k);
 
+  // ── 1b. Exclude the BACKGROUND at pixel level BEFORE segmentation ─────────
+  // In a collage quilt the backdrop is the BASE FABRIC, not a cutout piece.
+  // Flood-fill from the image border over near-white pixels (the "white
+  // background" of prompts like "red octopus on a white background") and mask
+  // those pixels out of the label map entirely: they belong to no piece, and
+  // the white canvas shows through as the base fabric. This prevents the
+  // background from fragmenting into dozens of near-white pieces (each touching
+  // only 0-1 edges, so the edge-count filter can't catch them) that would tile
+  // around the subject and make the pattern look scrambled.
+  const bgMask = floodBackground(pixels, w, h);
+  for (let i = 0; i < n; i++) {
+    if (bgMask[i]) labels[i] = -1; // -1 = background: never a piece
+  }
+
   // ── 2. Median filter labels (majority of 3x3) to remove speckle ──────────
   const cleanLabels = medianFilterLabels(labels, w, h, 2);
 
@@ -348,14 +362,78 @@ interface Region {
   cells: number[];
 }
 
-/** Connected components (4-connectivity) of equal labels. */
+/**
+ * Flood-fill from the image border over near-white pixels (brightness >= 200
+ * and low saturation) to find the white background region(s). Returns a mask
+ * (1 = background). In a collage quilt the backdrop is the base fabric — it is
+ * excluded from the pieces so the white canvas shows through underneath.
+ */
+function floodBackground(pixels: Uint8ClampedArray, w: number, h: number): Uint8Array {
+  const n = w * h;
+  const isNearWhite = (i: number): boolean => {
+    const r = pixels[i * 4];
+    const g = pixels[i * 4 + 1];
+    const b = pixels[i * 4 + 2];
+    const bright = (r + g + b) / 3;
+    const mx = Math.max(r, g, b);
+    const mn = Math.min(r, g, b);
+    // Near-white (bright) AND low saturation (not a colored region).
+    return bright >= 200 && mx - mn <= 60;
+  };
+
+  const mask = new Uint8Array(n);
+  const stack: number[] = [];
+  // Seed from all border pixels that are near-white
+  for (let x = 0; x < w; x++) {
+    const top = x;
+    const bottom = (h - 1) * w + x;
+    for (const idx of [top, bottom]) {
+      if (!mask[idx] && isNearWhite(idx)) {
+        mask[idx] = 1;
+        stack.push(idx);
+      }
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    const left = y * w;
+    const right = y * w + (w - 1);
+    for (const idx of [left, right]) {
+      if (!mask[idx] && isNearWhite(idx)) {
+        mask[idx] = 1;
+        stack.push(idx);
+      }
+    }
+  }
+
+  // 4-connectivity flood
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    const r = Math.floor(idx / w);
+    const c = idx % w;
+    const nbs = [
+      r > 0 ? idx - w : -1,
+      r < h - 1 ? idx + w : -1,
+      c > 0 ? idx - 1 : -1,
+      c < w - 1 ? idx + 1 : -1,
+    ];
+    for (const nb of nbs) {
+      if (nb >= 0 && !mask[nb] && isNearWhite(nb)) {
+        mask[nb] = 1;
+        stack.push(nb);
+      }
+    }
+  }
+  return mask;
+}
+
+/** Connected components (4-connectivity) of equal labels (skip label -1). */
 function connectedComponents(labels: Int32Array, w: number, h: number): Region[] {
   const n = w * h;
   const visited = new Uint8Array(n);
   const regions: Region[] = [];
   const stack: number[] = [];
   for (let i = 0; i < n; i++) {
-    if (visited[i]) continue;
+    if (visited[i] || labels[i] < 0) continue;
     visited[i] = 1;
     const label = labels[i];
     stack.push(i);
