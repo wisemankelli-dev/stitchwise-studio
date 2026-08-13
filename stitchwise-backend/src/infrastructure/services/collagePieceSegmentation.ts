@@ -46,7 +46,7 @@ import type { CollagePiece } from "../../domain/ai/collageAI";
 /** Working resolution (max dimension) used for segmentation analysis. */
 const WORK_SIZE = 384;
 /** Default maximum number of pieces. */
-const MAX_PIECES = 40;
+const MAX_PIECES = 60;
 /**
  * Regions smaller than this fraction of the image are merged into a neighbor.
  * With label-map connected components every pixel is already assigned, so this
@@ -55,19 +55,20 @@ const MAX_PIECES = 40;
 const MIN_PIECE_FRACTION = 0.001;
 /** Maximum pixel dimension of a piece image crop (keeps payloads sane). */
 const PIECE_MAX_DIM = 256;
-/** K-means palette size factor: colors = clamp(round(maxPieces * 0.55), 6, 20). */
-const COLOR_FACTOR = 0.55;
-const COLOR_MIN = 6;
-const COLOR_MAX = 20;
+/** K-means palette size factor: colors = clamp(round(maxPieces * 1.0), 10, 48). */
+const COLOR_FACTOR = 1.0;
+const COLOR_MIN = 10;
+const COLOR_MAX = 48;
 /**
  * Adjacent regions whose average colors are within this RGB Euclidean
- * distance are merged into one piece — collage patterns group similar fabric
- * shades into a single larger region (a 16x16 block rarely exceeds 50-75
- * pieces total).
+ * distance are merged into one piece — collage patterns group only
+ * near-identical fabric shades into a single larger region, while keeping
+ * distinct feather/color variations as separate pieces (a 16x16 block can
+ * reach 40-60 pieces when the artwork has rich color detail).
  */
-const COLOR_MERGE_DISTANCE = 55;
+const COLOR_MERGE_DISTANCE = 18;
 /** Never merge below this many pieces, even if colors are close. */
-const MIN_PIECES_AFTER_MERGE = 10;
+const MIN_PIECES_AFTER_MERGE = 30;
 
 export interface SegmentationOptions {
   maxPieces?: number;
@@ -97,7 +98,7 @@ export async function segmentImageIntoPieces(
 
   const { data } = await sharp(imageBuffer)
     .resize(w, h, { fit: "fill" })
-    .median(2)
+    .median(1)
     // CRITICAL: force 4 channels. Real AI art comes back as RGB (no alpha)
     // and the whole pipeline indexes pixels[i*4] assuming RGBA.
     .ensureAlpha()
@@ -125,7 +126,7 @@ export async function segmentImageIntoPieces(
   }
 
   // ── 2. Median filter labels (majority of 3x3) to remove speckle ──────────
-  const cleanLabels = medianFilterLabels(labels, w, h, 2);
+  const cleanLabels = medianFilterLabels(labels, w, h, 1);
 
   // ── 3. Connected components of equal labels → pieces ─────────────────────
   const regions = connectedComponents(cleanLabels, w, h);
@@ -395,8 +396,14 @@ function floodBackground(pixels: Uint8ClampedArray, w: number, h: number): Uint8
     const bright = (r + g + b) / 3;
     const mx = Math.max(r, g, b);
     const mn = Math.min(r, g, b);
-    // Near-white (bright) AND low saturation (not a colored region).
-    return bright >= 200 && mx - mn <= 60;
+    const sat = mx - mn;
+    // TRUE near-white (bright AND essentially colorless): pure-white AI
+    // backgrounds (bright ≥235, sat ≤25) or neutral light grays (bright ≥200,
+    // sat ≤8). Anything with real color survives — pale animal legs (rooster
+    // shanks, cream/light-tan limbs) sit at bright 200-235 with sat 30-65 and
+    // were being flooded as "background", which dropped the legs from the
+    // pattern entirely.
+    return (bright >= 235 && sat <= 25) || (bright >= 200 && sat <= 8);
   };
 
   const mask = new Uint8Array(n);
