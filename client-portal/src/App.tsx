@@ -10,11 +10,12 @@ import { FeaturedGallery } from './pages/FeaturedGallery';
 import { CollageStudio } from './pages/CollageStudio';
 import { CommunityShowcase } from './pages/CommunityShowcase';
 import { QuiltBlockStudio } from './pages/QuiltBlockStudio';
+import { PatternLibrary } from './pages/PatternLibrary';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image, Camera, Grid3X3, LogIn, UserPlus, LogOut, User } from 'lucide-react';
+import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Image, Camera, Grid3X3, LogIn, UserPlus, LogOut, User, ShoppingBag } from 'lucide-react';
 import { FloralDivider, DecorativeFlower } from './components/DecorativeSVGs';
 
 /**
@@ -99,6 +100,10 @@ function AppContent() {
                 <CreditCard className="h-3.5 w-3.5 text-slate-400" />
                 Plans &amp; Pricing
               </Link>
+              <Link to="/patterns" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5">
+                <ShoppingBag className="h-3.5 w-3.5 text-slate-400" />
+                Pattern Shop
+              </Link>
               <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5">
                 <LayoutDashboard className="h-4 w-4 text-blush-400" />
                 Dashboard
@@ -173,6 +178,7 @@ function AppContent() {
             <ProtectedRoute><Designer /></ProtectedRoute>
           } />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/patterns" element={<PatternLibrary />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/floral-theme" element={<FloralThemeShowcase />} />
           <Route path="/gallery" element={<FeaturedGallery />} />
