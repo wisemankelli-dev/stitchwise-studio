@@ -4,7 +4,7 @@ import { dirname, resolve } from "path";
 import type { Request, Response, NextFunction } from "express";
 
 export const AI_LIMITS: Record<string, { daily: number; monthly: number }> = {
-  HOBBYIST: { daily: 5, monthly: 30 },
+  HOBBYIST: { daily: 2, monthly: 10 },
   PRO: { daily: 15, monthly: 100 },
   STUDIO: { daily: 30, monthly: 200 },
 };
