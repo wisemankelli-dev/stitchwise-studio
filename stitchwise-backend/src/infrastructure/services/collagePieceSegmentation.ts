@@ -98,7 +98,7 @@ export async function segmentImageIntoPieces(
 
   const { data } = await sharp(imageBuffer)
     .resize(w, h, { fit: "fill" })
-    .median(2)
+    .median(1)
     // CRITICAL: force 4 channels. Real AI art comes back as RGB (no alpha)
     // and the whole pipeline indexes pixels[i*4] assuming RGBA.
     .ensureAlpha()
@@ -126,7 +126,7 @@ export async function segmentImageIntoPieces(
   }
 
   // ── 2. Median filter labels (majority of 3x3) to remove speckle ──────────
-  const cleanLabels = medianFilterLabels(labels, w, h, 2);
+  const cleanLabels = medianFilterLabels(labels, w, h, 1);
 
   // ── 3. Connected components of equal labels → pieces ─────────────────────
   const regions = connectedComponents(cleanLabels, w, h);
@@ -396,8 +396,14 @@ function floodBackground(pixels: Uint8ClampedArray, w: number, h: number): Uint8
     const bright = (r + g + b) / 3;
     const mx = Math.max(r, g, b);
     const mn = Math.min(r, g, b);
-    // Near-white (bright) AND low saturation (not a colored region).
-    return bright >= 200 && mx - mn <= 60;
+    const sat = mx - mn;
+    // TRUE near-white (bright AND essentially colorless): pure-white AI
+    // backgrounds (bright ≥235, sat ≤25) or neutral light grays (bright ≥200,
+    // sat ≤8). Anything with real color survives — pale animal legs (rooster
+    // shanks, cream/light-tan limbs) sit at bright 200-235 with sat 30-65 and
+    // were being flooded as "background", which dropped the legs from the
+    // pattern entirely.
+    return (bright >= 235 && sat <= 25) || (bright >= 200 && sat <= 8);
   };
 
   const mask = new Uint8Array(n);
