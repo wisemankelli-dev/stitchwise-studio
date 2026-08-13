@@ -335,6 +335,167 @@ function imageToGrid(
   return { grid, palette };
 }
 
+/**
+ * Most frequent color among the cells in the outer 2-cell border of the grid.
+ * Falls back to the most frequent color overall when the border is empty/absent.
+ * Returns null for a fully empty grid.
+ */
+function detectBackgroundColor(grid: Record<string, string>, width: number, height: number): string | null {
+  const borderCounts = new Map<string, number>();
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (y < 2 || y >= height - 2 || x < 2 || x >= width - 2) {
+        const color = grid[`${y},${x}`];
+        if (color) borderCounts.set(color, (borderCounts.get(color) ?? 0) + 1);
+      }
+    }
+  }
+  if (borderCounts.size > 0) {
+    let best = '';
+    let bestCount = -1;
+    for (const [color, count] of borderCounts) {
+      if (count > bestCount) { best = color; bestCount = count; }
+    }
+    return best;
+  }
+  const overall = new Map<string, number>();
+  for (const color of Object.values(grid)) {
+    if (color) overall.set(color, (overall.get(color) ?? 0) + 1);
+  }
+  if (overall.size > 0) {
+    let best = '';
+    let bestCount = -1;
+    for (const [color, count] of overall) {
+      if (count > bestCount) { best = color; bestCount = count; }
+    }
+    return best;
+  }
+  return null;
+}
+
+/**
+ * Auto-frame a generated/imported pattern inside the grid (owner bug report):
+ * generated/imported patterns were cut off at the grid edges because the image
+ * fills the grid edge-to-edge, so a subject that fills the photo (e.g. the
+ * Blank Stocking) ran flush into the pattern border.
+ *
+ * 1. Detect the background color (border majority, fallback to most frequent).
+ * 2. Compute the content bbox (cells ≠ background; empty cells = background).
+ * 3. If the content already has ≥ M empty cells on all four sides → unchanged.
+ * 4. Otherwise scale (nearest-neighbor) + center with margin M, dropping
+ *    background-colored cells (they become empty fabric, not stitches).
+ */
+export function framePatternInGrid(
+  grid: Record<string, string>,
+  stitchTypes: Record<string, string>,
+  cellFractions: Record<string, number>,
+  width: number,
+  height: number,
+): { grid: Record<string, string>; stitchTypes: Record<string, string>; cellFractions: Record<string, number> } {
+  const bg = detectBackgroundColor(grid, width, height);
+  if (!bg) return { grid, stitchTypes, cellFractions }; // fully empty grid
+
+  // Content bbox: rows/cols where cell color ≠ background (empty = background).
+  let minR = height, maxR = -1, minC = width, maxC = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const color = grid[`${y},${x}`];
+      if (color && color !== bg) {
+        if (y < minR) minR = y;
+        if (y > maxR) maxR = y;
+        if (x < minC) minC = x;
+        if (x > maxC) maxC = x;
+      }
+    }
+  }
+  if (maxR < 0) return { grid, stitchTypes, cellFractions }; // no content
+
+  const M = Math.max(3, Math.round(0.05 * Math.min(width, height)));
+
+  // Count fully-empty (absent) rows/cols from each edge inward — a design that
+  // already has ≥ M empty cells on all four sides is well-framed: leave it alone.
+  const emptyTop = countEmptyTop(grid, width, minR);
+  const emptyBottom = countEmptyBottom(grid, width, height, maxR);
+  const emptyLeft = countEmptyLeft(grid, height, minC);
+  const emptyRight = countEmptyRight(grid, height, width, maxC);
+  if (emptyTop >= M && emptyBottom >= M && emptyLeft >= M && emptyRight >= M) {
+    return { grid, stitchTypes, cellFractions };
+  }
+
+  const bboxW = maxC - minC + 1;
+  const bboxH = maxR - minR + 1;
+  const scale = Math.min((width - 2 * M) / bboxW, (height - 2 * M) / bboxH, 1);
+  const scaledW = Math.max(1, Math.round(bboxW * scale));
+  const scaledH = Math.max(1, Math.round(bboxH * scale));
+  const offsetX = Math.floor((width - scaledW) / 2);
+  const offsetY = Math.floor((height - scaledH) / 2);
+
+  const newGrid: Record<string, string> = {};
+  const newStitchTypes: Record<string, string> = {};
+  const newCellFractions: Record<string, number> = {};
+  for (let tr = 0; tr < scaledH; tr++) {
+    for (let tc = 0; tc < scaledW; tc++) {
+      // Nearest-neighbor: sample the source bbox cell this target maps to.
+      const sr = Math.min(minR + Math.floor(tr / scale), maxR);
+      const sc = Math.min(minC + Math.floor(tc / scale), maxC);
+      const srcKey = `${sr},${sc}`;
+      const color = grid[srcKey];
+      // Omit background-colored cells — they become empty fabric, not stitches.
+      if (color && color !== bg) {
+        const dstKey = `${offsetY + tr},${offsetX + tc}`;
+        newGrid[dstKey] = color;
+        if (stitchTypes[srcKey]) newStitchTypes[dstKey] = stitchTypes[srcKey];
+        if (cellFractions[srcKey] !== undefined) newCellFractions[dstKey] = cellFractions[srcKey];
+      }
+    }
+  }
+  return { grid: newGrid, stitchTypes: newStitchTypes, cellFractions: newCellFractions };
+}
+
+function countEmptyTop(grid: Record<string, string>, width: number, minR: number): number {
+  let n = 0;
+  for (let y = 0; y < minR; y++) {
+    for (let x = 0; x < width; x++) {
+      if (grid[`${y},${x}`]) return n;
+    }
+    n++;
+  }
+  return n;
+}
+
+function countEmptyBottom(grid: Record<string, string>, width: number, height: number, maxR: number): number {
+  let n = 0;
+  for (let y = height - 1; y > maxR; y--) {
+    for (let x = 0; x < width; x++) {
+      if (grid[`${y},${x}`]) return n;
+    }
+    n++;
+  }
+  return n;
+}
+
+function countEmptyLeft(grid: Record<string, string>, height: number, minC: number): number {
+  let n = 0;
+  for (let x = 0; x < minC; x++) {
+    for (let y = 0; y < height; y++) {
+      if (grid[`${y},${x}`]) return n;
+    }
+    n++;
+  }
+  return n;
+}
+
+function countEmptyRight(grid: Record<string, string>, height: number, width: number, maxC: number): number {
+  let n = 0;
+  for (let x = width - 1; x > maxC; x--) {
+    for (let y = 0; y < height; y++) {
+      if (grid[`${y},${x}`]) return n;
+    }
+    n++;
+  }
+  return n;
+}
+
 const STITCH_STYLES: StitchStyle[] = [
   { id: 'cross', name: 'Cross Stitch', description: 'Traditional X-shaped intersection' },
   { id: 'satin', name: 'Satin Stitch', description: 'Flat, glossy parallel stitches' },
@@ -483,25 +644,14 @@ export const Designer: React.FC = () => {
         // Convert to grid at the aspect-preserving dimensions
         const result = imageToGrid(img, drawW, drawH, numColors);
         
-        // Center the design on the grid
-        const offsetX = Math.floor((gridWidth - drawW) / 2);
-        const offsetY = Math.floor((gridHeight - drawH) / 2);
+        // Auto-frame: fit + center with a margin, and drop the detected
+        // background (owner bug report — subjects were running flush into the
+        // pattern border). Handles the old offsetX/offsetY centering too.
+        const framed = framePatternInGrid(result.grid, {}, {}, gridWidth, gridHeight);
         
-        const centeredGrid: Record<string, string> = {};
-        const centeredStitchTypes: Record<string, string> = {};
-        for (const [key, color] of Object.entries(result.grid)) {
-          const [y, x] = key.split(',').map(Number);
-          const cy = y + offsetY;
-          const cx = x + offsetX;
-          if (cy >= 0 && cy < gridHeight && cx >= 0 && cx < gridWidth) {
-            centeredGrid[`${cy},${cx}`] = color;
-            centeredStitchTypes[`${cy},${cx}`] = 'cross';
-          }
-        }
-        
-        setGrid(centeredGrid);
-        setGridStitchTypes(centeredStitchTypes);
-        setCellFractions({});
+        setGrid(framed.grid);
+        setGridStitchTypes(framed.stitchTypes);
+        setCellFractions(framed.cellFractions);
         setIsProcessingImage(false);
         
         // Reset file input so user can re-upload the same file
@@ -1016,13 +1166,20 @@ export const Designer: React.FC = () => {
 
       const newH = data.grid.length;
       const newW = data.grid[0]?.length || 0;
+      let finalGrid = newGrid;
+      let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
         setGridWidth(newW);
         setGridHeight(newH);
+        // Auto-frame: fit + center with a margin, drop the detected background
+        // (owner bug report — generated subjects were running flush into the border).
+        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, newW, newH);
+        finalGrid = framed.grid;
+        finalStitchTypes = framed.stitchTypes;
       }
 
-      setGrid(newGrid);
-      setGridStitchTypes(newStitchTypes);
+      setGrid(finalGrid);
+      setGridStitchTypes(finalStitchTypes);
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
@@ -1033,7 +1190,7 @@ export const Designer: React.FC = () => {
       }
 
       setAiStats({
-        stitches: Object.keys(newGrid).length,
+        stitches: Object.keys(finalGrid).length,
         colors: dmcSet.size,
         backstitch,
         crossStitch,
