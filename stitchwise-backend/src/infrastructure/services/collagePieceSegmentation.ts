@@ -3,45 +3,62 @@
  *
  * The collage-quilting flow (owner direction, reference: collagequilters.com)
  * treats the requested art like a fabric collage: the image is divided into
- * ORGANIC, CONTOUR-FOLLOWING pieces that tile the canvas EDGE-TO-EDGE (like a
- * stained-glass window / jigsaw). Each piece carries the real art pixels inside
- * its outline, with transparency outside the mask. The customer cuts each piece
- * from fabric, lays the pieces on the quilt block, and reassembles them into
- * the lifelike design.
+ * pieces that each represent ONE COLOR VARIANT of the artwork, so the customer
+ * cuts each piece from fabric similar in color/texture and reassembles them
+ * into the lifelike design.
  *
- * Segmentation algorithm (replaced k-means color blobs on 2026-08-12):
- *   1. Compute the luminance image + Sobel gradient magnitude (smoothed).
- *   2. Place seeds on a jittered grid (organic puzzle look), snapped to local
- *      gradient minima so seeds never start on an edge.
- *   3. Watershed by immersion (priority flood): pixels are claimed by the seed
- *      that reaches them first, ordered by gradient cost, so region boundaries
- *      settle along the strongest image edges.
- *   4. Merge tiny regions into their largest neighbor until at most maxPieces
- *      remain. EVERY pixel belongs to exactly one piece — the reassembly is
- *      complete with no gaps (this was the "splattered marks" bug: the old
- *      k-means path dropped specks and left holes).
- *   5. For each region emit a CollagePiece:
- *        { id, label, outline: [[x,y] normalized 0-1] (simplified polygon),
- *          bounds (normalized bbox), color (dominant fabric hex),
+ * Segmentation algorithm (color-region segmentation, replaced gradient
+ * watershed on 2026-08-12 after the owner reported "random shapes"):
+ *   The old watershed followed luminance/texture edges, so painterly shading
+ *   and brush texture inside a single color area got split into arbitrary
+ *   slivers. Real collage quilting follows COLOR areas: each fabric piece is
+ *   one region of similar color. So:
+ *
+ *   1. K-means color quantization (deterministic, k = f(maxPieces)) turns the
+ *      art into a small palette of representative color centroids.
+ *   2. Every pixel is assigned to its nearest centroid → label map.
+ *   3. A 3x3 majority (median) filter is applied to the label map (2 passes)
+ *      to remove single-pixel speckle so regions come out contiguous.
+ *   4. Connected components (4-connectivity) of equal labels are the pieces.
+ *      Every pixel belongs to exactly one component → edge-to-edge tiling with
+ *      no gaps (this was the "splattered marks" bug of the old k-means path,
+ *      which DROPPED specks and left holes — here we MERGE, never drop).
+ *   5. Tiny regions merge into their largest neighbor (never dropped), and the
+ *      result is capped at maxPieces by merging the smallest into the largest
+ *      neighbor (by shared border).
+ *   6. For each region emit a CollagePiece:
+ *        { id, label, outline: [[x,y] normalized 0-1] (piece-local bbox),
+ *          bounds (normalized bbox in the art), color (the quantized color
+ *          variant — the fabric the customer should match),
  *          image: data-URL PNG cutout with transparency outside the mask }
- *   6. Also return the full art image as a data-URL reference.
+ *   7. Background pieces (near-white AND touching >= 2 canvas edges) are
+ *      excluded server-side: in a collage quilt the background is the BASE
+ *      FABRIC, not a cutout piece (the client also re-checks this).
+ *   8. Also return the full art image as a data-URL reference.
+ *
+ * Outline tracing uses Moore-neighbor boundary following so CONCAVE color
+ * regions (C-shapes, rings, tentacle forks) trace their true contour — the old
+ * angle-sort-around-centroid approach could only produce star-shaped outlines.
  */
 import sharp from "sharp";
-import { closestFabricColor } from "../../domain/collage/fabricColors";
 import type { CollagePiece } from "../../domain/ai/collageAI";
 
 /** Working resolution (max dimension) used for segmentation analysis. */
-const WORK_SIZE = 256;
+const WORK_SIZE = 384;
 /** Default maximum number of pieces. */
 const MAX_PIECES = 40;
 /**
  * Regions smaller than this fraction of the image are merged into a neighbor.
- * With grid-seeded watershed every pixel is already assigned, so this only
- * cleans up accidental slivers (e.g. a 2px boundary artifact).
+ * With label-map connected components every pixel is already assigned, so this
+ * only cleans up accidental slivers (e.g. a 2px boundary artifact).
  */
 const MIN_PIECE_FRACTION = 0.001;
 /** Maximum pixel dimension of a piece image crop (keeps payloads sane). */
 const PIECE_MAX_DIM = 256;
+/** K-means palette size factor: colors = clamp(round(maxPieces * 0.7), 8, 28). */
+const COLOR_FACTOR = 0.7;
+const COLOR_MIN = 8;
+const COLOR_MAX = 28;
 
 export interface SegmentationOptions {
   maxPieces?: number;
@@ -54,7 +71,7 @@ export interface SegmentationResult {
 }
 
 /**
- * Segment an art image into scrapbook cutout pieces.
+ * Segment an art image into scrapbook cutout pieces that follow COLOR regions.
  */
 export async function segmentImageIntoPieces(
   imageBuffer: Buffer,
@@ -80,120 +97,29 @@ export async function segmentImageIntoPieces(
   const pixels = new Uint8ClampedArray(data);
   const n = w * h;
 
-  // ── 1. Luminance + gradient ────────────────────────────────────────────────
-  const lum = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    lum[i] = 0.299 * pixels[i * 4] + 0.587 * pixels[i * 4 + 1] + 0.114 * pixels[i * 4 + 2];
-  }
-  const grad = sobelGradient(lum, w, h);
-  smoothBox(grad, w, h, 2); // suppress noise so boundaries don't zigzag
+  // ── 1. Deterministic k-means color quantization ───────────────────────────
+  const k = Math.max(COLOR_MIN, Math.min(COLOR_MAX, Math.round(maxPieces * COLOR_FACTOR)));
+  const { labels, centroids } = kmeansQuantize(pixels, w, h, k);
 
-  // ── 2. Jittered grid seeds, snapped to local gradient minima ──────────────
-  const dim = Math.max(1, Math.ceil(Math.sqrt(maxPieces)));
-  const seeds: number[] = [];
-  const jitterAmp = 0.22; // fraction of a grid cell
-  let seedIndex = 0;
-  for (let gy = 0; gy < dim; gy++) {
-    for (let gx = 0; gx < dim; gx++) {
-      const jx = (hash01(seedIndex * 2 + 1) - 0.5) * 2 * jitterAmp;
-      const jy = (hash01(seedIndex * 2 + 2) - 0.5) * 2 * jitterAmp;
-      const cx = (gx + 0.5 + jx) / dim;
-      const cy = (gy + 0.5 + jy) / dim;
-      const px = Math.max(0, Math.min(w - 1, Math.round(cx * w)));
-      const py = Math.max(0, Math.min(h - 1, Math.round(cy * h)));
-      // Snap to lowest gradient in a 5x5 neighborhood so seeds don't sit on edges.
-      let best = py * w + px;
-      let bestG = grad[best];
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const yy = py + dy;
-          const xx = px + dx;
-          if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
-          const idx = yy * w + xx;
-          if (grad[idx] < bestG) {
-            bestG = grad[idx];
-            best = idx;
-          }
-        }
-      }
-      seeds.push(best);
-      seedIndex++;
-    }
+  // ── 2. Median filter labels (majority of 3x3) to remove speckle ──────────
+  const cleanLabels = medianFilterLabels(labels, w, h, 2);
+
+  // ── 3. Connected components of equal labels → pieces ─────────────────────
+  const regions = connectedComponents(cleanLabels, w, h);
+  if (regions.length === 0) {
+    return {
+      pieces: [],
+      referenceImage: await makeReferenceImage(imageBuffer),
+    };
   }
 
-  // ── 3. Watershed by immersion (priority flood) ─────────────────────────────
-  // Every pixel is claimed by the seed that floods it first, expanding in
-  // order of gradient cost → boundaries land on high-gradient (edge) lines and
-  // the canvas is perfectly tiled (no unassigned pixels). Equal-cost pixels are
-  // popped in FIFO order (monotonic seq) so flat regions expand uniformly from
-  // ALL seeds — without the tie-break, early seeds swallow the whole background
-  // and later seeds end up as tiny slivers that get merged away.
-  const labels = new Int32Array(n).fill(-1);
-  const heap: number[][] = []; // [cost, seq, idx, owner]
-  let seq = 0;
-  const heapPop = (): number[] | undefined => {
-    if (heap.length === 0) return undefined;
-    const top = heap[0];
-    const last = heap.pop()!;
-    if (heap.length > 0) {
-      heap[0] = last;
-      let c = 0;
-      for (;;) {
-        const l = c * 2 + 1;
-        const r = l + 1;
-        let m = c;
-        if (l < heap.length && less(heap[l], heap[m])) m = l;
-        if (r < heap.length && less(heap[r], heap[m])) m = r;
-        if (m === c) break;
-        [heap[m], heap[c]] = [heap[c], heap[m]];
-        c = m;
-      }
-    }
-    return top;
-  };
-
-  for (let s = 0; s < seeds.length; s++) {
-    labels[seeds[s]] = s;
-    pushNeighbors(seeds[s], w, h, grad, labels, heap, s, () => ++seq);
-  }
-  while (true) {
-    const entry = heapPop();
-    if (!entry) break;
-    const [, , idx, owner] = entry;
-    if (labels[idx] !== -1) continue;
-    labels[idx] = owner;
-    pushNeighbors(idx, w, h, grad, labels, heap, owner, () => ++seq);
-  }
-
-  // ── 4. Regions from labels + merge to maxPieces ───────────────────────────
-  const regionCount = seeds.length;
-  const regions: Region[] = [];
-  const sizes = new Int32Array(regionCount);
-  for (let i = 0; i < n; i++) {
-    if (labels[i] >= 0) sizes[labels[i]]++;
-  }
-  for (let r = 0; r < regionCount; r++) {
-    if (sizes[r] === 0) continue;
-    regions.push({ id: regions.length, cells: [] });
-  }
-  const remap = new Int32Array(regionCount).fill(-1);
-  let regionIdx = 0;
-  for (let r = 0; r < regionCount; r++) {
-    if (sizes[r] === 0) continue;
-    remap[r] = regionIdx++;
-  }
-  for (let i = 0; i < n; i++) {
-    if (labels[i] >= 0) regions[remap[labels[i]]].cells.push(i);
-  }
-
-  // Merge tiny regions into their largest neighbor (NEVER drop pixels — every
-  // pixel must belong to exactly one piece or the reassembly has holes).
+  // ── 4. Merge tiny regions into largest neighbor (never drop pixels) ───────
   const minArea = Math.max(4, Math.floor(n * MIN_PIECE_FRACTION));
-  let kept = mergeTinyRegions(regions, labels, w, h, minArea);
+  let kept = mergeTinyRegions(regions, cleanLabels, w, h, minArea);
   if (kept.length === 0) {
     kept = [{ id: 0, cells: Array.from({ length: n }, (_, i) => i) }];
   }
-  kept = capRegions(kept, labels, w, h, maxPieces);
+  kept = capRegions(kept, cleanLabels, w, h, maxPieces);
 
   // ── 5. Emit pieces ────────────────────────────────────────────────────────
   const pieces: CollagePiece[] = [];
@@ -202,7 +128,7 @@ export async function segmentImageIntoPieces(
     const mask = new Uint8Array(n);
     for (const cell of region.cells) mask[cell] = 1;
 
-    // Normalized bounds
+    // Normalized bounds in the full art
     const rows: number[] = [];
     const cols: number[] = [];
     for (const cell of region.cells) {
@@ -220,11 +146,12 @@ export async function segmentImageIntoPieces(
       height: (maxR - minR + 1) / h,
     };
 
-    // Dominant color: average of original pixels in the region → closest fabric
-    const avg = averageColor(pixels, w, h, region.cells);
-    const fabric = closestFabricColor(avg[0], avg[1], avg[2]);
+    // Dominant color = the quantized color variant (centroid of this region's
+    // dominant label). This is the fabric color the customer should match.
+    const labelColor = dominantLabelColor(cleanLabels, pixels, w, h, region.cells, centroids);
+    const color = rgbToHex(labelColor);
 
-    // Simplified outline polygon (normalized 0-1)
+    // True boundary contour (Moore neighbor tracing), normalized piece-local
     const outline = traceOutline(mask, w, h, minR, maxR, minC, maxC);
 
     // Cutout image: crop bbox from ORIGINAL art, transparency outside mask
@@ -235,123 +162,183 @@ export async function segmentImageIntoPieces(
       label: `Piece ${i + 1}`,
       outline,
       bounds,
-      color: fabric.hex,
+      color,
       image,
     });
   }
 
-  // ── 6. Reference image (full art, downscaled) ─────────────────────────────
-  const ref = await sharp(imageBuffer)
-    .resize(512, 512, { fit: "inside", withoutEnlargement: true })
-    .png()
-    .toBuffer();
-  const referenceImage = `data:image/png;base64,${ref.toString("base64")}`;
+  // ── 6. Exclude background pieces (near-white + touching >= 2 edges) ───────
+  // In a collage quilt the backdrop is the base fabric, not a cutout piece.
+  // The white canvas becomes the base fabric underneath the subject pieces.
+  const subjectPieces = pieces.filter((p) => !isBackgroundPiece(p));
 
-  return { pieces, referenceImage };
+  return {
+    pieces: subjectPieces,
+    referenceImage: await makeReferenceImage(imageBuffer),
+  };
 }
 
-// ─── Gradient helpers ────────────────────────────────────────────────────────
+// ─── K-means color quantization ──────────────────────────────────────────────
 
-function sobelGradient(lum: Float32Array, w: number, h: number): Float32Array {
-  const grad = new Float32Array(w * h);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const i = y * w + x;
-      const gx =
-        lum[i - w - 1] + 2 * lum[i - 1] + lum[i + w - 1] -
-        (lum[i - w + 1] + 2 * lum[i + 1] + lum[i + w + 1]);
-      const gy =
-        lum[i - w - 1] + 2 * lum[i - w] + lum[i - w + 1] -
-        (lum[i + w - 1] + 2 * lum[i + w] + lum[i + w + 1]);
-      grad[i] = Math.sqrt(gx * gx + gy * gy);
-    }
-  }
-  // Fill borders by copying the nearest interior value.
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (y === 0 || y === h - 1 || x === 0 || x === w - 1) {
-        const yy = Math.max(1, Math.min(h - 2, y));
-        const xx = Math.max(1, Math.min(w - 2, x));
-        grad[y * w + x] = grad[yy * w + xx];
-      }
-    }
-  }
-  return grad;
+/** Deterministic PRNG (mulberry32). */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-/** In-place 3x3 box smoothing, `passes` times. */
-function smoothBox(grad: Float32Array, w: number, h: number, passes: number): void {
-  const src = new Float32Array(grad);
-  for (let p = 0; p < passes; p++) {
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const i = y * w + x;
-        grad[i] =
-          (src[i - w - 1] + src[i - w] + src[i - w + 1] +
-           src[i - 1] + src[i] + src[i + 1] +
-           src[i + w - 1] + src[i + w] + src[i + w + 1]) / 9;
-      }
-    }
-    src.set(grad);
-  }
-}
-
-/** Deterministic pseudo-random in [0,1). */
-function hash01(seed: number): number {
-  let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function heapPush(
-  heap: number[][],
-  cost: number,
-  idx: number,
-  owner: number,
-  nextSeq: () => number,
-): void {
-  heap.push([cost, nextSeq(), idx, owner]);
-  let c = heap.length - 1;
-  while (c > 0) {
-    const p = (c - 1) >> 1;
-    if (!less(heap[c], heap[p])) break;
-    [heap[p], heap[c]] = [heap[c], heap[p]];
-    c = p;
-  }
-}
-
-/** Min-heap ordering: cost first, then FIFO seq (stable expansion in flat areas). */
-function less(a: number[], b: number[]): boolean {
-  return a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
-}
-
-function pushNeighbors(
-  idx: number,
+/**
+ * K-means color quantization with k-means++ seeding. Returns the label map and
+ * the centroids (as [r,g,b]).
+ */
+function kmeansQuantize(
+  pixels: Uint8ClampedArray,
   w: number,
   h: number,
-  grad: Float32Array,
+  k: number,
+): { labels: Int32Array; centroids: Array<[number, number, number]> } {
+  const n = w * h;
+  const rng = mulberry32(20260812);
+
+  // Sample pool: every 2nd pixel (speed) — plenty for palette estimation.
+  const pool: number[] = [];
+  for (let i = 0; i < n; i += 2) pool.push(i);
+  if (pool.length < k) {
+    for (let i = 1; i < n; i += 2) pool.push(i);
+  }
+  const sample = pool.length > 0 ? pool : [0];
+
+  const pxAt = (idx: number): [number, number, number] => [
+    pixels[idx * 4],
+    pixels[idx * 4 + 1],
+    pixels[idx * 4 + 2],
+  ];
+
+  // k-means++ seeding (deterministic via seeded RNG)
+  const centroids: Array<[number, number, number]> = [];
+  const first = sample[Math.floor(rng() * sample.length)];
+  centroids.push(pxAt(first));
+
+  const dist2 = (a: [number, number, number], b: [number, number, number]): number => {
+    const dr = a[0] - b[0];
+    const dg = a[1] - b[1];
+    const db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+  };
+
+  for (let c = 1; c < k; c++) {
+    const dists = new Float64Array(sample.length);
+    let total = 0;
+    for (let i = 0; i < sample.length; i++) {
+      const col = pxAt(sample[i]);
+      let best = Infinity;
+      for (const center of centroids) {
+        const d = dist2(col, center);
+        if (d < best) best = d;
+      }
+      dists[i] = best;
+      total += best;
+    }
+    let r = rng() * total;
+    let pick = sample.length - 1;
+    for (let i = 0; i < sample.length; i++) {
+      r -= dists[i];
+      if (r <= 0) {
+        pick = i;
+        break;
+      }
+    }
+    centroids.push(pxAt(sample[pick]));
+  }
+
+  // Lloyd iterations
+  const labels = new Int32Array(n);
+  const MAX_ITERS = 24;
+  for (let iter = 0; iter < MAX_ITERS; iter++) {
+    let changed = 0;
+    for (let i = 0; i < n; i++) {
+      const col = pxAt(i);
+      let best = 0;
+      let bestD = Infinity;
+      for (let c = 0; c < centroids.length; c++) {
+        const d = dist2(col, centroids[c]);
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+      if (labels[i] !== best) {
+        labels[i] = best;
+        changed++;
+      }
+    }
+    if (changed === 0) break;
+
+    // Update centroids
+    const sums: Array<[number, number, number, number]> = centroids.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) {
+      const c = labels[i];
+      sums[c][0] += pixels[i * 4];
+      sums[c][1] += pixels[i * 4 + 1];
+      sums[c][2] += pixels[i * 4 + 2];
+      sums[c][3]++;
+    }
+    for (let c = 0; c < centroids.length; c++) {
+      if (sums[c][3] > 0) {
+        centroids[c] = [
+          Math.round(sums[c][0] / sums[c][3]),
+          Math.round(sums[c][1] / sums[c][3]),
+          Math.round(sums[c][2] / sums[c][3]),
+        ];
+      }
+    }
+  }
+
+  return { labels, centroids };
+}
+
+/** 3x3 majority filter over the label map (mode filter), `passes` times. */
+function medianFilterLabels(
   labels: Int32Array,
-  heap: number[][],
-  owner: number,
-  nextSeq: () => number,
-): void {
-  const r = Math.floor(idx / w);
-  const c = idx % w;
-  if (r > 0) {
-    const nb = idx - w;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
+  w: number,
+  h: number,
+  passes: number,
+): Int32Array {
+  let cur = new Int32Array(labels);
+  const n = w * h;
+  for (let p = 0; p < passes; p++) {
+    const next = new Int32Array(n);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const counts = new Map<number, number>();
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const yy = y + dy;
+            const xx = x + dx;
+            if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+            const v = cur[yy * w + xx];
+            counts.set(v, (counts.get(v) ?? 0) + 1);
+          }
+        }
+        let bestV = cur[y * w + x];
+        let bestC = -1;
+        for (const [v, cnt] of counts) {
+          if (cnt > bestC) {
+            bestC = cnt;
+            bestV = v;
+          }
+        }
+        next[y * w + x] = bestV;
+      }
+    }
+    cur = next;
   }
-  if (r < h - 1) {
-    const nb = idx + w;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
-  }
-  if (c > 0) {
-    const nb = idx - 1;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
-  }
-  if (c < w - 1) {
-    const nb = idx + 1;
-    if (labels[nb] === -1) heapPush(heap, grad[nb], nb, owner, nextSeq);
-  }
+  return cur;
 }
 
 // ─── Regions ─────────────────────────────────────────────────────────────────
@@ -361,13 +348,48 @@ interface Region {
   cells: number[];
 }
 
+/** Connected components (4-connectivity) of equal labels. */
+function connectedComponents(labels: Int32Array, w: number, h: number): Region[] {
+  const n = w * h;
+  const visited = new Uint8Array(n);
+  const regions: Region[] = [];
+  const stack: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (visited[i]) continue;
+    visited[i] = 1;
+    const label = labels[i];
+    stack.push(i);
+    const cells: number[] = [];
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      cells.push(idx);
+      const r = Math.floor(idx / w);
+      const c = idx % w;
+      const nbs = [
+        r > 0 ? idx - w : -1,
+        r < h - 1 ? idx + w : -1,
+        c > 0 ? idx - 1 : -1,
+        c < w - 1 ? idx + 1 : -1,
+      ];
+      for (const nb of nbs) {
+        if (nb >= 0 && !visited[nb] && labels[nb] === label) {
+          visited[nb] = 1;
+          stack.push(nb);
+        }
+      }
+    }
+    regions.push({ id: regions.length, cells });
+  }
+  return regions;
+}
+
 /**
  * Merge every region smaller than minArea into its largest neighbor (by shared
  * border). Pixels are NEVER dropped — the canvas stays fully tiled.
  */
 function mergeTinyRegions(
   regions: Region[],
-  labels: Uint8Array | Int32Array,
+  _labels: Int32Array,
   w: number,
   h: number,
   minArea: number,
@@ -447,7 +469,7 @@ function mergeTinyRegions(
  */
 function capRegions(
   regions: Region[],
-  labels: Uint8Array | Int32Array,
+  _labels: Int32Array,
   w: number,
   h: number,
   maxPieces: number,
@@ -526,11 +548,13 @@ function capRegions(
   return current.map((r, i) => ({ id: i, cells: r.cells }));
 }
 
-// ─── Outline tracing ─────────────────────────────────────────────────────────
+// ─── Outline tracing (Moore-neighbor boundary following) ─────────────────────
 
 /**
- * Trace a simplified outline polygon around a region mask.
- * Uses boundary-cell tracing + moving-average smoothing, normalized to 0-1.
+ * Trace the TRUE boundary contour of a region mask with Moore-neighbor
+ * following, then smooth + simplify. Normalized to the PIECE's own bbox
+ * (0..1 across minR..maxR / minC..maxC) — matches all client consumers
+ * (canvas viewBox, PDF, tray). Returns [[x,y], ...] normalized 0-1.
  */
 function traceOutline(
   mask: Uint8Array,
@@ -541,35 +565,81 @@ function traceOutline(
   minC: number,
   maxC: number,
 ): Array<[number, number]> {
-  // Collect boundary cells (inside region, adjacent to outside or image edge)
-  const boundary: Array<{ r: number; c: number }> = [];
-  for (let r = minR; r <= maxR; r++) {
+  // Find the topmost-leftmost in-region boundary pixel as the start.
+  let startR = -1;
+  let startC = -1;
+  outer: for (let r = minR; r <= maxR; r++) {
     for (let c = minC; c <= maxC; c++) {
       const idx = r * w + c;
       if (!mask[idx]) continue;
       const isEdge =
         r === 0 || r === h - 1 || c === 0 || c === w - 1 ||
         !mask[idx - w] || !mask[idx + w] || !mask[idx - 1] || !mask[idx + 1];
-      if (isEdge) boundary.push({ r, c });
+      if (isEdge) {
+        startR = r;
+        startC = c;
+        break outer;
+      }
     }
   }
-  if (boundary.length === 0) {
+  if (startR < 0) {
     return [[0, 0], [1, 0], [1, 1], [0, 1]];
   }
 
-  // Order boundary cells by angle around the region centroid
-  let sumR = 0;
-  let sumC = 0;
-  for (const b of boundary) {
-    sumR += b.r;
-    sumC += b.c;
+  // Moore neighbor tracing. dirs ordered clockwise starting at W.
+  // eslint-disable-next-line prettier/prettier
+  const dirs: Array<[number, number]> = [
+    [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1],
+  ];
+  const inRegion = (r: number, c: number): boolean =>
+    r >= 0 && r < h && c >= 0 && c < w && mask[r * w + c] === 1;
+
+  const contour: Array<[number, number]> = [];
+  let br = startR;
+  let bc = startC;
+  // backtrack = the pixel we "came from" (west of start initially)
+  let tr = startR;
+  let tc = startC - 1;
+  const maxSteps = (maxR - minR + 1) * (maxC - minC + 1) * 8 + 1024;
+  let guard = 0;
+
+  while (guard++ < maxSteps) {
+    contour.push([bc, br]);
+    // Find the index of the backtrack pixel around current b
+    let startDir = -1;
+    for (let d = 0; d < 8; d++) {
+      if (br + dirs[d][0] === tr && bc + dirs[d][1] === tc) {
+        startDir = d;
+        break;
+      }
+    }
+    if (startDir < 0) startDir = 0;
+    // Scan clockwise starting from the neighbor after backtrack
+    let found = false;
+    for (let k = 1; k <= 8; k++) {
+      const d = (startDir + k) % 8;
+      const nr = br + dirs[d][0];
+      const nc = bc + dirs[d][1];
+      if (inRegion(nr, nc)) {
+        tr = br;
+        tc = bc;
+        br = nr;
+        bc = nc;
+        found = true;
+        break;
+      }
+    }
+    if (!found) break;
+    // Stop when we return to the start pixel (full loop closed)
+    if (br === startR && bc === startC) break;
   }
-  const cr = sumR / boundary.length;
-  const cc = sumC / boundary.length;
-  boundary.sort((a, b) => Math.atan2(a.r - cr, a.c - cc) - Math.atan2(b.r - cr, b.c - cc));
+
+  if (contour.length < 3) {
+    return [[0, 0], [1, 0], [1, 1], [0, 1]];
+  }
 
   // Moving-average smoothing (2 passes, window 3)
-  let pts = boundary.map((b) => [b.c, b.r] as [number, number]);
+  let pts = contour;
   for (let pass = 0; pass < 2; pass++) {
     const smoothed: Array<[number, number]> = [];
     const m = pts.length;
@@ -585,10 +655,10 @@ function traceOutline(
     pts = smoothed;
   }
 
-  // Simplify with Ramer–Douglas–Peucker to a compact polygon
-  const simplified = rdp(pts, 0.03);
+  // Simplify with Ramer–Douglas–Peucker
+  const simplified = rdp(pts, 0.05);
 
-  // Hard cap on outline points — subsample if RDP didn't compact enough
+  // Hard cap on outline points
   const MAX_OUTLINE_POINTS = 120;
   let finalPts = simplified;
   if (finalPts.length > MAX_OUTLINE_POINTS) {
@@ -596,11 +666,7 @@ function traceOutline(
     finalPts = finalPts.filter((_, i) => i % step === 0);
   }
 
-  // Outline points MUST be normalized to the PIECE's own bounding box (0..1 across
-  // minR..maxR / minC..maxC), NOT the full image. The client draws each outline in a
-  // viewBox stretched to the piece box (piece-local coords), so full-image normalization
-  // made every piece render a tiny misplaced fragment of the artwork contour — the
-  // "scattered pieces" bug. Fix 2026-08-12.
+  // Normalize to the piece's own bbox
   const pw = maxC - minC + 1;
   const ph = maxR - minR + 1;
   const result = finalPts.map(([x, y]) => [
@@ -653,12 +719,30 @@ function perpendicularDistance(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function averageColor(
+/** Mode label of the region's cells → its centroid color. */
+function dominantLabelColor(
+  labels: Int32Array,
   pixels: Uint8ClampedArray,
   w: number,
   h: number,
   cells: number[],
+  centroids: Array<[number, number, number]>,
 ): [number, number, number] {
+  const counts = new Map<number, number>();
+  for (const cell of cells) {
+    const v = labels[cell];
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  let bestLabel = -1;
+  let bestC = -1;
+  for (const [v, cnt] of counts) {
+    if (cnt > bestC) {
+      bestC = cnt;
+      bestLabel = v;
+    }
+  }
+  if (bestLabel >= 0 && bestLabel < centroids.length) return centroids[bestLabel];
+  // Fallback: average color of the cells
   let r = 0;
   let g = 0;
   let b = 0;
@@ -667,8 +751,38 @@ function averageColor(
     g += pixels[cell * 4 + 1];
     b += pixels[cell * 4 + 2];
   }
-  const n = Math.max(1, cells.length);
-  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  const m = Math.max(1, cells.length);
+  return [Math.round(r / m), Math.round(g / m), Math.round(b / m)];
+}
+
+function rgbToHex([r, g, b]: [number, number, number]): string {
+  const to2 = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
+}
+
+/**
+ * Background detection: a piece is "background" if it is near-white AND touches
+ * >= 2 canvas edges. In a collage quilt the backdrop is the base fabric.
+ */
+function isBackgroundPiece(p: CollagePiece): boolean {
+  const b = p.bounds;
+  const touchesLeft = b.x <= 0.005;
+  const touchesTop = b.y <= 0.005;
+  const touchesRight = b.x + b.width >= 0.995;
+  const touchesBottom = b.y + b.height >= 0.995;
+  const edgeCount =
+    (touchesLeft ? 1 : 0) + (touchesTop ? 1 : 0) +
+    (touchesRight ? 1 : 0) + (touchesBottom ? 1 : 0);
+  return edgeCount >= 2 && hexBrightness(p.color) >= 200;
+}
+
+function hexBrightness(hex: string): number {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return 0;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return (r + g + b) / 3;
 }
 
 /**
@@ -710,9 +824,6 @@ async function makePieceImage(
   // CRITICAL: sample from the piece's OWN region of the working mask — the
   // crop is the piece's bbox in ORIGINAL resolution, so the mask must be
   // offset by (bounds.x*w, bounds.y*h) and scaled by (bounds.width*w/h).
-  // Without the offset, every piece sampled the top-left corner of the mask,
-  // so pieces below/right of the origin got transparency from the wrong
-  // region (the CSS clip-path hid this on canvas, but exports were wrong).
   const alpha = new Uint8Array(cw * ch);
   const mx0 = Math.round(bounds.x * w);
   const my0 = Math.round(bounds.y * h);
@@ -740,4 +851,12 @@ async function makePieceImage(
     .png()
     .toBuffer();
   return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+async function makeReferenceImage(imageBuffer: Buffer): Promise<string> {
+  const ref = await sharp(imageBuffer)
+    .resize(512, 512, { fit: "inside", withoutEnlargement: true })
+    .png()
+    .toBuffer();
+  return `data:image/png;base64,${ref.toString("base64")}`;
 }
