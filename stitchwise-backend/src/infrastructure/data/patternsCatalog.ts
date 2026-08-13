@@ -25,14 +25,15 @@ export interface CatalogPattern {
 }
 
 export const PATTERNS_CATALOG: CatalogPattern[] = [
-  // Example entry (disabled) — shows the shape the lead fills in per pattern:
-  // {
-  //   id: "example-pattern",
-  //   title: "Example Pattern",
-  //   description: "A small project pattern.",
-  //   priceLabel: "$4.00",
-  //   imageUrl: "/patterns/example.png",
-  //   paymentUrl: "https://buy.stripe.com/...",
-  //   active: false,
-  // },
+  {
+    id: "rainbow-trout",
+    title: "Rainbow Trout",
+    description:
+      "A lifelike rainbow trout in rich grays, tans and a salmon-rose belly. 100×100 stitches on 14ct fabric (~7.1×7.1 in), 12 DMC colors, ~9,950 stitches. PDF pattern with full DMC color key delivered by email after purchase.",
+    priceLabel: "$2.50",
+    imageUrl: "/patterns/rainbow-trout.png",
+    paymentUrl: "https://buy.stripe.com/cNiaEZ0GVeB15fBfZB9EI00",
+    badge: "New",
+    active: true,
+  },
 ];
