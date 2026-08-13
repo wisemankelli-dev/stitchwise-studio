@@ -22,10 +22,39 @@ interface StitchStyle { id: string; name: string; description: string; }
 type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'half';
 
 const COLORS = [
-  { name: 'Rose Red', hex: '#e11d48' }, { name: 'Sunset Gold', hex: '#d97706' },
-  { name: 'Forest Green', hex: '#16a34a' }, { name: 'Ocean Blue', hex: '#0284c7' },
-  { name: 'Royal Violet', hex: '#7c3aed' }, { name: 'Warm Cream', hex: '#fef3c7' },
+  // Default (first) swatch stays Rose Red so a fresh canvas paints visibly.
+  { name: 'Rose Red', hex: '#e11d48' },
+  // Whites & creams
+  { name: 'White', hex: '#ffffff' }, { name: 'Winter White', hex: '#f8f6f0' },
+  { name: 'Vanilla', hex: '#f5efe6' }, { name: 'Warm Cream', hex: '#fef3c7' },
+  // Grays & neutrals
+  { name: 'Light Gray', hex: '#e5e7eb' }, { name: 'Silver', hex: '#cbd5e1' },
+  { name: 'Medium Gray', hex: '#94a3b8' }, { name: 'Charcoal', hex: '#475569' },
   { name: 'Pitch Black', hex: '#1e293b' },
+  // Pinks & reds
+  { name: 'Baby Pink', hex: '#fbcfe8' }, { name: 'Blush Pink', hex: '#f9a8d4' },
+  { name: 'Scarlet', hex: '#ef4444' },
+  { name: 'Crimson', hex: '#b91c1c' }, { name: 'Deep Maroon', hex: '#7f1d1d' },
+  // Peaches & oranges
+  { name: 'Peach', hex: '#fed7aa' }, { name: 'Coral', hex: '#fb923c' },
+  { name: 'Orange', hex: '#f97316' }, { name: 'Sunset Gold', hex: '#d97706' },
+  // Yellows
+  { name: 'Butter Yellow', hex: '#fde68a' }, { name: 'Lemon', hex: '#facc15' },
+  { name: 'Goldenrod', hex: '#ca8a04' },
+  // Greens
+  { name: 'Mint', hex: '#a7f3d0' }, { name: 'Sage', hex: '#d9f99d' },
+  { name: 'Leaf Green', hex: '#4ade80' }, { name: 'Forest Green', hex: '#16a34a' },
+  { name: 'Emerald', hex: '#059669' }, { name: 'Deep Forest', hex: '#14532d' },
+  // Blues
+  { name: 'Powder Blue', hex: '#bfdbfe' }, { name: 'Sky Blue', hex: '#7dd3fc' },
+  { name: 'Ocean Blue', hex: '#0284c7' }, { name: 'Royal Blue', hex: '#2563eb' },
+  { name: 'Navy', hex: '#1e40af' }, { name: 'Deep Navy', hex: '#172554' },
+  // Purples & lavenders
+  { name: 'Lavender', hex: '#e9d5ff' }, { name: 'Periwinkle', hex: '#c7d2fe' },
+  { name: 'Royal Violet', hex: '#7c3aed' }, { name: 'Deep Purple', hex: '#6b21a8' },
+  // Browns & tans
+  { name: 'Tan', hex: '#d2b48c' }, { name: 'Camel', hex: '#c19a6b' },
+  { name: 'Brown', hex: '#92400e' }, { name: 'Dark Brown', hex: '#5b3a1e' },
 ];
 
 // DMC thread color palette for image-to-grid conversion (~80 colors)
