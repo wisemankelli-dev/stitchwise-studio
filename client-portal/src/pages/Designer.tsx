@@ -435,6 +435,8 @@ export const Designer: React.FC = () => {
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLORS[0].hex);
+  // Session-only custom colors the owner adds from the color picker (quick re-select)
+  const [customColors, setCustomColors] = useState<string[]>([]);
   const [selectedStitch, setSelectedStitch] = useState('cross');
   const [grid, setGrid] = useState<Record<string, string>>({});
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
@@ -1126,6 +1128,21 @@ export const Designer: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
+  // Custom color support: accept #RGB / #RRGGBB (with or without #) and normalize
+  const handleHexInput = (v: string) => {
+    const t = v.trim();
+    if (/^#?[0-9a-fA-F]{6}$/.test(t)) setSelectedColor('#' + t.replace('#', '').toLowerCase());
+    else if (/^#?[0-9a-fA-F]{3}$/.test(t)) {
+      const h = t.replace('#', '');
+      setSelectedColor('#' + h.split('').map(ch => ch + ch).join('').toLowerCase());
+    }
+  };
+  // Pin the current custom color as a session swatch for quick re-selection
+  const addCustomColor = () => {
+    const hex = selectedColor.toLowerCase();
+    if (COLORS.some(c => c.hex.toLowerCase() === hex) || customColors.includes(hex)) return;
+    setCustomColors(prev => (prev.length >= 24 ? prev : [...prev, hex]));
+  };
 
   return (
     <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden'}`}>
@@ -1172,6 +1189,25 @@ export const Designer: React.FC = () => {
                       {selectedColor === c.hex && <span className="block h-2.5 w-2.5 rounded-full bg-white shadow-sm" />}
                     </button>
                   ))}
+                  {customColors.map((hex) => (
+                    <button key={hex} onClick={() => setSelectedColor(hex)} title={`My color ${hex}`}
+                      className="h-8 w-8 rounded-full border border-dashed transition-all relative flex items-center justify-center"
+                      style={{ backgroundColor: hex, borderColor: selectedColor === hex ? '#000' : 'rgba(0,0,0,0.25)' }}>
+                      {selectedColor === hex && <span className="block h-2.5 w-2.5 rounded-full bg-white shadow-sm" />}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)}
+                    className="h-8 w-8 rounded-full border border-slate-300 cursor-pointer bg-white p-0.5" title="Pick any color"
+                    aria-label="Custom color picker" />
+                  <input type="text" value={selectedColor} onChange={(e) => handleHexInput(e.target.value)}
+                    className="w-24 rounded-lg border border-blush-100 bg-white px-2 py-1 text-xs font-mono text-slate-700"
+                    placeholder="#RRGGBB" aria-label="Hex color code" spellCheck={false} />
+                  <button onClick={addCustomColor} title="Add this color to my swatches"
+                    className="h-8 w-8 rounded-lg border border-blush-200 bg-blush-50 hover:bg-blush-100 text-blush-600 text-lg font-bold leading-none flex items-center justify-center transition-colors"
+                    aria-label="Add current color to swatches">+</button>
+                  <span className="text-[10px] text-slate-400 leading-tight">Pick any color,<br />tap + to pin it</span>
                 </div>
               </div>
               <div>
