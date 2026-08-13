@@ -175,7 +175,7 @@ export const PatternLibrary: React.FC = () => {
         {status === 'ready' && patterns.length > 0 && (
           <p className="text-center text-xs text-slate-400 mt-10 flex items-center justify-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-blush-400" />
-            Secure one-off checkout · Digital download delivered instantly · No subscription required
+            Secure one-off checkout · Pattern emailed after purchase · No subscription required
           </p>
         )}
       </div>
