@@ -48,6 +48,9 @@ export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>('bg');
   const [zoom, setZoom] = useState(1);
+  // Pattern sheet style: 'value' = gray-tone value guide (CollageQuilter convention),
+  // 'color' = true fabric colors, 'outline' = blank black-and-white coloring book.
+  const [patternStyle, setPatternStyle] = useState<'value' | 'color' | 'outline'>('value');
 
   // AI Generation state
   const [activeTab, setActiveTab] = useState<'prompt' | 'image'>('prompt');
@@ -228,6 +231,33 @@ export const CollageStudio: React.FC = () => {
     return [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
   };
 
+  /** Gray-tone VALUE of a piece color (luminance, clamped so the lightest gray is still
+   *  visible on white paper and the darkest is not pure black) — CollageQuilter value-guide. */
+  const valueGray = (hex?: string): number => {
+    const [r, g, b] = hexToRgb(hex || '#f472b6');
+    return Math.max(25, Math.min(232, Math.round(0.299 * r + 0.587 * g + 0.114 * b)));
+  };
+  const valueGrayHex = (hex?: string): string => {
+    const v = valueGray(hex);
+    const s = v.toString(16).padStart(2, '0');
+    return `#${s}${s}${s}`;
+  };
+  /** Fill color (CSS hex) for a piece under the selected pattern style. */
+  const patternFillHex = (hex?: string): string => {
+    if (patternStyle === 'color') return hex || '#f472b6';
+    if (patternStyle === 'value') return valueGrayHex(hex);
+    return '#ffffff'; // outline (blank coloring book)
+  };
+  /** Fill color (PDF [r,g,b]) for a piece under the selected pattern style. */
+  const patternFillRgb = (hex?: string): [number, number, number] => {
+    if (patternStyle === 'color') return hexToRgb(hex || '#f472b6');
+    if (patternStyle === 'value') {
+      const v = valueGray(hex);
+      return [v, v, v];
+    }
+    return [255, 255, 255];
+  };
+
   /** PDF export: outline pattern with numbered cutout pieces + color guide + reference art. */
   const handleExportPdf = async () => {
     try {
@@ -270,11 +300,19 @@ export const CollageStudio: React.FC = () => {
       const drawPatternPiece = (p: PlacedCollagePiece, idx: number) => {
         const outline = (p.piece.outline || []).map(([ox, oy]) => piecePointMm(p, ox, oy));
         if (outline.length < 3) return;
+        // Pattern-style fill on the assembled template page (value guide / colored / outline)
+        const [fr, fg, fb] = patternFillRgb(p.piece.color);
+        doc.setFillColor(fr, fg, fb);
         doc.setDrawColor(17, 17, 17);
         doc.setLineWidth(0.5);
-        for (let k = 0; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
+        doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
+        for (let k = 2; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
         doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
         const [cxr, cyr] = pieceCentroidMm(p);
+        // Number with a white halo so it stays readable on dark/colored fills
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
         doc.setFontSize(7);
         doc.setTextColor(17, 17, 17);
         doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
@@ -899,6 +937,30 @@ export const CollageStudio: React.FC = () => {
                   >
                     <Trash2 className="h-3 w-3" /> Reset
                   </button>
+                  <span className="mx-1 text-blush-200">|</span>
+                  {/* Pattern style: gray-tone value guide (CollageQuilter), colored, or blank outlines */}
+                  <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                    {([['value', 'Value guide'], ['color', 'Colored'], ['outline', 'Outlines']] as const).map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => setPatternStyle(id)}
+                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                          patternStyle === id
+                            ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                        title={
+                          id === 'value'
+                            ? 'Gray-tone value guide — each piece shaded light/medium/dark so you can cut fabric of matching value (CollageQuilter style)'
+                            : id === 'color'
+                              ? 'Fill each piece with its true fabric color for on-screen fabric matching'
+                              : 'Blank black-and-white outlines (coloring book)'
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-blush-500">
                   <Grid3X3 className="h-3.5 w-3.5" />
@@ -1030,9 +1092,9 @@ export const CollageStudio: React.FC = () => {
                       </div>
                     );
                   })}
-                  {/* Scrapbook cutout pieces — rendered as a COMPLETE coloring-book pattern:
-                      blank interiors + numbered contour outlines, assembled edge-to-edge at
-                      their original artwork positions (no interior art on the pattern page). */}
+                  {/* Scrapbook cutout pieces — assembled edge-to-edge at their original artwork
+                      positions. Fill follows the selected pattern style: gray-tone value guide
+                      (default, CollageQuilter convention), true fabric colors, or blank outlines. */}
                   {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed, placedIdx) => {
                     const w = placed.piece.bounds.width * 500 * placed.scale;
                     const h = placed.piece.bounds.height * 500 * placed.scale;
@@ -1064,7 +1126,7 @@ export const CollageStudio: React.FC = () => {
                           >
                             <polygon
                               points={(placed.piece.outline || []).map(([ox, oy]) => `${(ox * 100).toFixed(2)},${(oy * 100).toFixed(2)}`).join(' ')}
-                              fill="#ffffff"
+                              fill={patternFillHex(placed.piece.color)}
                               stroke="#111111"
                               strokeWidth={2}
                               strokeLinejoin="round"
@@ -1074,13 +1136,18 @@ export const CollageStudio: React.FC = () => {
                         ) : (
                           <div
                             className="w-full h-full"
-                            style={{ backgroundColor: '#ffffff', clipPath: outlineClipPath(placed.piece.outline) }}
+                            style={{ backgroundColor: patternFillHex(placed.piece.color), clipPath: outlineClipPath(placed.piece.outline) }}
                           />
                         )}
-                        {/* Piece number (coloring-book numbering) */}
+                        {/* Piece number — white halo keeps it readable on dark/colored fills */}
                         <span
                           className="absolute text-[10px] font-bold text-black pointer-events-none select-none"
-                          style={{ left: `${cxPct}%`, top: `${cyPct}%`, transform: 'translate(-50%, -50%)' }}
+                          style={{
+                            left: `${cxPct}%`,
+                            top: `${cyPct}%`,
+                            transform: 'translate(-50%, -50%)',
+                            textShadow: '0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff, 1px 1px 0 #fff, -1px 1px 0 #fff, 1px -1px 0 #fff, -1px -1px 0 #fff',
+                          }}
                         >
                           {placedIdx + 1}
                         </span>
