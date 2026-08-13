@@ -55,10 +55,19 @@ const MAX_PIECES = 40;
 const MIN_PIECE_FRACTION = 0.001;
 /** Maximum pixel dimension of a piece image crop (keeps payloads sane). */
 const PIECE_MAX_DIM = 256;
-/** K-means palette size factor: colors = clamp(round(maxPieces * 0.7), 8, 28). */
-const COLOR_FACTOR = 0.7;
-const COLOR_MIN = 8;
-const COLOR_MAX = 28;
+/** K-means palette size factor: colors = clamp(round(maxPieces * 0.55), 6, 20). */
+const COLOR_FACTOR = 0.55;
+const COLOR_MIN = 6;
+const COLOR_MAX = 20;
+/**
+ * Adjacent regions whose average colors are within this RGB Euclidean
+ * distance are merged into one piece — collage patterns group similar fabric
+ * shades into a single larger region (a 16x16 block rarely exceeds 50-75
+ * pieces total).
+ */
+const COLOR_MERGE_DISTANCE = 55;
+/** Never merge below this many pieces, even if colors are close. */
+const MIN_PIECES_AFTER_MERGE = 10;
 
 export interface SegmentationOptions {
   maxPieces?: number;
@@ -135,6 +144,13 @@ export async function segmentImageIntoPieces(
   }
   kept = capRegions(kept, cleanLabels, w, h, maxPieces);
 
+  // ── 4b. Merge adjacent regions with SIMILAR colors into larger pieces ─────
+  // Collage-quilt patterns group near-identical fabric shades into ONE piece:
+  // a 16x16 block typically has 50-75 pieces, and color regions should be big,
+  // not tiny gradient slivers. Repeatedly merge the closest-colored adjacent
+  // pair until no pair is within COLOR_MERGE_DISTANCE or we hit the floor.
+  kept = mergeSimilarColors(kept, pixels, w, h, COLOR_MERGE_DISTANCE, MIN_PIECES_AFTER_MERGE);
+
   // ── 5. Emit pieces ────────────────────────────────────────────────────────
   const pieces: CollagePiece[] = [];
   for (let i = 0; i < kept.length; i++) {
@@ -162,7 +178,9 @@ export async function segmentImageIntoPieces(
 
     // Dominant color = the quantized color variant (centroid of this region's
     // dominant label). This is the fabric color the customer should match.
-    const labelColor = dominantLabelColor(cleanLabels, pixels, w, h, region.cells, centroids);
+    // For regions merged from similar shades, the true average color of the
+    // region's pixels is the fabric color the customer should match.
+    const labelColor = averageColor(pixels, region.cells);
     const color = rgbToHex(labelColor);
 
     // True boundary contour (Moore neighbor tracing), normalized piece-local
@@ -626,6 +644,139 @@ function capRegions(
   return current.map((r, i) => ({ id: i, cells: r.cells }));
 }
 
+/**
+ * Merge adjacent regions whose average colors are similar into LARGER pieces.
+ * Collage-quilt patterns group near-identical fabric shades into one region —
+ * the piece count for a 16x16 block typically stays at 50-75, and each piece
+ * is a big color area, not a tiny gradient sliver.
+ *
+ * Strategy: compute each region's average color (over its real pixels, not the
+ * quantized label), then repeatedly merge the closest-colored ADJACENT pair
+ * (by shared border) until no pair is within maxDist or we reach minPieces.
+ * Pixels are never dropped; contiguity is preserved because only neighbors
+ * merge. The merged region's color becomes the area-weighted average, which is
+ * what the customer should match in fabric.
+ */
+function mergeSimilarColors(
+  regions: Region[],
+  pixels: Uint8ClampedArray,
+  w: number,
+  h: number,
+  maxDist: number,
+  minPieces: number,
+): Region[] {
+  if (regions.length <= minPieces) return regions;
+
+  let current = regions.map((r) => ({ ...r, cells: [...r.cells] }));
+  const n = w * h;
+  const regionIdOf = new Int32Array(n).fill(-1);
+
+  const rebuildIdMap = () => {
+    regionIdOf.fill(-1);
+    for (let i = 0; i < current.length; i++) {
+      for (const cell of current[i].cells) regionIdOf[cell] = i;
+    }
+  };
+  rebuildIdMap();
+
+  // Average color per region (r,g,b as floats).
+  const regionColor = (cells: number[]): [number, number, number] => {
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (const cell of cells) {
+      r += pixels[cell * 4];
+      g += pixels[cell * 4 + 1];
+      b += pixels[cell * 4 + 2];
+    }
+    const m = Math.max(1, cells.length);
+    return [r / m, g / m, b / m];
+  };
+
+  const colors = current.map((r) => regionColor(r.cells));
+  const colorDist = (a: number, b: number): number => {
+    const dr = colors[a][0] - colors[b][0];
+    const dg = colors[a][1] - colors[b][1];
+    const db = colors[a][2] - colors[b][2];
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  };
+
+  while (current.length > minPieces) {
+    // Find the closest-colored adjacent pair.
+    let bestA = -1;
+    let bestB = -1;
+    let bestDist = Infinity;
+
+    // Shared-border counts are computed per region on demand via the id map.
+    // Iterate pairs of regions (i<j) and test adjacency through border pixels.
+    for (let i = 0; i < current.length; i++) {
+      const iCells = current[i].cells;
+      for (let j = i + 1; j < current.length; j++) {
+        const d = colorDist(i, j);
+        if (d >= bestDist) continue;
+        // Check adjacency: any cell of i with a 4-neighbor in j.
+        let adjacent = false;
+        for (const cell of iCells) {
+          const r = Math.floor(cell / w);
+          const c = cell % w;
+          const nbs = [
+            r > 0 ? cell - w : -1,
+            r < h - 1 ? cell + w : -1,
+            c > 0 ? cell - 1 : -1,
+            c < w - 1 ? cell + 1 : -1,
+          ];
+          for (const nb of nbs) {
+            if (nb >= 0 && regionIdOf[nb] === j) {
+              adjacent = true;
+              break;
+            }
+          }
+          if (adjacent) break;
+        }
+        if (adjacent) {
+          bestDist = d;
+          bestA = i;
+          bestB = j;
+        }
+      }
+    }
+
+    if (bestA === -1 || bestDist > maxDist) break;
+
+    // Merge the smaller region into the larger.
+    let keepIdx: number;
+    let absorbIdx: number;
+    if (current[bestA].cells.length >= current[bestB].cells.length) {
+      keepIdx = bestA;
+      absorbIdx = bestB;
+    } else {
+      keepIdx = bestB;
+      absorbIdx = bestA;
+    }
+
+    const absorbed = current[absorbIdx].cells;
+    current[keepIdx].cells.push(...absorbed);
+    for (const cell of absorbed) regionIdOf[cell] = keepIdx;
+
+    // Area-weighted average color for the merged region.
+    const total = current[keepIdx].cells.length;
+    const kc = colors[keepIdx];
+    const ac = colors[absorbIdx];
+    const keepCellsBefore = total - absorbed.length;
+    const absorbCells = absorbed.length;
+    colors[keepIdx] = [
+      (kc[0] * keepCellsBefore + ac[0] * absorbCells) / total,
+      (kc[1] * keepCellsBefore + ac[1] * absorbCells) / total,
+      (kc[2] * keepCellsBefore + ac[2] * absorbCells) / total,
+    ];
+    current.splice(absorbIdx, 1);
+    colors.splice(absorbIdx, 1);
+    rebuildIdMap();
+  }
+
+  return current.map((r, i) => ({ id: i, cells: r.cells }));
+}
+
 // ─── Outline tracing (Moore-neighbor boundary following) ─────────────────────
 
 /**
@@ -796,6 +947,23 @@ function perpendicularDistance(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Average RGB color over the region's pixels (the fabric color to match). */
+function averageColor(
+  pixels: Uint8ClampedArray,
+  cells: number[],
+): [number, number, number] {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const cell of cells) {
+    r += pixels[cell * 4];
+    g += pixels[cell * 4 + 1];
+    b += pixels[cell * 4 + 2];
+  }
+  const m = Math.max(1, cells.length);
+  return [Math.round(r / m), Math.round(g / m), Math.round(b / m)];
+}
 
 /** Mode label of the region's cells → its centroid color. */
 function dominantLabelColor(
