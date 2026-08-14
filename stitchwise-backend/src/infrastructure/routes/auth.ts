@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { SignupSchema, LoginSchema } from "../../domain/auth";
+import { materializePendingPurchases } from "../../domain/patternGrants";
 import { JWT_SECRET } from "../middleware/auth";
 
 const SALT_ROUNDS = 10;
@@ -44,6 +45,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         expiresIn: TOKEN_EXPIRY,
       });
 
+      // Grant any purchased Pattern Library patterns to this account.
+      await materializePendingPurchases(prisma, user.email, user.id);
       res.status(201).json({
         token,
         user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },
@@ -86,6 +89,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         expiresIn: TOKEN_EXPIRY,
       });
 
+      // Grant any purchased Pattern Library patterns to this account.
+      await materializePendingPurchases(prisma, user.email, user.id);
       res.json({
         token,
         user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },

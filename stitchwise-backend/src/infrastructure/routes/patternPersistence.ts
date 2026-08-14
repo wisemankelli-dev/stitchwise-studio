@@ -12,6 +12,7 @@ import { Router, type Request, type Response } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { authenticate } from "../middleware/auth";
+import { materializePendingPurchases } from "../../domain/patternGrants";
 import { serializeGrid, serializePalette, deserializeGrid, deserializePalette } from "../../domain/stitch/patternDataModel";
 import { CROSS_STITCH_SYMBOLS } from "../../domain/stitch/types";
 
@@ -89,6 +90,9 @@ export function createPatternPersistenceRouter(prisma: PrismaClient): Router {
   router.get("/", async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      // Grant any purchased Pattern Library patterns to this account
+      // (covers buyers who were already logged in when they purchased).
+      await materializePendingPurchases(prisma, user.email, user.userId);
       const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
 
