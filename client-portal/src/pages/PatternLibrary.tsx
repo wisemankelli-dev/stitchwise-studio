@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShoppingBag, Sparkles, Scissors, PackageOpen, RefreshCcw, Mail } from 'lucide-react';
+import { ShoppingBag, Sparkles, Scissors, PackageOpen, RefreshCcw, LogIn } from 'lucide-react';
 import { FloralDivider } from '../components/DecorativeSVGs';
 
 /** One buyable pattern as served by GET /api/library/patterns (public, no auth). */
@@ -79,12 +79,12 @@ export const PatternLibrary: React.FC = () => {
               </div>
               <div className="rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-blush-200/70 px-4 py-3.5 flex items-start gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blush-100 text-blush-600">
-                  <Mail className="h-4 w-4" />
+                  <LogIn className="h-4 w-4" />
                 </span>
                 <div>
-                  <p className="text-sm font-bold text-slate-800">2. Receive</p>
+                  <p className="text-sm font-bold text-slate-800">2. Log in</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    Your pattern PDF is emailed to you after purchase — ready to download and print.
+                    After checkout, create a free account or log in with the email you used to pay — your pattern will be waiting in your Designer.
                   </p>
                 </div>
               </div>
@@ -95,7 +95,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">3. Stitch</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    Follow the chart and DMC color key included with your pattern.
+                    Open the pattern, personalize it, and export the full pattern sheet — chart, DMC color key, and instructions.
                   </p>
                 </div>
               </div>
@@ -214,7 +214,7 @@ export const PatternLibrary: React.FC = () => {
         {status === 'ready' && patterns.length > 0 && (
           <p className="text-center text-xs text-slate-400 mt-10 flex items-center justify-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-blush-400" />
-            Secure one-off checkout · Pattern emailed after purchase · No subscription required
+            Secure one-off checkout · Pattern delivered to your account · No subscription required
           </p>
         )}
       </div>
