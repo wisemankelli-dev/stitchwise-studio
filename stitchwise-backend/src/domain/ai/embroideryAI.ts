@@ -60,8 +60,8 @@ export interface ResizePatternRequest {
 
 // ─── Zod Schemas ────────────────────────────────────────────────────────────
 
-// Designer canvas sizes can be any integer in [8, 200].
-const gridSizeSchema = z.number().int().min(8).max(200).optional().default(50);
+// Designer canvas sizes can be any integer in [8, 240] (11×17 stocking at 14ct = 238).
+const gridSizeSchema = z.number().int().min(8).max(240).optional().default(50);
 
 export const TextToPatternSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
@@ -82,6 +82,6 @@ export const ImageToPatternSchema = z.object({
 
 export const ResizePatternSchema = z.object({
   grid: z.array(z.array(z.string().min(1))).min(1),
-  gridSize: z.number().int().min(8).max(200),
+  gridSize: z.number().int().min(8).max(240),
   maxColors: z.number().int().min(2).max(80).optional().default(24),
 });

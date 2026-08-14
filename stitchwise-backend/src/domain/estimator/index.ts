@@ -129,8 +129,8 @@ export interface SatinStitchArea {
 export const CalculateEstimateSchema = z.object({
   stitches: z.record(z.string(), z.number().min(0)),
   stitchTypes: z.record(z.string(), z.string()).optional(),
-  gridWidth: z.number().min(1).max(200).optional(),
-  gridHeight: z.number().min(1).max(200).optional(),
+  gridWidth: z.number().min(1).max(240).optional(),
+  gridHeight: z.number().min(1).max(240).optional(),
   fabricCount: z
     .union([z.literal(11), z.literal(14), z.literal(16), z.literal(18), z.literal(22)])
     .optional()

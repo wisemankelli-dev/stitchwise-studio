@@ -16,6 +16,7 @@ import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
 import { api, type SavedPatternSummary, type SavedPatternCell } from '../services/api';
+import type { ProductGuide, ProductGuideType } from '../data/guides';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -520,22 +521,24 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
 ];
 
 /** Canvas size presets defined as physical dimensions (inches).
- *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches). */
-interface CanvasPreset { name: string; inchW: number; inchH: number; }
-const CANVAS_PRESETS: CanvasPreset[] = [
+ *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches).
+ *  `guide` (optional) names the product shape shown as a dashed overlay on the
+ *  canvas so customers can design within it. */
+interface CanvasPreset { name: string; inchW: number; inchH: number; guide?: ProductGuideType; }
+export const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Bag Charm', inchW: 2, inchH: 2 },
-  { name: 'Ornament', inchW: 3, inchH: 3 },
-  { name: '5×7 Frame', inchW: 5, inchH: 7 },
-  { name: '8×10 Frame', inchW: 8, inchH: 10 },
-  { name: 'Pillow', inchW: 6, inchH: 6 },
-  { name: 'Stocking', inchW: 5, inchH: 8 },
-  { name: 'Large Pillow', inchW: 8, inchH: 8 },
+  { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle' },
+  { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect' },
+  { name: '8×10 Frame', inchW: 8, inchH: 10, guide: 'rect' },
+  { name: 'Pillow', inchW: 6, inchH: 6, guide: 'roundedRect' },
+  { name: 'Stocking', inchW: 11, inchH: 17, guide: 'stocking' },
+  { name: 'Large Pillow', inchW: 8, inchH: 8, guide: 'roundedRect' },
   { name: 'Wall Hanging', inchW: 8, inchH: 16 },
 ];
 
-/** Compute stitch count from physical inches and fabric count, clamped to [6, 200] */
-function inchesToStitches(inches: number, fabricCount: number): number {
-  return Math.max(6, Math.min(200, Math.round(inches * fabricCount)));
+/** Compute stitch count from physical inches and fabric count, clamped to [6, 240] */
+export function inchesToStitches(inches: number, fabricCount: number): number {
+  return Math.max(6, Math.min(240, Math.round(inches * fabricCount)));
 }
 
 /** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
@@ -683,6 +686,22 @@ export const Designer: React.FC = () => {
   
   // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
   const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
+
+  // Product-shape guide for the active preset (null for custom canvases).
+  // colW/rowH use the same inchesToStitches call the preset buttons use, so the
+  // guide always matches the canvas exactly.
+  const activeGuide: ProductGuide | null = React.useMemo(() => {
+    if (!activePreset) return null;
+    const preset = CANVAS_PRESETS.find(
+      (p) => p.inchW === activePreset.inchW && p.inchH === activePreset.inchH,
+    );
+    if (!preset?.guide) return null;
+    return {
+      type: preset.guide,
+      colW: inchesToStitches(activePreset.inchW, fabricCount),
+      rowH: inchesToStitches(activePreset.inchH, fabricCount),
+    };
+  }, [activePreset, fabricCount]);
 
 
   // Utility: stitches to inches based on fabric count
@@ -1919,6 +1938,7 @@ export const Designer: React.FC = () => {
                       referenceImage={referenceImage}
                       showReference={showReference}
                       referenceOpacity={referenceOpacity}
+                      guide={activeGuide}
                     />
                 </div>
               </div>

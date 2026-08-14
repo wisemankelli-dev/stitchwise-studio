@@ -1,5 +1,11 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { ZoomIn, ZoomOut, Maximize, Grid3X3, Minimize } from 'lucide-react';
+import {
+  STOCKING_GUIDE,
+  STOCKING_GUIDE_ASPECT,
+  fitStockingInBox,
+  type ProductGuide,
+} from '../data/guides';
 
 export interface StitchCell {
   row: number;
@@ -42,6 +48,12 @@ export interface StitchGridProps {
   showReference?: boolean;
   /** Opacity of the reference image overlay (0.0 - 1.0, default: 0.20) */
   referenceOpacity?: number;
+  /**
+   * Product-shape guide (Ornament circle, Pillow rounded rect, Frame rect,
+   * Stocking silhouette) drawn as a dashed, non-interactive outline on top of
+   * the canvas. colW/rowH are in STITCH units. null/undefined draws nothing.
+   */
+  guide?: ProductGuide | null;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -138,6 +150,82 @@ function drawStitchSymbol(
   }
 }
 
+/** Trace a rounded-rectangle path (pillow look) onto the current path. */
+function traceRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number,
+) {
+  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+/**
+ * Draw the product-shape guide as the LAST layer — dashed blush/rose outline,
+ * purely visual (no pointer interaction). colW/rowH are in stitch units.
+ */
+function drawGuide(
+  ctx: CanvasRenderingContext2D,
+  guide: ProductGuide,
+  cw: number,
+  ch: number,
+  cellSize: number,
+) {
+  const gw = guide.colW * cellSize;
+  const gh = guide.rowH * cellSize;
+  const gx = (cw - gw) / 2;
+  const gy = (ch - gh) / 2;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(190,18,60,0.6)'; // blush/rose
+  ctx.lineWidth = Math.max(1.5, Math.min(3.5, cellSize * 0.18));
+  ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
+  ctx.beginPath();
+
+  switch (guide.type) {
+    case 'circle': {
+      const radius = (Math.min(guide.colW, guide.rowH) / 2) * cellSize;
+      ctx.arc(cw / 2, ch / 2, radius, 0, Math.PI * 2);
+      break;
+    }
+    case 'rect':
+      ctx.rect(gx, gy, gw, gh);
+      break;
+    case 'roundedRect': {
+      const radius = 0.15 * Math.min(guide.colW, guide.rowH) * cellSize;
+      traceRoundedRect(ctx, gx, gy, gw, gh, radius);
+      break;
+    }
+    case 'stocking': {
+      const fit = fitStockingInBox(guide.colW, guide.rowH);
+      const pts = STOCKING_GUIDE.map(([px, py]) => ({
+        x: gx + (px * STOCKING_GUIDE_ASPECT * fit.scale + fit.dx) * cellSize,
+        y: gy + (py * fit.scale + fit.dy) * cellSize,
+      }));
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      break;
+    }
+  }
+
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 // ── Coordinate helpers ───────────────────────────────────────────────────────
 
 /** Convert a mouse event to { row, col } relative to the grid canvas */
@@ -179,6 +267,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   referenceImage,
   showReference = false,
   referenceOpacity = 0.20,
+  guide = null,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -467,7 +556,12 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         }
       }
     }
-  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity]);
+
+    // ── Product-shape guide (LAST layer — always visible on top) ──
+    if (guide) {
+      drawGuide(ctx, guide, cw, ch, cellSize);
+    }
+  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity, guide]);
 
   // ── Redraw on changes ──
 
