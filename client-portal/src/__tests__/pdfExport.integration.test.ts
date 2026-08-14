@@ -22,6 +22,7 @@ class FakeCtx {
   beginPath() {}
   moveTo() {}
   lineTo() {}
+  arc() {}
   stroke() {}
   fill() {}
   rect() {}
@@ -56,7 +57,7 @@ describe('pdfExport — real jsPDF integration', () => {
     vi.restoreAllMocks();
   });
 
-  it('produces a valid 7-page PDF for a 100×100 grid (summary + key + 4 tiles + instructions)', () => {
+  it('produces a valid 8-page PDF for a 100×100 grid (summary + key + overview + 4 tiles + instructions)', () => {
     const doc = buildPatternPdf({
       patternName: 'Rainbow Trout',
       grid: buildSampleGrid(),
@@ -71,13 +72,13 @@ describe('pdfExport — real jsPDF integration', () => {
       },
     });
 
-    expect(doc.getNumberOfPages()).toBe(7);
+    expect(doc.getNumberOfPages()).toBe(8);
 
     const out = doc.output('arraybuffer');
     expect(out.byteLength).toBeGreaterThan(10_000);
     const str = new TextDecoder().decode(out);
-    expect((str.match(/\/Type \/Page\b/g) || []).length).toBe(7);
-    expect(str).toContain('/Subtype /Image'); // preview + 4 chart tiles embedded
+    expect((str.match(/\/Type \/Page\b/g) || []).length).toBe(8);
+    expect(str).toContain('/Subtype /Image'); // preview + key glyphs + overview + 4 chart tiles embedded
   });
 
   it('paginates the color key for large palettes (150 colors → multiple key pages)', () => {
