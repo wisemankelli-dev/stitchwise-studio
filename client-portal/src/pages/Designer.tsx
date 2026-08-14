@@ -722,7 +722,7 @@ export const Designer: React.FC = () => {
     };
   }, [gridWidth, gridHeight, fabricCount, colorThreadEstimates]);
 
-  const FABRIC_COUNTS = [11, 14, 18, 22, 25, 28, 32, 36];
+  const FABRIC_COUNTS = [11, 13, 14, 18, 22, 25, 28, 32, 36];
 
   // Alphabet tool state
   const [alphabetText, setAlphabetText] = useState('');
@@ -1532,7 +1532,7 @@ export const Designer: React.FC = () => {
                   className="w-full rounded-xl border-blush-100 text-sm text-slate-700 font-semibold px-3 py-2 bg-white shadow-sm focus:border-blush-500 focus:ring-blush-500"
                 >
                   {FABRIC_COUNTS.map((count) => (
-                    <option key={count} value={count}>{count} count — {count === 11 ? 'Coarse' : count === 14 ? 'Standard' : count === 18 ? 'Fine' : count >= 28 ? 'Extra Fine' : 'Medium'}</option>
+                    <option key={count} value={count}>{count} count — {count === 11 ? 'Coarse' : count === 13 ? 'Mesh' : count === 14 ? 'Standard' : count === 18 ? 'Fine' : count >= 28 ? 'Extra Fine' : 'Medium'}</option>
                   ))}
                 </select>
               </div>
