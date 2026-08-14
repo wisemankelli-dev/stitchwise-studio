@@ -31,7 +31,7 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     description:
       "A lifelike rainbow trout in rich grays, tans and a salmon-rose belly. 100×100 stitches on 14ct fabric (~7.1×7.1 in), 13 DMC colors, ~9,950 stitches. PDF pattern with full DMC color key delivered by email after purchase.",
     priceLabel: "$2.50",
-    imageUrl: "/patterns/rainbow-trout.png",
+    imageUrl: "/patterns/rainbow-trout-v2.png",
     paymentUrl: "https://buy.stripe.com/cNiaEZ0GVeB15fBfZB9EI00",
     badge: "New",
     active: true,
@@ -42,7 +42,7 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     description:
       "A blank Christmas stocking outline ready for your own design — add names, initials or festive motifs. 112×112 stitches on 14ct fabric (~8.0×8.0 in), 7 DMC colors, ~12,540 stitches. PDF pattern with full DMC color key delivered by email after purchase.",
     priceLabel: "$3.50",
-    imageUrl: "/patterns/blank-stocking-template.png",
+    imageUrl: "/patterns/blank-stocking-template-v2.png",
     paymentUrl: "https://buy.stripe.com/00weVf61f9gHeQb8x99EI01",
     badge: "New",
     active: true,
