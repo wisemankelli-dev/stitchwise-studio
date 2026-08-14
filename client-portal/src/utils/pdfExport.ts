@@ -29,6 +29,43 @@ export const CHART_PX_PER_STITCH = 12; // ≥6 required by spec; 12 keeps tiles 
 export const TILE_STITCHES = 60;       // stitches per chart-tile axis
 const GRIDLINE_EVERY = 10;
 const PREVIEW_PX_PER_STITCH = 4;       // small overview on the summary page
+export const OVERVIEW_PX_PER_STITCH = 10; // full-design overview page resolution
+const SYMBOL_MIN_PX = CHART_PX_PER_STITCH; // draw per-cell symbols only at chart-tile scale
+
+/**
+ * Vendor-style chart symbols, assigned deterministically by palette index.
+ * Every symbol is drawable as pure canvas 2D paths (no fonts, no images) so
+ * they stay crisp at chart-tile scale and render identically in tests.
+ */
+export const CHART_SYMBOLS = [
+  'cross',     // ×
+  'slash',     // /
+  'backslash', // \
+  'circle',    // ○
+  'dot',       // ●
+  'plus',      // +
+  'square',    // □
+  'tri-up',    // △
+  'tri-down',  // ▽
+  'diamond',   // ◇
+  'star',      // ✦ (4-point sparkle)
+  'wave',      // ~
+] as const;
+export type ChartSymbol = (typeof CHART_SYMBOLS)[number];
+
+/** Stable per-index symbol; wraps when the palette exceeds the symbol set. */
+export function symbolForIndex(index: number): ChartSymbol {
+  return CHART_SYMBOLS[index % CHART_SYMBOLS.length];
+}
+
+/** hex → symbol map for a palette (palette order is deterministic → stable). */
+export function assignSymbols(palette: PaletteEntry[]): Record<string, ChartSymbol> {
+  const map: Record<string, ChartSymbol> = {};
+  palette.forEach((entry, i) => {
+    map[entry.hex] = symbolForIndex(i);
+  });
+  return map;
+}
 
 /** Normalize "#abc" → "#aabbcc" so identical colors don't split the key. */
 function normalizeHex(hex: string): string {
@@ -91,6 +128,144 @@ export function computeChartTiles(
  * Canvas rendering
  * ------------------------------------------------------------------ */
 
+/** Parse a normalized hex color into [r, g, b]. */
+function hexToRgb(hex: string): [number, number, number] {
+  const h = normalizeHex(hex);
+  return [
+    parseInt(h.slice(1, 3), 16),
+    parseInt(h.slice(3, 5), 16),
+    parseInt(h.slice(5, 7), 16),
+  ];
+}
+
+/** Perceived brightness 0–255 (Rec. 601 luma weights). */
+export function colorLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+/** Symbol ink: white on dark fills, near-black on light fills (legibility). */
+export function symbolInk(hex: string): string {
+  return colorLuminance(hex) > 140 ? '#1f2937' : '#ffffff';
+}
+
+/** Trace the outline of one chart symbol centered on (cx, cy), half-size s. */
+function drawSymbolPath(
+  ctx: CanvasRenderingContext2D,
+  symbol: ChartSymbol,
+  cx: number,
+  cy: number,
+  s: number,
+): void {
+  ctx.beginPath();
+  switch (symbol) {
+    case 'cross':
+      ctx.moveTo(cx - s, cy - s);
+      ctx.lineTo(cx + s, cy + s);
+      ctx.moveTo(cx - s, cy + s);
+      ctx.lineTo(cx + s, cy - s);
+      break;
+    case 'slash':
+      ctx.moveTo(cx - s, cy + s);
+      ctx.lineTo(cx + s, cy - s);
+      break;
+    case 'backslash':
+      ctx.moveTo(cx - s, cy - s);
+      ctx.lineTo(cx + s, cy + s);
+      break;
+    case 'plus':
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx, cy + s);
+      ctx.moveTo(cx - s, cy);
+      ctx.lineTo(cx + s, cy);
+      break;
+    case 'circle':
+      ctx.arc(cx, cy, s, 0, Math.PI * 2);
+      break;
+    case 'dot':
+      ctx.arc(cx, cy, s * 0.72, 0, Math.PI * 2);
+      break;
+    case 'square':
+      ctx.rect(cx - s, cy - s, s * 2, s * 2);
+      break;
+    case 'tri-up':
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx - s, cy + s);
+      ctx.lineTo(cx + s, cy + s);
+      ctx.closePath();
+      break;
+    case 'tri-down':
+      ctx.moveTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy - s);
+      ctx.lineTo(cx + s, cy - s);
+      ctx.closePath();
+      break;
+    case 'diamond':
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
+      break;
+    case 'star': {
+      // 4-point sparkle: concave diamond
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s * 0.3, cy - s * 0.3);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx + s * 0.3, cy + s * 0.3);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s * 0.3, cy + s * 0.3);
+      ctx.lineTo(cx - s, cy);
+      ctx.lineTo(cx - s * 0.3, cy - s * 0.3);
+      ctx.closePath();
+      break;
+    }
+    case 'wave':
+      ctx.moveTo(cx - s, cy);
+      ctx.lineTo(cx - s * 0.5, cy - s * 0.5);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx + s * 0.5, cy - s * 0.5);
+      ctx.lineTo(cx + s, cy);
+      break;
+  }
+}
+
+/**
+ * Draw a chart symbol centered on (cx, cy) with ink contrasting against the
+ * cell fill. Solid glyphs (dot, star) are filled; the rest are stroked.
+ */
+function drawCellSymbol(
+  ctx: CanvasRenderingContext2D,
+  symbol: ChartSymbol,
+  cx: number,
+  cy: number,
+  px: number,
+  fill: string,
+  ink?: string,
+): void {
+  const s = px * 0.34; // symbol spans ~68% of the cell
+  const color = ink ?? symbolInk(fill);
+  ctx.lineWidth = Math.max(1, px * 0.14);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  drawSymbolPath(ctx, symbol, cx, cy, s);
+  if (symbol === 'dot' || symbol === 'star') {
+    ctx.fill();
+  } else {
+    ctx.stroke();
+  }
+}
+
+/** Standalone symbol glyph as a PNG data URL (key-page column, dark ink). */
+export function renderSymbolImage(symbol: ChartSymbol, px = 24, ink = '#1f2937'): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = px;
+  canvas.height = px;
+  const ctx = canvas.getContext('2d')!;
+  drawCellSymbol(ctx, symbol, px / 2, px / 2, px, '#000000', ink);
+  return canvas.toDataURL('image/png');
+}
+
 /** Draw one fractional stitch cell (0.25 / 0.5 / 0.75) as a diagonal. */
 function fillFractionalCell(
   ctx: CanvasRenderingContext2D,
@@ -140,6 +315,7 @@ function renderStitchesToCanvas(
   cellFractions: Record<string, number> | undefined,
   pxPerStitch: number,
   tile?: { c0: number; r0: number; c1: number; r1: number },
+  symbols?: Record<string, ChartSymbol>,
 ): string {
   const c0 = tile?.c0 ?? 0;
   const r0 = tile?.r0 ?? 0;
@@ -155,6 +331,8 @@ function renderStitchesToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  const drawSymbols = symbols !== undefined && pxPerStitch >= SYMBOL_MIN_PX;
+
   for (let r = r0; r < r1; r++) {
     for (let c = c0; c < c1; c++) {
       const key = `${r},${c}`;
@@ -169,6 +347,15 @@ function renderStitchesToCanvas(
       } else {
         ctx.fillStyle = normalizeHex(color);
         ctx.fillRect(x, y, pxPerStitch, pxPerStitch);
+      }
+
+      // Vendor-style per-cell symbol, contrasting against the cell fill.
+      // Skipped for small partial stitches (the triangle fill is the guide).
+      if (drawSymbols && (fraction === undefined || fraction >= 0.75)) {
+        const symbol = symbols![normalizeHex(color)];
+        if (symbol) {
+          drawCellSymbol(ctx, symbol, x + pxPerStitch / 2, y + pxPerStitch / 2, pxPerStitch, color);
+        }
       }
     }
   }
@@ -196,10 +383,13 @@ function fitImageMm(imgW: number, imgH: number, maxW: number, maxH: number) {
  *
  * Page 1   Summary — name, stitch dimensions, fabric count, finished size,
  *          total stitch count + small full-design preview.
- * Page 2   Materials & Color Key — swatch, code, name, exact stitch count and
- *          skein estimate per color (paginates for large palettes).
- * Pages 3+ Chart — full-resolution tiles with 10-stitch gridlines and
- *          row/column numbering (tiles for grids larger than one page).
+ * Page 2   Materials & Color Key — symbol, swatch, code, name, exact stitch
+ *          count and skein estimate per color (paginates for large palettes).
+ * Page 3   Full Design Overview — the whole design on one page, numbered
+ *          every 10 stitches on both axes ("recognizable pattern with box
+ *          counts").
+ * Pages 4+ Chart — full-resolution tiles (per-color symbols on every stitch)
+ *          with 10-stitch gridlines and row/column numbering.
  * Last     Instructions — reading the chart, stitching basics, finishing.
  */
 export function buildPatternPdf(options: PdfExportOptions): jsPDF {
@@ -221,8 +411,20 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
   // Internal consistency: the header total IS the sum of the per-color counts.
   const totalStitches = palette.reduce((sum, e) => sum + e.count, 0);
 
+  // Stable per-color chart symbols (vendor style), by palette order.
+  const symbols = assignSymbols(palette);
+
   const finishedW = (gridWidth / fabricCount).toFixed(1);
   const finishedH = (gridHeight / fabricCount).toFixed(1);
+
+  // Gridline + number positions for a slice: every 10th global stitch
+  // boundary (10, 20, …) plus the design origin (labelled "1").
+  const labelPositions = (globalStart: number, globalEnd: number): number[] => {
+    const positions: number[] = [];
+    if (globalStart === 0) positions.push(0);
+    for (let g = GRIDLINE_EVERY; g <= globalEnd; g += GRIDLINE_EVERY) positions.push(g);
+    return positions;
+  };
 
   /* ── Page 1 · Summary ─────────────────────────────────────────── */
   doc.setFont('helvetica', 'bold');
@@ -296,7 +498,7 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
     26,
   );
 
-  const keyCols = [MARGIN, MARGIN + 20, MARGIN + 46, MARGIN + 116, MARGIN + 158];
+  const keyCols = [MARGIN, MARGIN + 8, MARGIN + 19, MARGIN + 44, MARGIN + 114, MARGIN + 158];
   const rowH = 6;
   let keyY = 34;
 
@@ -304,11 +506,12 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(60, 60, 60);
-    doc.text('Swatch', keyCols[0], keyY);
-    doc.text('Code', keyCols[1], keyY);
-    doc.text('Color name', keyCols[2], keyY);
-    doc.text('Stitches', keyCols[3], keyY);
-    doc.text('Skeins', keyCols[4], keyY);
+    doc.text('Symbol', keyCols[0], keyY);
+    doc.text('Swatch', keyCols[1], keyY);
+    doc.text('Code', keyCols[2], keyY);
+    doc.text('Color name', keyCols[3], keyY);
+    doc.text('Stitches', keyCols[4], keyY);
+    doc.text('Skeins', keyCols[5], keyY);
     doc.setDrawColor(220);
     doc.setLineWidth(0.2);
     doc.line(MARGIN, keyY + 1.5, pageW - MARGIN, keyY + 1.5);
@@ -325,25 +528,30 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
       drawKeyHeader();
     }
     const swatchY = keyY - 3.5;
+    // Symbol glyph (dark ink on white paper, same glyph the chart uses)
+    const symbol = symbols[entry.hex];
+    if (symbol) {
+      doc.addImage(renderSymbolImage(symbol), 'PNG', keyCols[0], swatchY, 4.5, 4.5);
+    }
     doc.setFillColor(entry.hex);
     doc.setDrawColor(180);
     doc.setLineWidth(0.2);
-    doc.rect(keyCols[0], swatchY, 4.5, 4.5, 'FD');
+    doc.rect(keyCols[1], swatchY, 4.5, 4.5, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(40, 40, 40);
-    doc.text(entry.code, keyCols[1], keyY);
+    doc.text(entry.code, keyCols[2], keyY);
 
     doc.setFont('helvetica', 'normal');
     const name = entry.name.length > 34 ? `${entry.name.substring(0, 33)}…` : entry.name;
-    doc.text(name, keyCols[2], keyY);
+    doc.text(name, keyCols[3], keyY);
 
-    doc.text(entry.count.toLocaleString(), keyCols[3], keyY);
+    doc.text(entry.count.toLocaleString(), keyCols[4], keyY);
 
     const skeins = estimateSkeins(entry.count, fabricCount);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${skeins} ${skeins === 1 ? 'skein' : 'skeins'}`, keyCols[4], keyY);
+    doc.text(`${skeins} ${skeins === 1 ? 'skein' : 'skeins'}`, keyCols[5], keyY);
     keyY += rowH;
   }
 
@@ -357,19 +565,78 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
     bottomLimit + 4,
   );
 
+  /* ── Page 3 · Full Design Overview ─────────────────────────────── */
+  // The whole design on one page, numbered every 10 on both axes — the
+  // "recognizable pattern with box counts" page (vendor reference).
+  doc.addPage();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(ROSE[0], ROSE[1], ROSE[2]);
+  doc.text('Full Design Overview', MARGIN, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text(
+    'The entire design on one page — gridlines and numbers mark every 10 stitches.',
+    MARGIN,
+    26,
+  );
+
+  const overviewDataUrl = renderStitchesToCanvas(
+    grid, gridWidth, gridHeight, cellFractions, OVERVIEW_PX_PER_STITCH,
+  );
+  const oImgWpx = gridWidth * OVERVIEW_PX_PER_STITCH;
+  const oImgHpx = gridHeight * OVERVIEW_PX_PER_STITCH;
+  const { w: oW, h: oH } = fitImageMm(oImgWpx, oImgHpx, CONTENT_W, pageH - 42);
+  const oX = (pageW - oW) / 2;
+  const oY = 31;
+  doc.addImage(overviewDataUrl, 'PNG', oX, oY, oW, oH);
+
+  // Box gridlines every 10 stitches
+  const oStitchMm = oW / gridWidth;
+  doc.setDrawColor(160, 160, 170);
+  doc.setLineWidth(0.15);
+  for (const g of labelPositions(0, gridWidth)) {
+    const x = oX + g * oStitchMm;
+    doc.line(x, oY, x, oY + oH);
+  }
+  for (const g of labelPositions(0, gridHeight)) {
+    const y = oY + g * oStitchMm;
+    doc.line(oX, y, oX + oW, y);
+  }
+
+  // Box numbers every 10 on both axes (origin labelled "1")
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(90, 90, 100);
+  for (const g of labelPositions(0, gridWidth)) {
+    const x = oX + g * oStitchMm;
+    doc.text(String(g === 0 ? 1 : g), x, oY - 1.6, { align: 'center' });
+  }
+  for (const g of labelPositions(0, gridHeight)) {
+    const y = oY + g * oStitchMm;
+    doc.text(String(g === 0 ? 1 : g), oX - 1.6, y, { align: 'right', baseline: 'middle' });
+  }
+
+  // Overview border
+  doc.setDrawColor(30, 30, 40);
+  doc.setLineWidth(0.3);
+  doc.rect(oX, oY, oW, oH);
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.5);
+  doc.setTextColor(130, 130, 130);
+  doc.text(
+    'Boxes mark 10-stitch blocks — use the numbers along the top and left edge to find any area.',
+    pageW / 2,
+    pageH - 12,
+    { align: 'center' },
+  );
+
   /* ── Chart pages ───────────────────────────────────────────────── */
   const tiles = computeChartTiles(gridWidth, gridHeight);
   const tileCount = tiles.cols * tiles.rows;
   let chartIndex = 0;
-
-  // Gridline + number positions for a tile slice: every 10th global stitch
-  // boundary (10, 20, …) plus the design origin (labelled "1").
-  const labelPositions = (globalStart: number, globalEnd: number): number[] => {
-    const positions: number[] = [];
-    if (globalStart === 0) positions.push(0);
-    for (let g = GRIDLINE_EVERY; g <= globalEnd; g += GRIDLINE_EVERY) positions.push(g);
-    return positions;
-  };
 
   // Reserve a slim left gutter for the row numbers.
   const chartLeftGutter = 7;
@@ -398,7 +665,7 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
         22,
       );
 
-      // Full-resolution stitches only (gridlines + numbers drawn as vectors)
+      // Full-resolution stitches + per-color symbols (gridlines + numbers drawn as vectors)
       const c0 = tx * TILE_STITCHES;
       const r0 = ty * TILE_STITCHES;
       const c1 = Math.min(c0 + TILE_STITCHES, gridWidth);
@@ -407,7 +674,7 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
       const cellsH = r1 - r0;
       const tileDataUrl = renderStitchesToCanvas(
         grid, gridWidth, gridHeight, cellFractions, CHART_PX_PER_STITCH,
-        { c0, r0, c1, r1 },
+        { c0, r0, c1, r1 }, symbols,
       );
 
       const imgWpx = cellsW * CHART_PX_PER_STITCH;
@@ -474,7 +741,7 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
   const instructions: [string, string][] = [
     [
       'Reading the chart',
-      'Each square is one cross stitch; its color matches a key entry on the Materials & Color Key page. Gridlines mark every 10 stitches with row/column numbers so you can find your place. Large designs are split into tiles — each tile page shows its row/column range.',
+      'Each square is one cross stitch; its color and chart symbol match an entry on the Materials & Color Key page. Gridlines mark every 10 stitches with row/column numbers so you can find your place, and the Full Design Overview shows the whole pattern with 10-stitch boxes. Large designs are split into tiles — each tile page shows its row/column range.',
     ],
     [
       'Cross-stitch basics',
@@ -534,8 +801,9 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
 
 /**
  * Export a stitch pattern to PDF as a complete multi-page pattern sheet:
- * summary → materials/color key → full-resolution chart (tiled) → instructions.
- * All client-side — no server needed.
+ * summary → materials/color key (with chart symbols) → full-design overview
+ * (numbered every 10) → full-resolution chart (tiled, symbols per stitch) →
+ * instructions. All client-side — no server needed.
  */
 export async function exportPatternToPdf(options: PdfExportOptions): Promise<void> {
   const { patternName, grid } = options;

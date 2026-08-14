@@ -8,6 +8,10 @@ import {
   STITCHES_PER_SKEIN_14CT,
   CHART_PX_PER_STITCH,
   TILE_STITCHES,
+  CHART_SYMBOLS,
+  assignSymbols,
+  symbolForIndex,
+  symbolInk,
 } from '../utils/pdfExport';
 
 /* ────────────────────────────────────────────────────────────────── *
@@ -112,6 +116,7 @@ class FakeCtx {
   beginPath() {}
   moveTo() {}
   lineTo() {}
+  arc() {}
   stroke() {
     this.strokeCalls += 1;
   }
@@ -196,6 +201,51 @@ describe('pdfExport — palette & skein math', () => {
   });
 });
 
+describe('pdfExport — v2 chart symbols', () => {
+  it('assigns symbols deterministically by palette index (stable across calls)', () => {
+    const palette = buildPalette({
+      '0,0': '#e11d48',
+      '0,1': '#e11d48',
+      '1,0': '#2563eb',
+      '2,0': '#facc15',
+    });
+    const first = assignSymbols(palette);
+    const second = assignSymbols(palette);
+    expect(first).toEqual(second); // stability
+    expect(first).toEqual({
+      '#e11d48': 'cross', // palette order: most-used first
+      '#2563eb': 'slash',
+      '#facc15': 'backslash',
+    });
+  });
+
+  it('reuses the symbol set when the palette exceeds the symbol count', () => {
+    const colors = [
+      '#e11d48', '#2563eb', '#facc15', '#22c55e', '#a855f7', '#f97316',
+      '#06b6d4', '#ef4444', '#84cc16', '#ec4899', '#6366f1', '#14b8a6',
+      '#f59e0b', '#0ea5e9', '#d946ef',
+    ];
+    const grid: Record<string, string> = {};
+    colors.forEach((c, i) => { grid[`0,${i}`] = c; });
+    const syms = assignSymbols(buildPalette(grid));
+    // first CHART_SYMBOLS.length get distinct symbols, then the set repeats
+    expect(syms[colors[0]]).toBe('cross');
+    expect(syms[colors[CHART_SYMBOLS.length]]).toBe('cross');
+    expect(syms[colors[CHART_SYMBOLS.length + 1]]).toBe('slash');
+    expect(new Set(colors.map((c) => syms[c])).size).toBe(CHART_SYMBOLS.length);
+    expect(symbolForIndex(0)).toBe('cross');
+    expect(symbolForIndex(CHART_SYMBOLS.length)).toBe('cross');
+  });
+
+  it('symbol ink contrasts with the cell fill (white on dark, dark on light)', () => {
+    expect(symbolInk('#111111')).toBe('#ffffff');
+    expect(symbolInk('#1e293b')).toBe('#ffffff');
+    expect(symbolInk('#e11d48')).toBe('#ffffff'); // deep red → white ink
+    expect(symbolInk('#ffffff')).toBe('#1f2937'); // white cell → dark ink
+    expect(symbolInk('#facc15')).toBe('#1f2937'); // lemon yellow → dark ink
+  });
+});
+
 describe('pdfExport — multi-page pattern sheet structure', () => {
   let ctx: FakeCtx;
   let canvasWidths: number[];
@@ -245,10 +295,10 @@ describe('pdfExport — multi-page pattern sheet structure', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds 7 pages for a 100×100 grid: summary + key + 4 chart tiles + instructions', () => {
+  it('builds 8 pages for a 100×100 grid: summary + key + overview + 4 chart tiles + instructions', () => {
     const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
-    expect(doc.getNumberOfPages()).toBe(7);
-    expect(doc.pages).toHaveLength(7);
+    expect(doc.getNumberOfPages()).toBe(8);
+    expect(doc.pages).toHaveLength(8);
   });
 
   it('page 1 is the summary: name, dims, fabric, finished size, total, preview image', () => {
@@ -289,22 +339,50 @@ describe('pdfExport — multi-page pattern sheet structure', () => {
     expect(p2).toContain('9,000 total stitches');
   });
 
-  it('chart pages: one per tile, labelled with global row/column ranges', () => {
+  it('color key gains a Symbol column with a glyph per palette row', () => {
+    const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
+    const p2 = doc.pages[1].join('\n');
+    expect(p2).toContain('Symbol');
+    expect(p2).toContain('Swatch');
+    expect(p2).toContain('Code');
+    expect(p2).toContain('Color name');
+    expect(p2).toContain('Stitches');
+    expect(p2).toContain('Skeins');
+    // images: summary preview (1) + key glyphs (4) + overview (1) + chart tiles (4)
+    expect(doc.images).toHaveLength(10);
+  });
+
+  it('page 3 is the full-design overview, numbered every 10 on both axes', () => {
     const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
     const p3 = doc.pages[2].join('\n');
+    expect(p3).toContain('Full Design Overview');
+    expect(p3).toContain('every 10 stitches');
+    // box numbers on both axes (top row + left column), origin labelled "1"
+    expect(doc.numbers).toContain('1');
+    expect(doc.numbers).toContain('10');
+    expect(doc.numbers).toContain('60');
+    expect(doc.numbers).toContain('100');
+    // overview image present and border drawn
+    expect(doc.images.length).toBeGreaterThanOrEqual(2);
+    expect(doc.rectCount).toBeGreaterThanOrEqual(10); // + overview border
+  });
+
+  it('chart pages: one per tile, labelled with global row/column ranges', () => {
+    const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
     const p4 = doc.pages[3].join('\n');
-    const p6 = doc.pages[5].join('\n');
-    expect(p3).toContain('Chart — Tile 1 of 4');
-    expect(p3).toContain('Rows 1–60 · Columns 1–60');
-    expect(p4).toContain('Chart — Tile 2 of 4');
-    expect(p4).toContain('Columns 61–100');
-    expect(p6).toContain('Chart — Tile 4 of 4');
-    expect(p6).toContain('Rows 61–100');
+    const p5 = doc.pages[4].join('\n');
+    const p7 = doc.pages[6].join('\n');
+    expect(p4).toContain('Chart — Tile 1 of 4');
+    expect(p4).toContain('Rows 1–60 · Columns 1–60');
+    expect(p5).toContain('Chart — Tile 2 of 4');
+    expect(p5).toContain('Columns 61–100');
+    expect(p7).toContain('Chart — Tile 4 of 4');
+    expect(p7).toContain('Rows 61–100');
   });
 
   it('the last page is the instructions sheet', () => {
     const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
-    const last = doc.pages[6].join('\n');
+    const last = doc.pages[7].join('\n');
     expect(last).toContain('How to Read & Stitch This Pattern');
     expect(last).toContain('Reading the chart');
     expect(last).toContain('Cross-stitch basics');
@@ -318,7 +396,7 @@ describe('pdfExport — multi-page pattern sheet structure', () => {
     doc.pages.forEach((page, i) => {
       const text = page.join('\n');
       expect(text).toContain('Generated by StitchWise Studio');
-      expect(text).toContain(`Page ${i + 1} of 7`);
+      expect(text).toContain(`Page ${i + 1} of 8`);
     });
   });
 
