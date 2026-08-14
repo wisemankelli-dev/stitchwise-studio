@@ -42,7 +42,7 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     description:
       "A blank Christmas stocking outline ready for your own design — add names, initials or festive motifs. 112×112 stitches on 14ct fabric (~8.0×8.0 in), 7 DMC colors, ~12,540 stitches. PDF pattern with full DMC color key delivered by email after purchase.",
     priceLabel: "$3.50",
-    imageUrl: "/patterns/blank-stocking-template-v2.png",
+    imageUrl: "/patterns/blank-stocking-template-v3.png",
     paymentUrl: "https://buy.stripe.com/00weVf61f9gHeQb8x99EI01",
     badge: "New",
     active: true,
