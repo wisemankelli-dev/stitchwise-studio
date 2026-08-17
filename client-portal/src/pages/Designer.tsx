@@ -541,6 +541,16 @@ export function inchesToStitches(inches: number, fabricCount: number): number {
   return Math.max(6, Math.min(240, Math.round(inches * fabricCount)));
 }
 
+/**
+ * Auto-fit zoom so the whole canvas (cols×rows cells at 12px/cell) fits the
+ * available panel space (px). Only ever zooms OUT to fit — never above 1 —
+ * with a 0.95 margin and a 0.15 floor (so very large canvases like the
+ * 154×238 stocking still fit on screen).
+ */
+export function fitZoomFor(cols: number, rows: number, availW: number, availH: number): number {
+  return Math.min(1, Math.max(0.15, Math.min(availW / (cols * 12), availH / (rows * 12)) * 0.95));
+}
+
 /** Distance from point (px,py) to line segment (x1,y1)-(x2,y2) */
 function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
   const dx = x2 - x1, dy = y2 - y1;
@@ -1449,6 +1459,17 @@ export const Designer: React.FC = () => {
                         onClick={() => {
                           setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
                           requestResize(stitchW, stitchH);
+                          // Auto-fit zoom so the whole canvas (e.g. the stocking
+                          // toe) is visible in the panel after a preset click.
+                          const el = canvasRef.current;
+                          if (el) {
+                            setZoom(fitZoomFor(
+                              stitchW,
+                              stitchH,
+                              Math.max(120, el.clientWidth - 48),
+                              Math.max(120, el.clientHeight - 48),
+                            ));
+                          }
                         }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
                           isActive
@@ -1618,7 +1639,7 @@ export const Designer: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
-                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomOut className="h-4 w-4" /></button>
+                    <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.2))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomOut className="h-4 w-4" /></button>
                     <span className="text-[10px] font-bold text-slate-600 w-8 text-center">{Math.round(zoom * 100)}%</span>
                     <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomIn className="h-4 w-4" /></button>
                   </div>

@@ -288,7 +288,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     return () => { referenceImgRef.current = null; };
   }, [referenceImage]);
 
-  const MIN_ZOOM = 0.25;
+  const MIN_ZOOM = 0.15;
   const MAX_ZOOM = 4;
 
   // ── Draw the grid on canvas ──────────────────────────────────────────────
