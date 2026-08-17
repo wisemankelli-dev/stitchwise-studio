@@ -816,6 +816,16 @@ export const Designer: React.FC = () => {
     const key = `${row},${col}`;
     setGrid(prev => ({ ...prev, [key]: color }));
     setGridStitchTypes(prev => ({ ...prev, [key]: stitch }));
+    // A full paint must render solid — clear any leftover fractional-fill entry
+    // (owner report 08-17: painting white over a tan area randomly half-filled,
+    // because shape-tool edge fractions from the tan fill were still clipping
+    // freshly painted cells with the #fdf2f8 diagonal).
+    setCellFractions(prev => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }, []);
 
   const clearCell = useCallback((row: number, col: number) => {
@@ -826,6 +836,12 @@ export const Designer: React.FC = () => {
       return next;
     });
     setGridStitchTypes(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setCellFractions(prev => {
+      if (!(key in prev)) return prev;
       const next = { ...prev };
       delete next[key];
       return next;
@@ -973,6 +989,7 @@ export const Designer: React.FC = () => {
         if (targetColor === fillColor) break;
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
+        const newFractions = { ...cellFractions };
         const stack = [{ row, col }];
         const visited = new Set<string>();
         visited.add(key);
@@ -982,6 +999,7 @@ export const Designer: React.FC = () => {
           if ((grid[k] || '') !== targetColor) continue;
           newGrid[k] = fillColor;
           newStitchTypes[k] = selectedStitch;
+          delete newFractions[k];
           for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
             const nr = r + dr, nc = c + dc;
             if (nr < 0 || nr >= gridHeight || nc < 0 || nc >= gridWidth) continue;
@@ -993,6 +1011,7 @@ export const Designer: React.FC = () => {
         }
         setGrid(newGrid);
         setGridStitchTypes(newStitchTypes);
+        setCellFractions(newFractions);
         break;
       }
       case 'pan': {
