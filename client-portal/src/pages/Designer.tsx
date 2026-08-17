@@ -1195,7 +1195,15 @@ export const Designer: React.FC = () => {
     setAiStats(null);
     setPollingStatus('');
     try {
-      const gridSize = Math.max(gridWidth, gridHeight);
+      // Keep the CURRENT canvas size — AI generation must never resize the
+      // canvas (owner bug report 08-17: generating on the 11x17 stocking
+      // canvas came back as a 100x100 grid because the backend clamps grid
+      // sizes >200 and the old code then replaced the canvas with the
+      // returned square). The generated art is auto-framed into the canvas
+      // we already have, exactly like image upload does.
+      const canvasW = gridWidth;
+      const canvasH = gridHeight;
+      const gridSize = Math.max(canvasW, canvasH);
       setPollingStatus(
         premiumModel && isStudioTier
           ? 'Generating with the premium art model — this can take 1–3 minutes…'
@@ -1234,11 +1242,12 @@ export const Designer: React.FC = () => {
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
-        setGridWidth(newW);
-        setGridHeight(newH);
         // Auto-frame: fit + center with a margin, drop the detected background
-        // (owner bug report — generated subjects were running flush into the border).
-        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, newW, newH);
+        // (owner bug report — generated subjects were running flush into the
+        // border). Frame INTO THE EXISTING canvas dims — never adopt the
+        // returned square's dims, so presets like the 11x17 stocking keep
+        // their canvas (154x238) when the art is generated.
+        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, canvasW, canvasH);
         finalGrid = framed.grid;
         finalStitchTypes = framed.stitchTypes;
       }

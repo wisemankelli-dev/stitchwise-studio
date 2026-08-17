@@ -90,7 +90,7 @@ export async function imageBufferToStitchGrid(
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : DEFAULT_GRID_SIZE;
+  const size = gridSize >= 8 && gridSize <= 240 ? gridSize : DEFAULT_GRID_SIZE;
 
   // Step 1: Resize the image to the target grid size using nearest-neighbor.
   // Step 2: Posterize to exactly maxColors flat colors via PNG palette quantization.

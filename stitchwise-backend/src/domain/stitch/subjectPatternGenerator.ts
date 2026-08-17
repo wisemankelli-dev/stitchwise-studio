@@ -817,7 +817,7 @@ export function generateSubjectPattern(
 ): PatternResult | null {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
-  const size = gridSize >= 8 && gridSize <= 200 ? gridSize : 100;
+  const size = gridSize >= 8 && gridSize <= 240 ? gridSize : 100;
 
   // Check prompt against known subjects
   let matchedEntry: SubjectEntry | null = null;
