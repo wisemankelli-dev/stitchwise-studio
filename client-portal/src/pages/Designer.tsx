@@ -392,14 +392,23 @@ export function framePatternInGrid(
   cellFractions: Record<string, number>,
   width: number,
   height: number,
+  srcWidth?: number,
+  srcHeight?: number,
 ): { grid: Record<string, string>; stitchTypes: Record<string, string>; cellFractions: Record<string, number> } {
-  const bg = detectBackgroundColor(grid, width, height);
+  // The grid being framed can be LARGER than the canvas it lands on: AI
+  // generation returns a square gridSize×gridSize art (238×238 for the 154×238
+  // stocking canvas). Read content over the SOURCE grid dims, write the scaled
+  // result into the TARGET canvas dims (width × height). Without source dims
+  // (image upload) the grid is already ≤ canvas size and both coincide.
+  const readW = srcWidth ?? width;
+  const readH = srcHeight ?? height;
+  const bg = detectBackgroundColor(grid, readW, readH);
   if (!bg) return { grid, stitchTypes, cellFractions }; // fully empty grid
 
   // Content bbox: rows/cols where cell color ≠ background (empty = background).
-  let minR = height, maxR = -1, minC = width, maxC = -1;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+  let minR = readH, maxR = -1, minC = readW, maxC = -1;
+  for (let y = 0; y < readH; y++) {
+    for (let x = 0; x < readW; x++) {
       const color = grid[`${y},${x}`];
       if (color && color !== bg) {
         if (y < minR) minR = y;
@@ -415,12 +424,16 @@ export function framePatternInGrid(
 
   // Count fully-empty (absent) rows/cols from each edge inward — a design that
   // already has ≥ M empty cells on all four sides is well-framed: leave it alone.
-  const emptyTop = countEmptyTop(grid, width, minR);
-  const emptyBottom = countEmptyBottom(grid, width, height, maxR);
-  const emptyLeft = countEmptyLeft(grid, height, minC);
-  const emptyRight = countEmptyRight(grid, height, width, maxC);
-  if (emptyTop >= M && emptyBottom >= M && emptyLeft >= M && emptyRight >= M) {
-    return { grid, stitchTypes, cellFractions };
+  // Only valid when the grid IS the target canvas (image upload); AI art is
+  // always re-framed into the canvas because its dims differ from the canvas.
+  if (srcWidth === undefined && srcHeight === undefined) {
+    const emptyTop = countEmptyTop(grid, readW, minR);
+    const emptyBottom = countEmptyBottom(grid, readW, readH, maxR);
+    const emptyLeft = countEmptyLeft(grid, readH, minC);
+    const emptyRight = countEmptyRight(grid, readH, readW, maxC);
+    if (emptyTop >= M && emptyBottom >= M && emptyLeft >= M && emptyRight >= M) {
+      return { grid, stitchTypes, cellFractions };
+    }
   }
 
   const bboxW = maxC - minC + 1;
@@ -1247,7 +1260,7 @@ export const Designer: React.FC = () => {
         // border). Frame INTO THE EXISTING canvas dims — never adopt the
         // returned square's dims, so presets like the 11x17 stocking keep
         // their canvas (154x238) when the art is generated.
-        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, canvasW, canvasH);
+        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, canvasW, canvasH, newW, newH);
         finalGrid = framed.grid;
         finalStitchTypes = framed.stitchTypes;
       }

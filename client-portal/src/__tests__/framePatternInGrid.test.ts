@@ -184,4 +184,30 @@ describe('framePatternInGrid', () => {
     expect(maxC).toBe(116);
     expect(Object.values(out.grid).every((color) => color !== WHITE)).toBe(true);
   });
+
+  it('frames square AI art into a taller canvas WITHOUT cutting the right side (238×238 → 154×238 stocking)', () => {
+    // AI generation returns a SQUARE grid (gridSize × gridSize = 238×238) for the
+    // 154×238 stocking canvas. Owner bug 08-17: "New design was cut in half" —
+    // the framing pass read the art as if it were 154 wide, so columns 154–237 of
+    // the art were never seen and the leftover slice was stretched to fill.
+    // Regression guard: with the old code this produced rows 15–222 (208 tall,
+    // subject squashed/stretched) — now the FULL subject is centered at 138×138.
+    const grid = populatedGrid(238, 238, 12, 225, 12, 225); // white bg + red subject
+    const out = framePatternInGrid(grid, {}, {}, 154, 238, 238, 238);
+
+    const { minR, maxR, minC, maxC } = bboxOf(out.grid);
+    // M = max(3, round(0.05 × min(154, 238))) = 8; scale = min(138/214, 222/214, 1)
+    // ≈ 0.6449 → 138×138 → centered → rows 50–187, cols 8–145.
+    expect(minC).toBe(8);
+    expect(maxC).toBe(145);
+    expect(minR).toBe(50);
+    expect(maxR).toBe(187);
+    // The subject kept its square aspect: width == height == 138.
+    expect(maxC - minC + 1).toBe(138);
+    expect(maxR - minR + 1).toBe(138);
+    expect(Object.keys(out.grid)).toHaveLength(138 * 138);
+    expect(Object.values(out.grid).every((color) => color !== WHITE)).toBe(true);
+    // Nothing lands in the right strip that the old bug silently dropped.
+    expect(maxC).toBeLessThanOrEqual(153);
+  });
 });
