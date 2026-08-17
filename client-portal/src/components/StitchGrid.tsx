@@ -255,6 +255,31 @@ export function mouseToGrid(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+
+/**
+ * All cells on the straight line from `a` to `b` (inclusive of `b`, exclusive of `a`).
+ * Used to fill the gaps between sparse mousemove samples during a drag, so fast
+ * strokes paint a contiguous line instead of scattered dots (owner report 08-17:
+ * "paint is scattered"). If `a` is null (first sample of a drag), returns [b].
+ */
+export function cellsBetween(
+  a: { row: number; col: number } | null,
+  b: { row: number; col: number },
+): { row: number; col: number }[] {
+  if (!a) return [b];
+  const dr = b.row - a.row;
+  const dc = b.col - a.col;
+  const steps = Math.max(Math.abs(dr), Math.abs(dc));
+  if (steps === 0) return [b];
+  const out: { row: number; col: number }[] = [];
+  for (let i = 1; i <= steps; i++) {
+    out.push({
+      row: Math.round(a.row + (dr * i) / steps),
+      col: Math.round(a.col + (dc * i) / steps),
+    });
+  }
+  return out;
+}
 const StitchGrid: React.FC<StitchGridProps> = ({
   data,
   zoom,
@@ -593,6 +618,9 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const pos = getGridPos(e);
+      // End of a click-drag cycle: clear the last hovered cell so the next drag
+      // starts fresh instead of connecting a line from the previous stroke.
+      lastHoveredCell.current = null;
       if (pos) onCellClick?.(pos.row, pos.col);
     },
     [getGridPos, onCellClick],
@@ -606,7 +634,9 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       const last = lastHoveredCell.current;
       if (!last || last.row !== pos.row || last.col !== pos.col) {
         lastHoveredCell.current = pos;
-        onCellHover?.(pos.row, pos.col);
+        for (const p of cellsBetween(last, pos)) {
+          onCellHover?.(p.row, p.col);
+        }
       }
     },
     [getGridPos, isMouseDown, onCellHover],
