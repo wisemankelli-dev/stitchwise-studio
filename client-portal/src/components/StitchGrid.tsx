@@ -46,6 +46,9 @@ export interface StitchGridProps {
   onToggleFullscreen?: () => void;
   /** Fractional cell fills for anti-aliased shapes */
   cellFractions?: Record<string, number>;
+  /** Live shape preview origin/end (rect/circle/line drag) */
+  shapeStart?: { row: number; col: number } | null;
+  shapeEnd?: { row: number; col: number } | null;
   /** Reference image URL to show as a faded overlay behind the grid */
   referenceImage?: string | null;
   /** Whether the reference image overlay is visible */
@@ -490,6 +493,8 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   isFullscreen,
   onToggleFullscreen,
   cellFractions,
+  shapeStart,
+  shapeEnd,
   referenceImage,
   showReference = false,
   referenceOpacity = 0.20,
@@ -643,6 +648,33 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       ctx.stroke();
     }
 
+    // ── Shape drag preview (live dashed outline for rect/circle/line) ──
+    if (shapeStart && shapeEnd && (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line')) {
+      const r1 = Math.min(shapeStart.row, shapeEnd.row);
+      const r2 = Math.max(shapeStart.row, shapeEnd.row);
+      const c1 = Math.min(shapeStart.col, shapeEnd.col);
+      const c2 = Math.max(shapeStart.col, shapeEnd.col);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(99,102,241,0.95)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      if (activeTool === 'rectangle') {
+        ctx.rect(c1 * cellSize, r1 * cellSize, (c2 - c1 + 1) * cellSize, (r2 - r1 + 1) * cellSize);
+      } else if (activeTool === 'circle') {
+        const pcx = ((c1 + c2) / 2) * cellSize;
+        const pcy = ((r1 + r2) / 2) * cellSize;
+        const prx = Math.max(cellSize / 2, ((c2 - c1) / 2) * cellSize);
+        const pry = Math.max(cellSize / 2, ((r2 - r1) / 2) * cellSize);
+        ctx.ellipse(pcx, pcy, prx, pry, 0, 0, Math.PI * 2);
+      } else {
+        ctx.moveTo((shapeStart.col + 0.5) * cellSize, (shapeStart.row + 0.5) * cellSize);
+        ctx.lineTo((shapeEnd.col + 0.5) * cellSize, (shapeEnd.row + 0.5) * cellSize);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // ── Clone selection highlight ──
     if (selRMin >= 0) {
       ctx.fillStyle = 'rgba(244,114,182,0.25)';
@@ -732,7 +764,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     if (hc && activeTool !== 'pan') {
       drawHoverHighlight(ctx, hc.col * cellSize, hc.row * cellSize, cellSize);
     }
-  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity, guide]);
+  }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity, guide, shapeStart, shapeEnd]);
 
   // ── Redraw on changes ──
 
@@ -872,13 +904,18 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       const pos = getGridPos(e);
       if (!pos) return;
       const isCellTool = activeTool !== 'pan';
+      const isShapeDrag = isMouseDown && (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line');
       // Hover highlight: update directly on the canvas (no React state),
       // so the selection cursor tracks the mouse at full input rate.
+      // Skipped during shape drags — the live preview + full redraws cover
+      // it, and restoreCell would notch the preview outline.
       const h = hoveredCell.current;
-      if (!h || h.row !== pos.row || h.col !== pos.col) {
+      if (!isShapeDrag && (!h || h.row !== pos.row || h.col !== pos.col)) {
         if (h) restoreCell(h.row, h.col);
         hoveredCell.current = pos;
         if (isCellTool) drawHoverHighlightAt(pos.row, pos.col);
+      } else if (isShapeDrag && (!h || h.row !== pos.row || h.col !== pos.col)) {
+        hoveredCell.current = pos;
       }
       if (!isMouseDown) return;
       // Drag painting: paint the stroke into the buffer synchronously

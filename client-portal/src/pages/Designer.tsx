@@ -690,6 +690,7 @@ export const Designer: React.FC = () => {
 
   // Drawing tools state
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
+  const [shapeEnd, setShapeEnd] = useState<{ row: number; col: number } | null>(null);
 
   // Shape browser state
   const [selectedShape, setSelectedShape] = useState<ClipartShape | null>(null);
@@ -916,6 +917,7 @@ export const Designer: React.FC = () => {
       case 'line': {
         if (!drawStart) {
           setDrawStart({ row, col });
+          setShapeEnd(null);
         } else {
           // Draw the shape
           const r1 = Math.min(drawStart.row, row);
@@ -979,6 +981,7 @@ export const Designer: React.FC = () => {
           }
           setCellFractions(prev => ({ ...prev, ...newFractions }));
           setDrawStart(null);
+          setShapeEnd(null);
         }
         break;
       }
@@ -1135,8 +1138,11 @@ export const Designer: React.FC = () => {
         setCell(row, col, selectedColor, selectedStitch);
         setCellFractions(prev => ({ ...prev, [key]: 0.5 }));
       }
+    } else if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
+      // Shape drag: update the live preview endpoint
+      if (drawStart) setShapeEnd({ row, col });
     }
-  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight]);
+  }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight, drawStart, setShapeEnd]);
 
   const handleClearGrid = () => {
     setGrid({});
@@ -2048,7 +2054,13 @@ export const Designer: React.FC = () => {
                 className="w-full p-6 bg-amber-50/20 rounded-2xl border-4 border-dashed border-blush-100 shadow-inner min-h-[360px] flex items-center justify-center overflow-auto"
                 onMouseDown={() => setIsMouseDown(true)}
                 onMouseUp={() => { setIsMouseDown(false); }}
-                onMouseLeave={() => { setIsMouseDown(false); }}
+                onMouseLeave={() => {
+                  setIsMouseDown(false);
+                  if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
+                    setDrawStart(null);
+                    setShapeEnd(null);
+                  }
+                }}
               >
                 <div className="w-full">
                     <StitchGrid
@@ -2061,6 +2073,12 @@ export const Designer: React.FC = () => {
                         if (activeTool === 'paint' || activeTool === 'erase') {
                           handleCellAction(row, col);
                         }
+                        // Shape tools: press starts the drag (owner report 08-17:
+                        // square/circle/line 'didn't work the way they should').
+                        if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
+                          setDrawStart({ row, col });
+                          setShapeEnd(null);
+                        }
                       }}
                       activeTool={activeTool}
                       selectedColor={selectedColor}
@@ -2071,6 +2089,8 @@ export const Designer: React.FC = () => {
                       isFullscreen={isFullscreen}
                       onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                       cellFractions={cellFractions}
+                      shapeStart={drawStart}
+                      shapeEnd={shapeEnd}
                       referenceImage={referenceImage}
                       showReference={showReference}
                       referenceOpacity={referenceOpacity}
