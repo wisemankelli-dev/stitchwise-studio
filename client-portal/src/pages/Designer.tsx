@@ -1567,6 +1567,16 @@ export const Designer: React.FC = () => {
                       const newW = inchesToStitches(activePreset.inchW, newCount);
                       const newH = inchesToStitches(activePreset.inchH, newCount);
                       requestResize(newW, newH);
+                      // Keep the whole design (e.g. the stocking toe) visible at the new count
+                      const el = canvasRef.current;
+                      if (el) {
+                        setZoom(fitZoomFor(
+                          newW,
+                          newH,
+                          Math.max(120, el.clientWidth - 48),
+                          Math.max(120, el.clientHeight - 48),
+                        ));
+                      }
                     }
                   }}
                   className="w-full rounded-xl border-blush-100 text-sm text-slate-700 font-semibold px-3 py-2 bg-white shadow-sm focus:border-blush-500 focus:ring-blush-500"
