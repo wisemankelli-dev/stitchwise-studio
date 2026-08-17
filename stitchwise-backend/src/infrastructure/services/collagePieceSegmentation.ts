@@ -46,7 +46,7 @@ import type { CollagePiece } from "../../domain/ai/collageAI";
 /** Working resolution (max dimension) used for segmentation analysis. */
 const WORK_SIZE = 384;
 /** Default maximum number of pieces. */
-const MAX_PIECES = 60;
+const MAX_PIECES = 40;
 /**
  * Regions smaller than this fraction of the image are merged into a neighbor.
  * With label-map connected components every pixel is already assigned, so this

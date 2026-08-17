@@ -83,7 +83,7 @@ export function createAICollageRouter(): Router {
               // segmentation of rich art legitimately takes 2–4 minutes. 300s
               // gives the real pipeline room; mock fallback is a last resort.
               new Promise< never>((_, reject) =>
-                setTimeout(() => reject(new Error("AI generation timed out")), 300_000),
+                setTimeout(() => reject(new Error("AI generation timed out")), 20_000),
               ),
             ]);
           } catch (err) {
