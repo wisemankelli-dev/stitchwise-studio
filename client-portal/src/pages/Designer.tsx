@@ -930,30 +930,17 @@ export const Designer: React.FC = () => {
           const ry = Math.max(0.5, (r2 - r1) / 2);
 
           const newFractions: Record<string, number> = {};
-          for (let r = Math.floor(r1 - 1); r <= Math.ceil(r2 + 1); r++) {
-            for (let c = Math.floor(c1 - 1); c <= Math.ceil(c2 + 1); c++) {
+          for (let r = r1; r <= r2; r++) {
+            for (let c = c1; c <= c2; c++) {
               if (activeTool === 'rectangle') {
-                // Anti-aliased rectangle: sample 4 subpixel corners
-                const onTop = r === r1, onBot = r === r2, onLeft = c === c1, onRight = c === c2;
-                const isEdge = onTop || onBot || onLeft || onRight;
-                if (!isEdge) {
-                  // Interior cell: full fill
-                  setCell(r, c, selectedColor, selectedStitch);
-                } else {
-                  // Edge cell: sample subpixel coverage
-                  let hits = 0;
-                  for (const [sr, sc] of [[0.25,0.25],[0.25,0.75],[0.75,0.25],[0.75,0.75]]) {
-                    const pr = r + sr, pc = c + sc;
-                    if (pr >= r1 && pr <= r2 && pc >= c1 && pc <= c2) hits++;
-                  }
-                  if (hits === 4) {
-                    setCell(r, c, selectedColor, selectedStitch);
-                  } else if (hits > 0) {
-                    const frac = hits / 4;
-                    newFractions[`${r},${c}`] = frac;
-                    setCell(r, c, selectedColor, selectedStitch);
-                  }
-                }
+                // Grid-aligned rectangle: every cell in [r1..r2]×[c1..c2] is
+                // fully inside — fill solid. (Owner report 08-17: "Rectangle
+                // drags but does not fill solid. It is scattered grids of
+                // color." Old code sampled 4 subpixel points over r1-1..r2+1,
+                // so a 1×1 rect hit zero samples at its own cell (nothing
+                // filled) while the four diagonal halo cells filled — scattered
+                // dots, and every rect came out one cell oversized.)
+                setCell(r, c, selectedColor, selectedStitch);
               } else if (activeTool === 'circle') {
                 // Compute fraction: sample 4 sub-pixel points per cell
                 let hits = 0;
