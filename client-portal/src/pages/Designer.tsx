@@ -733,10 +733,24 @@ export const Designer: React.FC = () => {
   React.useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
+    // Track the panel's own size so re-fit only happens when the panel
+    // SHRINKS. Growth events are caused by the canvas growing (user zoom-in /
+    // larger canvas) and must NOT fight the user's zoom — otherwise the zoom
+    // controls are neutralized on any canvas larger than the panel (owner
+    // report 08-17: "unable to use paint, fill or any tools" — trapped at a
+    // tiny auto-fit zoom where manual editing is unusable).
+    const prevAvail = { w: Infinity, h: Infinity }; // first event always fits
     const doFit = () => {
       setZoom((z) => {
         const availW = Math.max(120, el.clientWidth - 48);
         const availH = Math.max(120, el.clientHeight - 48);
+        if (availW >= prevAvail.w && availH >= prevAvail.h) {
+          prevAvail.w = availW;
+          prevAvail.h = availH;
+          return z;
+        }
+        prevAvail.w = availW;
+        prevAvail.h = availH;
         const canvasW = gridWidth * 12 * z;
         const canvasH = gridHeight * 12 * z;
         if (canvasW <= availW && canvasH <= availH) return z;
