@@ -31,6 +31,8 @@ export interface StitchGridProps {
   activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape' | 'half';
   isMouseDown?: boolean;
   onCellHover?: (row: number, col: number) => void;
+  /** Called on mousedown for immediate brush response (paint/erase) */
+  onCellPress?: (row: number, col: number) => void;
   cloneSource?: { row: number; col: number } | null;
   cloneSelectionEnd?: { row: number; col: number } | null;
   mirrorAxis?: 'horizontal' | 'vertical' | 'both' | null;
@@ -148,6 +150,53 @@ function drawStitchSymbol(
     case 'back': drawBackStitch(ctx, cx, cy, cellSize); break;
     case 'french': drawFrenchKnot(ctx, cx, cy, cellSize); break;
   }
+}
+
+// ── Symbol sprite cache ───────────────────────────────────────────────────────
+// Redrawing every filled cell's stitch glyph + DMC symbol each frame with vector
+// paths/fillText is the dominant cost of a redraw on large grids (owner report
+// 08-17: tools feel "sloppy and delayed"). Pre-render each (symbol, size, color)
+// once onto a tiny offscreen canvas, then blit with drawImage — 20-50× cheaper
+// per cell than per-cell path/text rendering.
+const spriteCache = new Map<string, HTMLCanvasElement>();
+const SPRITE_MAX = 400;
+
+function stitchSprite(stitchType: string, cellSize: number): HTMLCanvasElement | null {
+  const key = `st:${stitchType}:${Math.round(cellSize * 10)}`;
+  let spr = spriteCache.get(key);
+  if (spr) return spr;
+  if (spriteCache.size > SPRITE_MAX) spriteCache.clear();
+  const B = Math.ceil(cellSize) + 2;
+  spr = document.createElement('canvas');
+  spr.width = B;
+  spr.height = B;
+  const g = spr.getContext('2d');
+  if (!g) return null;
+  drawStitchSymbol(g, stitchType, B / 2, B / 2, cellSize);
+  spriteCache.set(key, spr);
+  return spr;
+}
+
+function dmcSprite(symbol: string, color: string, cellSize: number): HTMLCanvasElement | null {
+  const fontSize = Math.max(6, Math.round(cellSize * 0.7));
+  const fg = isLightColor(color) ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)';
+  const key = `dmc:${symbol}:${fg}:${fontSize}`;
+  let spr = spriteCache.get(key);
+  if (spr) return spr;
+  if (spriteCache.size > SPRITE_MAX) spriteCache.clear();
+  const B = Math.ceil(cellSize) + 2;
+  spr = document.createElement('canvas');
+  spr.width = B;
+  spr.height = B;
+  const g = spr.getContext('2d');
+  if (!g) return null;
+  g.font = `${fontSize}px sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = fg;
+  g.fillText(symbol, B / 2, B / 2 + 1); // +1 optical centering (matches original)
+  spriteCache.set(key, spr);
+  return spr;
 }
 
 /** Trace a rounded-rectangle path (pillow look) onto the current path. */
@@ -287,6 +336,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   activeTool,
   isMouseDown,
   onCellHover,
+  onCellPress,
   cloneSource,
   cloneSelectionEnd,
   mirrorAxis,
@@ -332,17 +382,27 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     const cw = data.width * cellSize;
     const ch = data.height * cellSize;
 
-    // Set canvas buffer size (high-DPI)
-    canvas.width = cw * dpr;
-    canvas.height = ch * dpr;
+    // Set canvas buffer size (high-DPI), capped so extreme zoom × devicePixelRatio
+    // can't exceed browser canvas limits and silently blank (owner report 08-17:
+    // tools "sloppy and delayed" — large grids at high zoom on a 2× display
+    // exceeded Chrome's ~268MP area cap and rendered nothing).
+    const MAX_BUFFER_AREA = 250_000_000;
+    const rawArea = cw * dpr * ch * dpr;
+    const bufferScale = rawArea > MAX_BUFFER_AREA ? Math.sqrt(MAX_BUFFER_AREA / rawArea) : 1;
+    const bw = Math.max(1, Math.round(cw * dpr * bufferScale));
+    const bh = Math.max(1, Math.round(ch * dpr * bufferScale));
+    // Only reallocate when the buffer size actually changes (reallocating on every
+    // draw clears the canvas and reallocates GPU memory on each paint event).
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
     // Set CSS display size
     canvas.style.width = `${cw}px`;
     canvas.style.height = `${ch}px`;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
 
     // Clear
     ctx.clearRect(0, 0, cw, ch);
@@ -547,42 +607,40 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       ctx.setLineDash([]);
     }
 
-    // ── Stitch type symbols ──
+    // ── Stitch type symbols (sprite-cached — per-cell vector drawing is a
+    // dominant redraw cost on large grids) ──
     if (cellSize >= 8) {
       for (let r = 0; r < data.height; r++) {
         for (let c = 0; c < data.width; c++) {
           const cell = data.grid[r]?.[c];
-          if (cell?.color && cell.stitchType && cell.stitchType !== 'cross') {
-            const cx = c * cellSize + cellSize / 2;
-            const cy = r * cellSize + cellSize / 2;
-            drawStitchSymbol(ctx, cell.stitchType, cx, cy, cellSize);
-          }
-          // Always draw cross symbol for cross-stitch type on filled cells
-          if (cell?.color && cell.stitchType === 'cross') {
-            const cx = c * cellSize + cellSize / 2;
-            const cy = r * cellSize + cellSize / 2;
-            drawCross(ctx, cx, cy, cellSize);
-          }
+          if (!cell?.color) continue;
+          const spr = stitchSprite(cell.stitchType || 'cross', cellSize);
+          if (!spr) continue;
+          ctx.drawImage(
+            spr,
+            Math.round(c * cellSize + (cellSize - spr.width) / 2),
+            Math.round(r * cellSize + (cellSize - spr.height) / 2),
+          );
         }
       }
     }
 
-    // ── DMC palette symbols ──
+    // ── DMC palette symbols (sprite-cached — per-cell fillText is the single
+    // most expensive op in a redraw; blitting cached glyphs is ~20-50× faster) ──
     if (showGridLines && cellSize >= 8 && colorSymbolMap.size > 0) {
-      const fontSize = Math.max(6, Math.round(cellSize * 0.7));
-      ctx.font = `${fontSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
       for (let r = 0; r < data.height; r++) {
         for (let c = 0; c < data.width; c++) {
           const cell = data.grid[r]?.[c];
           if (!cell?.color) continue;
           const symbol = colorSymbolMap.get(cell.color.toLowerCase());
           if (!symbol) continue;
-          const cx = c * cellSize + cellSize / 2;
-          const cy = r * cellSize + cellSize / 2;
-          ctx.fillStyle = isLightColor(cell.color) ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)';
-          ctx.fillText(symbol, cx, cy + 1); // +1 for vertical optical centering
+          const spr = dmcSprite(symbol, cell.color, cellSize);
+          if (!spr) continue;
+          ctx.drawImage(
+            spr,
+            Math.round(c * cellSize + (cellSize - spr.width) / 2),
+            Math.round(r * cellSize + (cellSize - spr.height) / 2),
+          );
         }
       }
     }
@@ -625,7 +683,14 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     },
     [getGridPos, onCellClick],
   );
-
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (e.button !== 0) return;
+      const pos = getGridPos(e);
+      if (pos) onCellPress?.(pos.row, pos.col);
+    },
+    [getGridPos, onCellPress],
+  );
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const pos = getGridPos(e);
@@ -745,6 +810,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
+          onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseLeave={handleCanvasMouseLeave}
           className="rounded-lg"

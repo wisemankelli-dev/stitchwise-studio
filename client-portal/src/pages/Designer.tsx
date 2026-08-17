@@ -1378,7 +1378,12 @@ export const Designer: React.FC = () => {
   };
 
 
-  const stitchData: StitchGridData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
+  // Memoized: rebuilding the 36k-cell grid array on EVERY Designer render was
+  // a major contributor to sluggish tools on large canvases (owner report 08-17).
+  const stitchData: StitchGridData = React.useMemo(
+    () => buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight),
+    [grid, gridStitchTypes, gridWidth, gridHeight],
+  );
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -2050,6 +2055,13 @@ export const Designer: React.FC = () => {
                       data={stitchData}
                       zoom={zoom}
                       onCellClick={handleCellAction}
+                      onCellPress={(row, col) => {
+                        // Immediate brush feedback: paint/erase apply on press, not
+                        // release (owner report 08-17: tools felt delayed/sloppy).
+                        if (activeTool === 'paint' || activeTool === 'erase') {
+                          handleCellAction(row, col);
+                        }
+                      }}
                       activeTool={activeTool}
                       isMouseDown={isMouseDown}
                       onCellHover={handleCellHover}
