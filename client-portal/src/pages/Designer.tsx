@@ -713,6 +713,32 @@ export const Designer: React.FC = () => {
     };
   }, [activePreset, fabricCount]);
 
+  // Keep the whole canvas visible when the panel resizes (owner report 08-17:
+  // shrinking the window after picking the Stocking cut the toe off). Only ever
+  // zooms OUT, and only when the canvas would overflow the panel — deliberate
+  // zoom-ins are left alone unless the panel physically shrinks.
+  React.useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const doFit = () => {
+      setZoom((z) => {
+        const availW = Math.max(120, el.clientWidth - 48);
+        const availH = Math.max(120, el.clientHeight - 48);
+        const canvasW = gridWidth * 12 * z;
+        const canvasH = gridHeight * 12 * z;
+        if (canvasW <= availW && canvasH <= availH) return z;
+        return Math.min(z, fitZoomFor(gridWidth, gridHeight, availW, availH));
+      });
+    };
+    const ro = new ResizeObserver(doFit);
+    ro.observe(el);
+    window.addEventListener('resize', doFit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', doFit);
+    };
+  }, [gridWidth, gridHeight]);
+
 
   // Utility: stitches to inches based on fabric count
   const stitchesToInches = (stitches: number, count: number): number => stitches / count;
@@ -1136,6 +1162,16 @@ export const Designer: React.FC = () => {
       });
       setGrid(restored);
       setGridStitchTypes(restoredTypes);
+      // Show the whole loaded design in the panel (e.g. a granted stocking/trout)
+      const el = canvasRef.current;
+      if (el) {
+        setZoom(fitZoomFor(
+          width,
+          height,
+          Math.max(120, el.clientWidth - 48),
+          Math.max(120, el.clientHeight - 48),
+        ));
+      }
       setPatternName(p.name);
       setShowPatternLoad(false);
       setPatternSaveMsg(`Loaded "${p.name}" (${width}×${height}).`);
