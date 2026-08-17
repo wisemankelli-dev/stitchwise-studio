@@ -45,6 +45,6 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     imageUrl: "/patterns/blank-stocking-template-v3.png",
     paymentUrl: "https://buy.stripe.com/eVq8wR2P33Wn4bxaFh9EI02",
     badge: "New",
-    active: true,
+    active: false,
   },
 ];
