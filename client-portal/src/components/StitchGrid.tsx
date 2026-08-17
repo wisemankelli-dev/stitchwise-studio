@@ -28,6 +28,8 @@ export interface StitchGridProps {
   zoom: number;
   onCellClick?: (row: number, col: number) => void;
   selectedColor?: string;
+  /** Selected stitch type for instant brush painting */
+  selectedStitch?: string;
   activeTool?: 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'shape' | 'half';
   isMouseDown?: boolean;
   onCellHover?: (row: number, col: number) => void;
@@ -199,6 +201,148 @@ function dmcSprite(symbol: string, color: string, cellSize: number): HTMLCanvasE
   return spr;
 }
 
+/** Browser canvas area cap — above this the backing store shrinks so drawing
+ *  never silently blanks (owner report 08-17). Shared by draw() and the
+ *  instant-brush path so both use the same transform. */
+const MAX_BUFFER_AREA = 250_000_000;
+
+/**
+ * Best-guess DMC symbol for a color (matches the palette lookup used in draw()).
+ */
+function dmcSymbolFor(color: string, palette: StitchGridData['dmcPalette']): string | undefined {
+  for (const entry of palette) {
+    if (entry.symbol && entry.hex && entry.hex.toLowerCase() === color.toLowerCase()) {
+      return entry.symbol;
+    }
+  }
+  return undefined;
+}
+
+/** Fill + border + satin highlight for ONE cell (CSS coords). Shared by the full
+ *  redraw, the hover-cell restore, and instant brush feedback so all three
+ *  render identically. */
+function drawCellAt(
+  ctx: CanvasRenderingContext2D,
+  cell: StitchCell | undefined,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const color = cell?.color;
+  if (color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, cellSize, cellSize);
+    // Subtle cell border for contrast
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 0.3;
+    ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
+    // Satin stitch highlight effect
+    if (cell?.stitchType === 'satin') {
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(x + i * (cellSize / 4) + 1, y + 1, cellSize / 8, cellSize - 2);
+      }
+    }
+  } else {
+    // Empty cell
+    ctx.fillStyle = '#fdf2f8';
+    ctx.fillRect(x, y, cellSize, cellSize);
+    ctx.strokeStyle = '#fce7f3';
+    ctx.lineWidth = 0.3;
+    ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
+  }
+}
+
+/** Single-cell diagonal half-fill — identical math to the main redraw loop. */
+function drawHalfFraction(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cellSize: number,
+  color: string,
+  fraction: number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, cellSize, cellSize);
+  ctx.clip();
+  // Draw diagonal half-fill: color on bottom-left triangle, background on top-right
+  if (fraction <= 0.25) {
+    // Small corner fill
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y + cellSize);
+    ctx.lineTo(x, y + cellSize * 0.5);
+    ctx.lineTo(x + cellSize * 0.5, y + cellSize);
+    ctx.fill();
+  } else if (fraction <= 0.5) {
+    // Half fill: bottom-left triangle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + cellSize);
+    ctx.lineTo(x + cellSize, y + cellSize);
+    ctx.fill();
+    ctx.fillStyle = '#fdf2f8';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + cellSize, y + cellSize);
+    ctx.lineTo(x + cellSize, y);
+    ctx.fill();
+  } else if (fraction <= 0.75) {
+    // Three-quarters: color on 3/4, background on top-right corner
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, cellSize, cellSize);
+    ctx.fillStyle = '#fdf2f8';
+    ctx.beginPath();
+    ctx.moveTo(x + cellSize, y);
+    ctx.lineTo(x + cellSize * 0.5, y);
+    ctx.lineTo(x + cellSize, y + cellSize * 0.5);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Hovered-cell selection highlight (topmost layer). */
+function drawHoverHighlight(ctx: CanvasRenderingContext2D, x: number, y: number, cellSize: number) {
+  ctx.strokeStyle = '#f472b6';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+  ctx.fillStyle = 'rgba(244,114,182,0.14)';
+  ctx.fillRect(x + 1.5, y + 1.5, cellSize - 3, cellSize - 3);
+}
+
+/** Restore the thin/bold grid-line segments that cross a single cell's rect
+ *  (top + left edges — the ones cleared when the cell area is repainted). */
+function restoreCellGridLines(ctx: CanvasRenderingContext2D, r: number, c: number, cellSize: number) {
+  const x0 = c * cellSize;
+  const y0 = r * cellSize;
+  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+  ctx.beginPath();
+  if (r > 0 && r % 10 !== 0) {
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + cellSize, y0);
+  }
+  if (c > 0 && c % 10 !== 0) {
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0, y0 + cellSize);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (r > 0 && r % 10 === 0) {
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + cellSize, y0);
+  }
+  if (c > 0 && c % 10 === 0) {
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0, y0 + cellSize);
+  }
+  ctx.stroke();
+}
+
 /** Trace a rounded-rectangle path (pillow look) onto the current path. */
 function traceRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -334,6 +478,8 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   zoom,
   onCellClick,
   activeTool,
+  selectedColor,
+  selectedStitch,
   isMouseDown,
   onCellHover,
   onCellPress,
@@ -354,6 +500,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   const rafRef = useRef<number>(0);
   const [showGridLines, setShowGridLines] = useState(true);
   const lastHoveredCell = useRef<{ row: number; col: number } | null>(null);
+  const hoveredCell = useRef<{ row: number; col: number } | null>(null);
   const referenceImgRef = useRef<HTMLImageElement | null>(null);
 
   // Load reference image into a reusable Image element
@@ -386,7 +533,6 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     // can't exceed browser canvas limits and silently blank (owner report 08-17:
     // tools "sloppy and delayed" — large grids at high zoom on a 2× display
     // exceeded Chrome's ~268MP area cap and rendered nothing).
-    const MAX_BUFFER_AREA = 250_000_000;
     const rawArea = cw * dpr * ch * dpr;
     const bufferScale = rawArea > MAX_BUFFER_AREA ? Math.sqrt(MAX_BUFFER_AREA / rawArea) : 1;
     const bw = Math.max(1, Math.round(cw * dpr * bufferScale));
@@ -433,89 +579,20 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     const midRow = Math.floor(data.height / 2);
     const midCol = Math.floor(data.width / 2);
 
-    // ── Draw cells ──
+    // ── Draw cells (shared per-cell renderer — also used for hover restore
+    // and instant brush feedback so all three render identically) ──
     for (let r = 0; r < data.height; r++) {
       for (let c = 0; c < data.width; c++) {
-        const cell = data.grid[r]?.[c];
-        const color = cell?.color;
-        const x = c * cellSize;
-        const y = r * cellSize;
-
-        // Fill cell
-        if (color) {
-          ctx.fillStyle = color;
-          ctx.fillRect(x, y, cellSize, cellSize);
-
-          // Subtle cell border for contrast
-          ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-          ctx.lineWidth = 0.3;
-          ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
-
-          // Satin stitch highlight effect
-          if (cell.stitchType === 'satin') {
-            ctx.fillStyle = 'rgba(255,255,255,0.15)';
-            for (let i = 0; i < 4; i++) {
-              ctx.fillRect(x + i * (cellSize / 4) + 1, y + 1, cellSize / 8, cellSize - 2);
-            }
-          }
-        } else {
-          // Empty cell
-          ctx.fillStyle = '#fdf2f8';
-          ctx.fillRect(x, y, cellSize, cellSize);
-          ctx.strokeStyle = '#fce7f3';
-          ctx.lineWidth = 0.3;
-          ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
-        }
+        drawCellAt(ctx, data.grid[r]?.[c], c * cellSize, r * cellSize, cellSize);
       }
     }
-
     // ── Half-fill diagonal rendering ──
     if (cellFractions && cellSize >= 8) {
       for (const [key, fraction] of Object.entries(cellFractions)) {
         const [r, c] = key.split(',').map(Number);
         const cell = data.grid[r]?.[c];
         if (!cell?.color) continue;
-        const x = c * cellSize;
-        const y = r * cellSize;
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, y, cellSize, cellSize);
-        ctx.clip();
-        // Draw diagonal half-fill: color on bottom-left triangle, background on top-right
-        if (fraction <= 0.25) {
-          // Small corner fill
-          ctx.fillStyle = cell.color;
-          ctx.beginPath();
-          ctx.moveTo(x, y + cellSize);
-          ctx.lineTo(x, y + cellSize * 0.5);
-          ctx.lineTo(x + cellSize * 0.5, y + cellSize);
-          ctx.fill();
-        } else if (fraction <= 0.5) {
-          // Half fill: bottom-left triangle
-          ctx.fillStyle = cell.color;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x, y + cellSize);
-          ctx.lineTo(x + cellSize, y + cellSize);
-          ctx.fill();
-          ctx.fillStyle = '#fdf2f8';
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + cellSize, y + cellSize);
-          ctx.lineTo(x + cellSize, y);
-          ctx.fill();
-        } else if (fraction <= 0.75) {
-          // Three-quarters: color on 3/4, background on top-right corner
-          ctx.fillStyle = cell.color;
-          ctx.fillRect(x, y, cellSize, cellSize);
-          ctx.fillStyle = '#fdf2f8';
-          ctx.beginPath();
-          ctx.moveTo(x + cellSize, y);
-          ctx.lineTo(x + cellSize * 0.5, y);
-          ctx.lineTo(x + cellSize, y + cellSize * 0.5);
-          ctx.fill();
-        }
-        ctx.restore();
+        drawHalfFraction(ctx, c * cellSize, r * cellSize, cellSize, cell.color, fraction);
       }
     }
 
@@ -649,6 +726,12 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     if (guide) {
       drawGuide(ctx, guide, cw, ch, cellSize);
     }
+    // ── Hovered-cell highlight (topmost — instant selection feedback,
+    // updated directly from mousemove with no React state) ──
+    const hc = hoveredCell.current;
+    if (hc && activeTool !== 'pan') {
+      drawHoverHighlight(ctx, hc.col * cellSize, hc.row * cellSize, cellSize);
+    }
   }, [data, zoom, activeTool, cloneSource, cloneSelectionEnd, mirrorAxis, showGridLines, showReference, referenceOpacity, guide]);
 
   // ── Redraw on changes ──
@@ -661,8 +744,96 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     };
   }, [draw]);
 
+  // ── Instant brush feedback (direct canvas ops — no React state) ──
+  const getCanvasTransform = useCallback(() => {
+    const dpr = window.devicePixelRatio || 1;
+    const cellSize = BASE_CELL_SIZE * zoom;
+    const cw = data.width * cellSize;
+    const ch = data.height * cellSize;
+    const rawArea = cw * dpr * ch * dpr;
+    const bufferScale = rawArea > MAX_BUFFER_AREA ? Math.sqrt(MAX_BUFFER_AREA / rawArea) : 1;
+    return { dpr, cellSize, bufferScale };
+  }, [zoom, data.width, data.height]);
+  /** Paint cells straight into the canvas buffer (paint/erase/half) so the
+   *  stroke tracks the cursor instantly; React state + the rAF redraw confirm. */
+  const paintCellsDirect = useCallback((cells: { row: number; col: number }[]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { dpr, cellSize, bufferScale } = getCanvasTransform();
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    for (const p of cells) {
+      const x = p.col * cellSize;
+      const y = p.row * cellSize;
+      if (activeTool === 'erase') {
+        ctx.fillStyle = '#fdf2f8';
+        ctx.fillRect(x, y, cellSize, cellSize);
+        ctx.strokeStyle = '#fce7f3';
+        ctx.lineWidth = 0.3;
+        ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
+      } else {
+        const color = selectedColor || '#000000';
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, cellSize, cellSize);
+        ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+        ctx.lineWidth = 0.3;
+        ctx.strokeRect(x + 0.15, y + 0.15, cellSize - 0.3, cellSize - 0.3);
+        if (cellSize >= 8) {
+          const spr = stitchSprite(selectedStitch || 'cross', cellSize);
+          if (spr) {
+            ctx.drawImage(spr, Math.round(x + (cellSize - spr.width) / 2), Math.round(y + (cellSize - spr.height) / 2));
+          }
+        }
+        if (activeTool === 'half') {
+          drawHalfFraction(ctx, x, y, cellSize, color, 0.5);
+        }
+      }
+    }
+  }, [getCanvasTransform, activeTool, selectedColor, selectedStitch]);
+  /** Repaint ONE cell from state (used to clear the previous hover highlight
+   *  and to repair the grid line segments the highlight covered). */
+  const restoreCell = useCallback((r: number, c: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { dpr, cellSize, bufferScale } = getCanvasTransform();
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    const x = c * cellSize;
+    const y = r * cellSize;
+    const cell = data.grid[r]?.[c];
+    drawCellAt(ctx, cell, x, y, cellSize);
+    const frac = cellFractions ? cellFractions[`${r},${c}`] : undefined;
+    if (frac && cell?.color) drawHalfFraction(ctx, x, y, cellSize, cell.color, frac);
+    if (cellSize >= 8 && cell?.color) {
+      const spr = stitchSprite(cell.stitchType || 'cross', cellSize);
+      if (spr) {
+        ctx.drawImage(spr, Math.round(x + (cellSize - spr.width) / 2), Math.round(y + (cellSize - spr.height) / 2));
+      }
+      if (showGridLines) {
+        const symbol = dmcSymbolFor(cell.color, data.dmcPalette);
+        if (symbol) {
+          const s2 = dmcSprite(symbol, cell.color, cellSize);
+          if (s2) {
+            ctx.drawImage(s2, Math.round(x + (cellSize - s2.width) / 2), Math.round(y + (cellSize - s2.height) / 2));
+          }
+        }
+      }
+    }
+    restoreCellGridLines(ctx, r, c, cellSize);
+  }, [getCanvasTransform, data, cellFractions, showGridLines]);
+  /** Draw the hover highlight for a cell (direct canvas op). */
+  const drawHoverHighlightAt = useCallback((r: number, c: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { dpr, cellSize, bufferScale } = getCanvasTransform();
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    drawHoverHighlight(ctx, c * cellSize, r * cellSize, cellSize);
+  }, [getCanvasTransform]);
   // ── Mouse event handlers ──
-
   const getGridPos = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
@@ -687,36 +858,59 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return;
       const pos = getGridPos(e);
-      if (pos) onCellPress?.(pos.row, pos.col);
+      if (pos) {
+        if (activeTool === 'paint' || activeTool === 'erase' || activeTool === 'half') {
+          paintCellsDirect([pos]);
+        }
+        onCellPress?.(pos.row, pos.col);
+      }
     },
-    [getGridPos, onCellPress],
+    [getGridPos, onCellPress, activeTool, paintCellsDirect],
   );
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const pos = getGridPos(e);
-      if (!pos || !isMouseDown) return;
-      // Only fire hover if we moved to a different cell
+      if (!pos) return;
+      const isCellTool = activeTool !== 'pan';
+      // Hover highlight: update directly on the canvas (no React state),
+      // so the selection cursor tracks the mouse at full input rate.
+      const h = hoveredCell.current;
+      if (!h || h.row !== pos.row || h.col !== pos.col) {
+        if (h) restoreCell(h.row, h.col);
+        hoveredCell.current = pos;
+        if (isCellTool) drawHoverHighlightAt(pos.row, pos.col);
+      }
+      if (!isMouseDown) return;
+      // Drag painting: paint the stroke into the buffer synchronously
+      // (before React re-renders) so it never trails the cursor.
       const last = lastHoveredCell.current;
       if (!last || last.row !== pos.row || last.col !== pos.col) {
         lastHoveredCell.current = pos;
-        for (const p of cellsBetween(last, pos)) {
+        const cells = cellsBetween(last, pos);
+        if (activeTool === 'paint' || activeTool === 'erase' || activeTool === 'half') {
+          paintCellsDirect(cells);
+        }
+        for (const p of cells) {
           onCellHover?.(p.row, p.col);
         }
       }
     },
-    [getGridPos, isMouseDown, onCellHover],
+    [getGridPos, isMouseDown, onCellHover, activeTool, restoreCell, drawHoverHighlightAt, paintCellsDirect],
   );
 
   const handleCanvasMouseLeave = useCallback(() => {
+    const h = hoveredCell.current;
+    if (h) restoreCell(h.row, h.col);
+    hoveredCell.current = null;
     lastHoveredCell.current = null;
-  }, []);
+  }, [restoreCell]);
 
   // ── Cursor style ──
 
   const getCursorStyle = () => {
     switch (activeTool) {
       case 'erase': return 'crosshair';
-      case 'paint': return 'pointer';
+      case 'paint': return 'crosshair';
       case 'eyedropper': return 'crosshair';
       case 'clone': return 'copy';
       default: return 'pointer';

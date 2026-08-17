@@ -2063,6 +2063,8 @@ export const Designer: React.FC = () => {
                         }
                       }}
                       activeTool={activeTool}
+                      selectedColor={selectedColor}
+                      selectedStitch={selectedStitch}
                       isMouseDown={isMouseDown}
                       onCellHover={handleCellHover}
                       onZoomChange={setZoom}
