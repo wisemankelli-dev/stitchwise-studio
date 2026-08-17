@@ -191,24 +191,29 @@ function drawGuide(
   ctx.save();
   ctx.strokeStyle = 'rgba(190,18,60,0.6)'; // blush/rose
   ctx.lineWidth = Math.max(1.5, Math.min(3.5, cellSize * 0.18));
-  ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
   ctx.beginPath();
 
   switch (guide.type) {
     case 'circle': {
+      ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
       const radius = (Math.min(guide.colW, guide.rowH) / 2) * cellSize;
       ctx.arc(cw / 2, ch / 2, radius, 0, Math.PI * 2);
       break;
     }
     case 'rect':
+      ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
       ctx.rect(gx, gy, gw, gh);
       break;
     case 'roundedRect': {
+      ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
       const radius = 0.15 * Math.min(guide.colW, guide.rowH) * cellSize;
       traceRoundedRect(ctx, gx, gy, gw, gh, radius);
       break;
     }
     case 'stocking': {
+      // Solid outline (no dashes): a dashed stroke breaks apart on the stocking's
+      // tight toe curve and reads as an incomplete template (owner report 08-17).
+      ctx.setLineDash([]);
       const fit = fitStockingInBox(guide.colW, guide.rowH);
       const pts = STOCKING_GUIDE.map(([px, py]) => ({
         x: gx + (px * STOCKING_GUIDE_ASPECT * fit.scale + fit.dx) * cellSize,
