@@ -1244,14 +1244,16 @@ export const Designer: React.FC = () => {
       // we already have, exactly like image upload does.
       const canvasW = gridWidth;
       const canvasH = gridHeight;
-      // Square (blank) canvases: generate at a HIGHER resolution than the
-      // canvas so small features (eyes, feet, wing lines) actually resolve
-      // (owner: pattern is blob-like, no detail, cannot see eyes/feet), then
-      // adopt the returned pattern size as the new canvas. Non-square canvases
-      // (e.g. the 11x17 stocking product template) keep the old
-      // frame-into-canvas behavior — the canvas must never be replaced there.
-      const isSquareCanvas = canvasW === canvasH;
-      const gridSize = isSquareCanvas
+      // ONLY the default blank canvas (no product preset) generates at the
+      // max 240 and adopts the pattern size — that's what makes small
+      // features (eyes, feet, wing lines) resolve (owner: blob-like, no
+      // detail). Preset canvases (ornament, pillow, frames, stocking) have a
+      // FIXED product size and shape guide — they keep the old
+      // frame-into-canvas behavior, or the guide is erased and the image
+      // overflows the allowed canvas (owner: ornament circle guide erased +
+      // image overflowed).
+      const canAdopt = activePreset === null;
+      const gridSize = canAdopt
         ? Math.max(canvasW, 240)
         : Math.max(canvasW, canvasH);
       setPollingStatus(
@@ -1297,8 +1299,8 @@ export const Designer: React.FC = () => {
         // border). Frame INTO THE EXISTING canvas dims — never adopt the
         // returned square's dims, so presets like the 11x17 stocking keep
         // their canvas (154x238) when the art is generated.
-        const targetW = isSquareCanvas ? newW : canvasW;
-        const targetH = isSquareCanvas ? newH : canvasH;
+        const targetW = canAdopt ? newW : canvasW;
+        const targetH = canAdopt ? newH : canvasH;
         const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
         finalGrid = framed.grid;
         finalStitchTypes = framed.stitchTypes;
@@ -1306,7 +1308,7 @@ export const Designer: React.FC = () => {
 
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
-      if (isSquareCanvas && (newW !== canvasW || newH !== canvasH)) {
+      if (canAdopt && (newW !== canvasW || newH !== canvasH)) {
         // Adopt the higher-resolution pattern size as the new canvas.
         setGridWidth(newW);
         setGridHeight(newH);
@@ -1334,7 +1336,7 @@ export const Designer: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier, activePreset]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
