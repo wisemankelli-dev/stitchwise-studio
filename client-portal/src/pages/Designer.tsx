@@ -1312,6 +1312,29 @@ export const Designer: React.FC = () => {
         finalStitchTypes = framed.stitchTypes;
       }
 
+      // Mask generated art to the circle guide (Ornament / Large Ornament): a
+      // round product — cells outside the inscribed circle are cleared so the
+      // pattern stays within the ornament shape (owner: image not within the
+      // circle of the parameters).
+      if (activeGuide?.type === 'circle' && targetW > 0) {
+        const cx = targetW / 2;
+        const cy = targetH / 2;
+        const rad = Math.min(targetW, targetH) / 2;
+        const masked: Record<string, string> = {};
+        const maskedTypes: Record<string, string> = {};
+        for (const key of Object.keys(finalGrid)) {
+          const [r, c] = key.split(',').map(Number);
+          const dx = c + 0.5 - cx;
+          const dy = r + 0.5 - cy;
+          if (dx * dx + dy * dy <= rad * rad) {
+            masked[key] = finalGrid[key];
+            if (finalStitchTypes[key]) maskedTypes[key] = finalStitchTypes[key];
+          }
+        }
+        finalGrid = masked;
+        finalStitchTypes = maskedTypes;
+      }
+
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
       if (canAdopt && (newW !== canvasW || newH !== canvasH)) {
@@ -1342,7 +1365,7 @@ export const Designer: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier, activePreset]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier, activePreset, activeGuide]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
