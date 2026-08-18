@@ -71,6 +71,9 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
       {palette.map((c) => (
         <div key={c.code} className="flex items-center gap-1.5 bg-white rounded-lg px-2 py-1 border border-blush-100 shadow-sm">
           <div className="h-4 w-4 rounded-full border border-slate-200" style={{ backgroundColor: c.hex }} />
+          {c.symbol && (
+            <span className="text-[11px] font-bold text-slate-700 leading-none w-3 text-center">{c.symbol}</span>
+          )}
           <span className="text-[10px] font-mono font-bold text-slate-600">{c.code}</span>
           <span className="text-[9px] text-slate-400">{c.name}</span>
           <span className="text-[9px] text-blush-500 font-bold ml-0.5">×{c.count}</span>

@@ -662,6 +662,12 @@ export const CANVAS_PRESETS: CanvasPreset[] = [
 ];
 
 /** Compute stitch count from physical inches and fabric count, clamped to [6, 240] */
+/** Deterministic per-palette chart symbol: A-Z, then 1,2,3… (stable per pattern). */
+export function chartSymbolForIndex(index: number): string {
+  if (index < 26) return String.fromCharCode(65 + index); // A..Z
+  return String(index - 25); // 1, 2, ...
+}
+
 export function inchesToStitches(inches: number, fabricCount: number): number {
   return Math.max(6, Math.min(240, Math.round(inches * fabricCount)));
 }
@@ -703,6 +709,11 @@ function buildManualGridData(
     name: hex,
     hex,
     count,
+    // Distinct per-color chart symbol (letters A-Z, then numbers) so each
+    // color can be told apart at a glance and in print (owner 08-18: "each
+    // color to have a different symbol or letter"). Rendered on every filled
+    // cell by StitchGrid + shown in DmcLegend.
+    symbol: chartSymbolForIndex(i),
   }));
 
   const cells: StitchCell[][] = [];
