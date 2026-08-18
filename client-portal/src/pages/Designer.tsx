@@ -700,6 +700,7 @@ export const Designer: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
+  const [aiArtworkUrl, setAiArtworkUrl] = useState<string | null>(null);
   const [pollingStatus, setPollingStatus] = useState('');
   // Premium art model toggle (Design Studio only; server enforces the tier gate).
   const [premiumModel, setPremiumModel] = useState(false);
@@ -1232,6 +1233,7 @@ export const Designer: React.FC = () => {
     setIsGenerating(true);
     setAiError('');
     setAiStats(null);
+    setAiArtworkUrl(null);
     setPollingStatus('');
     try {
       // Keep the CURRENT canvas size — AI generation must never resize the
@@ -1308,6 +1310,7 @@ export const Designer: React.FC = () => {
         backstitch,
         crossStitch,
       });
+      setAiArtworkUrl(data.previewUrl || null);
       setPollingStatus('');
     } catch (err: unknown) {
       setAiError(describeAiGenerationError(err, 'Failed to generate pattern. Please try again.'));
@@ -1939,6 +1942,15 @@ export const Designer: React.FC = () => {
                     <span>{aiStats.crossStitch} cross</span>
                     <span className="text-slate-400">•</span>
                     <span>{aiStats.backstitch} backstitch</span>
+                  </div>
+                )}
+                {aiArtworkUrl && (
+                  <div className="mt-3 rounded-xl border border-purple-200 bg-white p-3">
+                    <p className="text-[10px] font-bold text-slate-700 mb-2 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-blush-500" /> 1 · Your artwork
+                      <span className="font-normal text-slate-400">— this is what the AI drew; the stitch grid on your canvas (step 2) is converted from it</span>
+                    </p>
+                    <img src={aiArtworkUrl} alt="AI-generated artwork" className="w-full rounded-lg border border-slate-100" />
                   </div>
                 )}
               </div>
