@@ -1244,7 +1244,16 @@ export const Designer: React.FC = () => {
       // we already have, exactly like image upload does.
       const canvasW = gridWidth;
       const canvasH = gridHeight;
-      const gridSize = Math.max(canvasW, canvasH);
+      // Square (blank) canvases: generate at a HIGHER resolution than the
+      // canvas so small features (eyes, feet, wing lines) actually resolve
+      // (owner: pattern is blob-like, no detail, cannot see eyes/feet), then
+      // adopt the returned pattern size as the new canvas. Non-square canvases
+      // (e.g. the 11x17 stocking product template) keep the old
+      // frame-into-canvas behavior — the canvas must never be replaced there.
+      const isSquareCanvas = canvasW === canvasH;
+      const gridSize = isSquareCanvas
+        ? Math.min(Math.max(canvasW, 200), 240)
+        : Math.max(canvasW, canvasH);
       setPollingStatus(
         premiumModel && isStudioTier
           ? 'Generating with the premium art model — this can take 1–3 minutes…'
@@ -1288,13 +1297,20 @@ export const Designer: React.FC = () => {
         // border). Frame INTO THE EXISTING canvas dims — never adopt the
         // returned square's dims, so presets like the 11x17 stocking keep
         // their canvas (154x238) when the art is generated.
-        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, canvasW, canvasH, newW, newH);
+        const targetW = isSquareCanvas ? newW : canvasW;
+        const targetH = isSquareCanvas ? newH : canvasH;
+        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
         finalGrid = framed.grid;
         finalStitchTypes = framed.stitchTypes;
       }
 
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
+      if (isSquareCanvas && (newW !== canvasW || newH !== canvasH)) {
+        // Adopt the higher-resolution pattern size as the new canvas.
+        setGridWidth(newW);
+        setGridHeight(newH);
+      }
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
