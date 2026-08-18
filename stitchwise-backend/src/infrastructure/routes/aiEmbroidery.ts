@@ -260,7 +260,11 @@ export function createAIEmbroideryRouter(): Router {
             // Fewer posterize colors for AI art: painterly shading collapses into the
             // subject's identity colors (blue bird stays blue, branch stays brown)
             // instead of gray-beige mud (owner: grid not an accurate representation).
-            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, Math.min(maxColors, 12));
+            // Posterize colors scale with fabric count (finer mesh = richer
+            // shading), floored at 12 (14ct) so painterly shading still
+            // collapses into identity colors instead of gray-beige mud.
+            const aiColorCap = Math.max(12, Math.round(maxColors * 0.8));
+            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, Math.min(maxColors, aiColorCap));
             return buildPatternResponse(grid, {
               promptUsed: prompt,
               processingTimeMs: 0,

@@ -1252,7 +1252,7 @@ export const Designer: React.FC = () => {
       // frame-into-canvas behavior — the canvas must never be replaced there.
       const isSquareCanvas = canvasW === canvasH;
       const gridSize = isSquareCanvas
-        ? Math.min(Math.max(canvasW, 200), 240)
+        ? Math.max(canvasW, 240)
         : Math.max(canvasW, canvasH);
       setPollingStatus(
         premiumModel && isStudioTier
