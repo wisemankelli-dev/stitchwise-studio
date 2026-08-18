@@ -1372,6 +1372,13 @@ export const Designer: React.FC = () => {
 
       const newH = data.grid.length;
       const newW = data.grid[0]?.length || 0;
+      // Hoisted to function scope: used by BOTH the auto-framing block below
+      // AND the product-shape mask. (Owner bug report 08-18: "TargetW is not
+      // defined" — these were block-scoped inside the framing if, then read
+      // outside it, so any AI generation on a preset canvas with a shape
+      // guide — ornament, pillow, stocking — threw a ReferenceError.)
+      const targetW = canAdopt ? newW : canvasW;
+      const targetH = canAdopt ? newH : canvasH;
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
@@ -1380,8 +1387,6 @@ export const Designer: React.FC = () => {
         // border). Frame INTO THE EXISTING canvas dims — never adopt the
         // returned square's dims, so presets like the 11x17 stocking keep
         // their canvas (154x238) when the art is generated.
-        const targetW = canAdopt ? newW : canvasW;
-        const targetH = canAdopt ? newH : canvasH;
         const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
         finalGrid = framed.grid;
         finalStitchTypes = framed.stitchTypes;
