@@ -1252,7 +1252,12 @@ export const Designer: React.FC = () => {
       // frame-into-canvas behavior, or the guide is erased and the image
       // overflows the allowed canvas (owner: ornament circle guide erased +
       // image overflowed).
-      const canAdopt = activePreset === null;
+      // Adopt the 240 pattern ONLY on the pristine default blank canvas
+      // (100×100, no product preset). Every other canvas — preset products
+      // (ornament, pillow, frames, stocking), custom sizes, loaded patterns —
+      // keeps frame-into-canvas so the size and shape guide never change
+      // (owner: ornament resized to 17x17in after generation).
+      const canAdopt = activePreset === null && canvasW === 100 && canvasH === 100;
       const gridSize = canAdopt
         ? Math.max(canvasW, 240)
         : Math.max(canvasW, canvasH);
