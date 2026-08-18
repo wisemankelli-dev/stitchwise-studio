@@ -161,6 +161,56 @@ export function pixelsToStitchGrid(
     grid.push(gridRow);
   }
 
+  // Step 3b: Merge near-duplicate DMC colors so the pattern reads as clean,
+  // distinct regions (recognizability fix — muddy near-identical threads make
+  // the subject unreadable). Greedy by frequency: each color joins the first
+  // representative within 80 RGB sum-distance; the most-used color in a
+  // cluster becomes the representative.
+  {
+    const used = Array.from(dmcCountMap.entries()).sort((a, b) => b[1].count - a[1].count);
+    const repOf = new Map<string, string>();
+    const reps: Array<{ code: string; rgb: [number, number, number] }> = [];
+    for (const [code] of used) {
+      const entry = dmcCountMap.get(code)!;
+      const hex = entry.hex.replace("#", "");
+      const rgb: [number, number, number] = [
+        parseInt(hex.slice(0, 2), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(4, 6), 16),
+      ];
+      let rep = code;
+      for (const r of reps) {
+        const d = Math.abs(rgb[0] - r.rgb[0]) + Math.abs(rgb[1] - r.rgb[1]) + Math.abs(rgb[2] - r.rgb[2]);
+        if (d <= 80) { rep = r.code; break; }
+      }
+      if (rep === code) reps.push({ code, rgb });
+      repOf.set(code, rep);
+    }
+    if (reps.length < used.length) {
+      const merged = new Map<string, { code: string; name: string; hex: string; count: number }>();
+      // Re-point grid cells at their representative
+      for (const row of grid) {
+        for (const cell of row) {
+          const target = repOf.get(cell.dmcCode)!;
+          const src = dmcCountMap.get(target)!;
+          cell.dmcCode = target;
+          cell.dmcName = src.name;
+          cell.color = src.hex;
+        }
+      }
+      // Sum counts per representative
+      for (const [code, entry] of dmcCountMap) {
+        const target = repOf.get(code)!;
+        const repEntry = dmcCountMap.get(target)!;
+        const cur = merged.get(target) ?? { code: target, name: repEntry.name, hex: repEntry.hex, count: 0 };
+        cur.count += entry.count;
+        merged.set(target, cur);
+      }
+      dmcCountMap.clear();
+      for (const [code, v] of merged) dmcCountMap.set(code, v);
+    }
+  }
+
   // Step 4: Build DMC usage array sorted by count (descending), with cross-stitch symbols
   const dmcColors: DmcUsage[] = Array.from(dmcCountMap.values())
     .sort((a, b) => b.count - a.count)

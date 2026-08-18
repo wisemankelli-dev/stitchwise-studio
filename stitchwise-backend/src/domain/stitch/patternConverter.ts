@@ -96,6 +96,29 @@ export async function imageBufferToStitchGrid(
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
   const size = gridSize >= 8 && gridSize <= 240 ? gridSize : DEFAULT_GRID_SIZE;
 
+  // Step 0: Auto-crop the light background so the subject fills the grid
+  // (recognizability fix — a small subject on a huge white field converts to
+  // an unreadable pattern). Also boost saturation so colors separate cleanly.
+  let workingBuffer = imageBuffer;
+  try {
+    const meta = await sharp(imageBuffer).metadata();
+    const trimmed = await sharp(imageBuffer)
+      .trim({ background: [255, 255, 255], threshold: 40 })
+      .modulate({ saturation: 1.25 })
+      .toBuffer({ resolveWithObject: true });
+    const ow = meta.width || 0;
+    const oh = meta.height || 0;
+    const tw = trimmed.info.width;
+    const th = trimmed.info.height;
+    // Keep the trim only if most of the image survives — a genuinely small
+    // subject (e.g. a white bird on white) would be eaten by the trim.
+    if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
+      workingBuffer = trimmed.data;
+    }
+  } catch {
+    // fall back to the untrimmed image
+  }
+
   // Step 1: Resize the image to the target grid size using high-quality lanczos
   // downscaling — each stitch cell reflects the average of its source region,
   // preserving the subject's shape and hues (nearest-neighbor sampling caused
@@ -105,7 +128,7 @@ export async function imageBufferToStitchGrid(
   //   map to random/wrong DMC threads (e.g. violet edge pixels on yellow petals).
   //   No dithering — every pixel is forced into one of maxColors solid regions.
   // Step 3: Extract raw pixels from the posterized image for DMC mapping.
-  const posterizedPng = await sharp(imageBuffer)
+  const posterizedPng = await sharp(workingBuffer)
     .resize(size, size, {
       fit: "cover",
       position: "centre",
