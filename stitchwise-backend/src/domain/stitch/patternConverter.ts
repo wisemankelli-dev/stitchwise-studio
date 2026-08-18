@@ -104,7 +104,7 @@ export async function imageBufferToStitchGrid(
     const meta = await sharp(imageBuffer).metadata();
     const trimmed = await sharp(imageBuffer)
       .trim({ background: [255, 255, 255], threshold: 40 })
-      .modulate({ saturation: 1.25 })
+      .modulate({ saturation: 1.4 })
       .toBuffer({ resolveWithObject: true });
     const ow = meta.width || 0;
     const oh = meta.height || 0;

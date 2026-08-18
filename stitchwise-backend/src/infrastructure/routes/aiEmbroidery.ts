@@ -257,7 +257,10 @@ export function createAIEmbroideryRouter(): Router {
               throw new Error("AI generation returned no image");
             }
             const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, maxColors);
+            // Fewer posterize colors for AI art: painterly shading collapses into the
+            // subject's identity colors (blue bird stays blue, branch stays brown)
+            // instead of gray-beige mud (owner: grid not an accurate representation).
+            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, Math.min(maxColors, 12));
             return buildPatternResponse(grid, {
               promptUsed: prompt,
               processingTimeMs: 0,
