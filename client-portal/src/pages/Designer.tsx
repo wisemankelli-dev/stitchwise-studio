@@ -541,6 +541,42 @@ export function framePatternInGrid(
   return { grid: newGrid, stitchTypes: newStitchTypes, cellFractions: newCellFractions };
 }
 
+/**
+ * Add back-stitch outlines: convert color-boundary cells (neighbor of a
+ * different color, empty fabric, or the design edge) to 'back' stitch type.
+ * The cell keeps its color fill; a back-stitch symbol is drawn over it, so
+ * fine features (eyes, beaks, leaf veins) trace crisp lines even on small
+ * product canvases where there aren't enough cells for a smooth shape.
+ * (Owner 08-18: "still does not give you detail like eyes on the bird".)
+ */
+export function applyBackstitchOutlines(
+  grid: Record<string, string>,
+  types: Record<string, string>,
+  width: number,
+  height: number,
+): Record<string, string> {
+  const at = (r: number, c: number): string | undefined => {
+    if (r < 0 || c < 0 || r >= height || c >= width) return undefined;
+    return grid[`${r},${c}`];
+  };
+  const boundary: string[] = [];
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      const color = at(r, c);
+      if (!color) continue;
+      const n = at(r - 1, c), s = at(r + 1, c), w = at(r, c - 1), e = at(r, c + 1);
+      const onBoundary =
+        n === undefined || s === undefined || w === undefined || e === undefined ||
+        (n !== undefined && n !== color) || (s !== undefined && s !== color) ||
+        (w !== undefined && w !== color) || (e !== undefined && e !== color);
+      if (onBoundary) boundary.push(`${r},${c}`);
+    }
+  }
+  const merged: Record<string, string> = { ...types };
+  for (const k of boundary) merged[k] = 'back';
+  return merged;
+}
+
 function countEmptyTop(grid: Record<string, string>, width: number, minR: number): number {
   let n = 0;
   for (let y = 0; y < minR; y++) {
@@ -1419,6 +1455,13 @@ export const Designer: React.FC = () => {
         finalStitchTypes = masked.types;
       }
 
+      // Back-stitch outlines for small product canvases (ornament, pillow):
+      // trace color boundaries so fine features stay crisp (owner wanted detail
+      // like eyes on the bird). Skip large/long canvases (stocking) — they
+      // already have enough resolution and dense outlines would clutter.
+      if (activePreset && Math.min(targetW, targetH) <= 120) {
+        finalStitchTypes = applyBackstitchOutlines(finalGrid, finalStitchTypes, targetW, targetH);
+      }
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
       // When a product template is active, the canvas becomes the preset size —
