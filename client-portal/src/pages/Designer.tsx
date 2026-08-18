@@ -541,6 +541,7 @@ interface CanvasPreset { name: string; inchW: number; inchH: number; guide?: Pro
 export const CANVAS_PRESETS: CanvasPreset[] = [
   { name: 'Bag Charm', inchW: 2, inchH: 2 },
   { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle' },
+  { name: 'Large Ornament', inchW: 5, inchH: 5, guide: 'circle' },
   { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect' },
   { name: '8×10 Frame', inchW: 8, inchH: 10, guide: 'rect' },
   { name: 'Pillow', inchW: 6, inchH: 6, guide: 'roundedRect' },
