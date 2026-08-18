@@ -1396,7 +1396,20 @@ export const Designer: React.FC = () => {
       // any preset mask must contain the AI image) — circle (ornament),
       // rounded rect (pillow), stocking silhouette. Frames are the full canvas.
       if (activeGuide && targetW > 0) {
-        const masked = maskGridToGuide(activeGuide, finalGrid, finalStitchTypes, targetW, targetH);
+        // Clamp the mask guide to the canvas — identical clamp to drawGuide in
+        // StitchGrid.tsx, so the mask and the visibly drawn guide are always the
+        // same canvas-tangent shape. Without this, a fabric-count change that
+        // resized the guide memo but not the canvas (declined resize) made the
+        // mask and the drawn circle disagree, and generated art appeared outside
+        // the visible circle (owner 08-18: "did not stay in the circle").
+        const maskGuide = activeGuide.type === 'rect'
+          ? activeGuide
+          : {
+              ...activeGuide,
+              colW: Math.min(activeGuide.colW, targetW),
+              rowH: Math.min(activeGuide.rowH, targetH),
+            };
+        const masked = maskGridToGuide(maskGuide, finalGrid, finalStitchTypes, targetW, targetH);
         finalGrid = masked.grid;
         finalStitchTypes = masked.types;
       }

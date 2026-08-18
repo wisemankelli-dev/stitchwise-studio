@@ -379,8 +379,14 @@ function drawGuide(
   ch: number,
   cellSize: number,
 ) {
-  const gw = guide.colW * cellSize;
-  const gh = guide.rowH * cellSize;
+  // Clamp the guide to the canvas it is drawn on: a product guide must never
+  // render larger than the canvas (owner 08-18: generated art was spilling
+  // outside the ornament circle when the guide and canvas sizes had desynced —
+  // e.g. after a fabric-count change or a resize that was declined). The mask
+  // in maskGridToGuide (Designer.tsx) applies the same clamp, so the drawn
+  // guide and the mask are always the same canvas-tangent shape.
+  const gw = Math.min(guide.colW, Math.max(1, cw / cellSize)) * cellSize;
+  const gh = Math.min(guide.rowH, Math.max(1, ch / cellSize)) * cellSize;
   const gx = (cw - gw) / 2;
   const gy = (ch - gh) / 2;
 
