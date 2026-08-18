@@ -167,10 +167,30 @@ export function pixelsToStitchGrid(
   // representative within 80 RGB sum-distance; the most-used color in a
   // cluster becomes the representative.
   {
+    const WHITE_CODE = "520";
+    if (!dmcCountMap.has(WHITE_CODE)) {
+      dmcCountMap.set(WHITE_CODE, { code: WHITE_CODE, name: "White", hex: "#ffffff", count: 0 });
+    }
     const used = Array.from(dmcCountMap.entries()).sort((a, b) => b[1].count - a[1].count);
     const repOf = new Map<string, string>();
     const reps: Array<{ code: string; rgb: [number, number, number] }> = [];
+    let mergedAny = false;
+    // Light + low-saturation colors are background halo from the AI artwork's
+    // soft edges — merge them into pure white so the subject silhouette is
+    // crisp instead of a fuzzy blob (owner report 08-18: "looks like blobs").
+    const halo = new Set<string>();
+    for (const [code, entry] of dmcCountMap) {
+      const hex = entry.hex.replace("#", "");
+      const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max >= 190 && (max - min) / max <= 0.2) halo.add(code);
+    }
     for (const [code] of used) {
+      if (halo.has(code)) {
+        repOf.set(code, WHITE_CODE);
+        if (code !== WHITE_CODE) mergedAny = true;
+        continue;
+      }
       const entry = dmcCountMap.get(code)!;
       const hex = entry.hex.replace("#", "");
       const rgb: [number, number, number] = [
@@ -183,10 +203,10 @@ export function pixelsToStitchGrid(
         const d = Math.abs(rgb[0] - r.rgb[0]) + Math.abs(rgb[1] - r.rgb[1]) + Math.abs(rgb[2] - r.rgb[2]);
         if (d <= 80) { rep = r.code; break; }
       }
-      if (rep === code) reps.push({ code, rgb });
+      if (rep === code) reps.push({ code, rgb }); else mergedAny = true;
       repOf.set(code, rep);
     }
-    if (reps.length < used.length) {
+    if (mergedAny) {
       const merged = new Map<string, { code: string; name: string; hex: string; count: number }>();
       // Re-point grid cells at their representative
       for (const row of grid) {
