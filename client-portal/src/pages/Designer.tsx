@@ -1327,16 +1327,13 @@ export const Designer: React.FC = () => {
       // FIXED product size and shape guide — they keep the old
       // frame-into-canvas behavior, or the guide is erased and the image
       // overflows the allowed canvas (owner: ornament circle guide erased +
-      // image overflowed).
-      // Adopt the 240 pattern ONLY on the pristine default blank canvas
-      // (100×100, no product preset). Every other canvas — preset products
-      // (ornament, pillow, frames, stocking), custom sizes, loaded patterns —
-      // keeps frame-into-canvas so the size and shape guide never change
-      // (owner: ornament resized to 17x17in after generation).
-      const canAdopt = activePreset === null && canvasW === 100 && canvasH === 100;
-      const gridSize = canAdopt
-        ? Math.max(canvasW, 240)
-        : Math.max(canvasW, canvasH);
+      // Generation resolution: always super-sample the artwork (>= 200 cells,
+      // max 240) for detail, then FRAME INTO the existing canvas dims — the
+      // pattern's size and shape never change. The old "adopt the generated
+      // 240-cell size" path was removed: on the default 100×100 canvas it
+      // resized the canvas to 240 cells, which is ~17.1in on 14ct fabric
+      // (owner 08-18: "Pattern was made on a 17inx17in again").
+      const gridSize = Math.min(240, Math.max(canvasW, canvasH, 200));
       setPollingStatus(
         premiumModel && isStudioTier
           ? 'Generating with the premium art model — this can take 1–3 minutes…'
@@ -1377,8 +1374,9 @@ export const Designer: React.FC = () => {
       // defined" — these were block-scoped inside the framing if, then read
       // outside it, so any AI generation on a preset canvas with a shape
       // guide — ornament, pillow, stocking — threw a ReferenceError.)
-      const targetW = canAdopt ? newW : canvasW;
-      const targetH = canAdopt ? newH : canvasH;
+      // Always frame into the CANVAS dims — never adopt the generated size.
+      const targetW = canvasW;
+      const targetH = canvasH;
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
@@ -1416,11 +1414,6 @@ export const Designer: React.FC = () => {
 
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
-      if (canAdopt && (newW !== canvasW || newH !== canvasH)) {
-        // Adopt the higher-resolution pattern size as the new canvas.
-        setGridWidth(newW);
-        setGridHeight(newH);
-      }
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
