@@ -17,6 +17,7 @@ import { stampShape, type ClipartShape } from '../data/shapes';
 import ShapePicker from '../components/ShapePicker';
 import { api, type SavedPatternSummary, type SavedPatternCell } from '../services/api';
 import type { ProductGuide, ProductGuideType } from '../data/guides';
+import { stockingPointsInBox } from '../data/guides';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -386,6 +387,80 @@ function detectBackgroundColor(grid: Record<string, string>, width: number, heig
  * 4. Otherwise scale (nearest-neighbor) + center with margin M, dropping
  *    background-colored cells (they become empty fabric, not stitches).
  */
+/** Point-in-polygon (ray casting) — stocking silhouette mask. */
+function pointInPolygon(x: number, y: number, pts: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i][0], yi = pts[i][1];
+    const xj = pts[j][0], yj = pts[j][1];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Clip a generated grid to the active product-shape guide (owner request: an AI
+ * image must stay within the preset mask). Geometry mirrors drawGuide in
+ * components/StitchGrid.tsx — circle (ornament), rounded rect (pillow),
+ * stocking silhouette (stocking). 'rect' frames fill the whole canvas (guide ==
+ * canvas), so no clip is needed.
+ */
+function maskGridToGuide(
+  guide: ProductGuide,
+  grid: Record<string, string>,
+  types: Record<string, string>,
+  W: number,
+  H: number,
+): { grid: Record<string, string>; types: Record<string, string> } {
+  if (guide.type === 'rect') return { grid, types };
+  const colW = guide.colW;
+  const rowH = guide.rowH;
+  const ox = (W - colW) / 2;
+  const oy = (H - rowH) / 2;
+  const stocked = guide.type === 'stocking' ? stockingPointsInBox(colW, rowH) : [];
+  const inside = (c: number, r: number): boolean => {
+    const cx = c + 0.5 + ox;
+    const cy = r + 0.5 + oy;
+    switch (guide.type) {
+      case 'circle': {
+        const rad = Math.min(colW, rowH) / 2;
+        const dx = cx - colW / 2;
+        const dy = cy - rowH / 2;
+        return dx * dx + dy * dy <= rad * rad;
+      }
+      case 'roundedRect': {
+        const rx = 0.15 * Math.min(colW, rowH);
+        const halfW = colW / 2;
+        const halfH = rowH / 2;
+        const dx = Math.abs(cx - colW / 2);
+        const dy = Math.abs(cy - rowH / 2);
+        if (dx > halfW || dy > halfH) return false;
+        if (dx <= halfW - rx || dy <= halfH - rx) return true;
+        const cdx = dx - (halfW - rx);
+        const cdy = dy - (halfH - rx);
+        return cdx * cdx + cdy * cdy <= rx * rx;
+      }
+      case 'stocking':
+        if (stocked.length < 3) return true;
+        return pointInPolygon(cx, cy, stocked);
+      default:
+        return true;
+    }
+  };
+  const masked: Record<string, string> = {};
+  const maskedTypes: Record<string, string> = {};
+  for (const key of Object.keys(grid)) {
+    const [r, c] = key.split(',').map(Number);
+    if (inside(c, r)) {
+      masked[key] = grid[key];
+      if (types[key]) maskedTypes[key] = types[key];
+    }
+  }
+  return { grid: masked, types: maskedTypes };
+}
+
 export function framePatternInGrid(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
@@ -1312,27 +1387,13 @@ export const Designer: React.FC = () => {
         finalStitchTypes = framed.stitchTypes;
       }
 
-      // Mask generated art to the circle guide (Ornament / Large Ornament): a
-      // round product — cells outside the inscribed circle are cleared so the
-      // pattern stays within the ornament shape (owner: image not within the
-      // circle of the parameters).
-      if (activeGuide?.type === 'circle' && targetW > 0) {
-        const cx = targetW / 2;
-        const cy = targetH / 2;
-        const rad = Math.min(targetW, targetH) / 2;
-        const masked: Record<string, string> = {};
-        const maskedTypes: Record<string, string> = {};
-        for (const key of Object.keys(finalGrid)) {
-          const [r, c] = key.split(',').map(Number);
-          const dx = c + 0.5 - cx;
-          const dy = r + 0.5 - cy;
-          if (dx * dx + dy * dy <= rad * rad) {
-            masked[key] = finalGrid[key];
-            if (finalStitchTypes[key]) maskedTypes[key] = finalStitchTypes[key];
-          }
-        }
-        finalGrid = masked;
-        finalStitchTypes = maskedTypes;
+      // Mask generated art to the ACTIVE PRODUCT-SHAPE GUIDE (owner request:
+      // any preset mask must contain the AI image) — circle (ornament),
+      // rounded rect (pillow), stocking silhouette. Frames are the full canvas.
+      if (activeGuide && targetW > 0) {
+        const masked = maskGridToGuide(activeGuide, finalGrid, finalStitchTypes, targetW, targetH);
+        finalGrid = masked.grid;
+        finalStitchTypes = masked.types;
       }
 
       setGrid(finalGrid);
