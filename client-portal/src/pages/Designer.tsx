@@ -1374,9 +1374,16 @@ export const Designer: React.FC = () => {
       // defined" — these were block-scoped inside the framing if, then read
       // outside it, so any AI generation on a preset canvas with a shape
       // guide — ornament, pillow, stocking — threw a ReferenceError.)
-      // Always frame into the CANVAS dims — never adopt the generated size.
-      const targetW = canvasW;
-      const targetH = canvasH;
+      // A selected product template (preset) IS the output size: when one is
+      // active, always force the target to the preset's physical stitch dims at
+      // this fabric count, so a stale/larger canvas can never make the pattern
+      // come out at the wrong size (owner 08-18: picked the 5x5 ornament
+      // template but the pattern was made on a 17x17 canvas left over from an
+      // earlier generation).
+      const presetW = activePreset ? inchesToStitches(activePreset.inchW, fabricCount) : canvasW;
+      const presetH = activePreset ? inchesToStitches(activePreset.inchH, fabricCount) : canvasH;
+      const targetW = presetW;
+      const targetH = presetH;
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
@@ -1414,6 +1421,12 @@ export const Designer: React.FC = () => {
 
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
+      // When a product template is active, the canvas becomes the preset size —
+      // never a stale leftover size.
+      if (activePreset && (presetW !== canvasW || presetH !== canvasH)) {
+        setGridWidth(presetW);
+        setGridHeight(presetH);
+      }
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
@@ -1669,7 +1682,15 @@ export const Designer: React.FC = () => {
                         key={preset.name}
                         onClick={() => {
                           setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
-                          requestResize(stitchW, stitchH);
+                          // Selecting a product template starts a fresh canvas at
+                          // that product's size — clear any prior content so a
+                          // larger leftover canvas can never persist (owner:
+                          // ornament kept coming out 17x17).
+                          setGrid({});
+                          setGridStitchTypes({});
+                          setCellFractions({});
+                          setGridWidth(stitchW);
+                          setGridHeight(stitchH);
                           // Auto-fit zoom so the whole canvas (e.g. the stocking
                           // toe) is visible in the panel after a preset click.
                           const el = canvasRef.current;
