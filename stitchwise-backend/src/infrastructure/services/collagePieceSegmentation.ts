@@ -67,8 +67,16 @@ const COLOR_MAX = 48;
  * reach 40-60 pieces when the artwork has rich color detail).
  */
 const COLOR_MERGE_DISTANCE = 18;
-/** Never merge below this many pieces, even if colors are close. */
-const MIN_PIECES_AFTER_MERGE = 30;
+/**
+ * Lower bound on pieces after similar-color merging. Previously 30, which
+ * caused the merge (and the entire similar-color step) to be SKIPPED for any
+ * image that produced ≤30 regions — the common case. A solid color area then
+ * kept its k-means over-split fragments and 1-2px boundary slivers as separate
+ * pieces, so the pattern did NOT "cut color blocking" (the owner's 08-18
+ * report). The merge is bounded by the distance guard above, so setting this
+ * floor low just lets each real color region converge to ONE piece.
+ */
+const MIN_PIECES_AFTER_MERGE = 1;
 
 export interface SegmentationOptions {
   maxPieces?: number;
