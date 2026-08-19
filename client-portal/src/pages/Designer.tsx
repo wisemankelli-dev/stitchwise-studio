@@ -6,9 +6,10 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown
+  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
+import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { describeAiGenerationError } from '../utils/aiGenerationErrors';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
@@ -751,6 +752,21 @@ export const Designer: React.FC = () => {
   const [grid, setGrid] = useState<Record<string, string>>({});
   const [gridStitchTypes, setGridStitchTypes] = useState<Record<string, string>>({});
   const [cellFractions, setCellFractions] = useState<Record<string, number>>({});
+
+  // ── Undo / Redo history (owner request 08-18) ──
+  const [undoStack, setUndoStack] = useState<HistorySnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<HistorySnapshot[]>([]);
+  // Reference mirrors of the current grid state, kept fresh every render so the
+  // stable setCell/clearCell callbacks (empty deps) can snapshot the LIVE grid
+  // without re-creating themselves or closing over a stale value.
+  const gridRef = useRef(grid); gridRef.current = grid;
+  const stitchTypesRef = useRef(gridStitchTypes); stitchTypesRef.current = gridStitchTypes;
+  const fractionsRef = useRef(cellFractions); fractionsRef.current = cellFractions;
+  // True from mousedown until the FIRST mutation of a gesture consumes it, so a
+  // whole paint/erase stroke, flood fill, shape commit, or letter placement is
+  // ONE undo step (never per-cell). Re-armed on every new gesture via the
+  // onMouseDownCapture handler on the canvas container.
+  const undoPendingRef = useRef(false);
   const lastSaved = useRef<Record<string, string>>({});
   // Save/Load state (F-2: studio toolbar Save/Load wired to /api/patterns)
   const [patternName, setPatternName] = useState('');
@@ -798,6 +814,7 @@ export const Designer: React.FC = () => {
         // pattern border). Handles the old offsetX/offsetY centering too.
         const framed = framePatternInGrid(result.grid, {}, {}, gridWidth, gridHeight);
         
+        clearHistory(); // image import is a fresh baseline — undo must not cross it
         setGrid(framed.grid);
         setGridStitchTypes(framed.stitchTypes);
         setCellFractions(framed.cellFractions);
@@ -937,7 +954,84 @@ export const Designer: React.FC = () => {
   const [placeRow, setPlaceRow] = useState(4);
   const [placeCol, setPlaceCol] = useState(2);
 
+  // ── Undo / Redo handlers ──
+  // Capture the CURRENT grid once per committed edit (gated by undoPendingRef).
+  // Reads the reference mirrors so it stays correct from any call site without
+  // re-creating this callback. Pushing a new edit always clears the redo stack.
+  const pushIfPending = useCallback(() => {
+    if (!undoPendingRef.current) return;
+    undoPendingRef.current = false;
+    setRedoStack([]);
+    setUndoStack(prev => pushSnapshot(prev, {
+      grid: { ...gridRef.current },
+      stitchTypes: { ...stitchTypesRef.current },
+      fractions: { ...fractionsRef.current },
+    }));
+  }, []);
+
+  // New-baseline operations (load pattern, image import, AI generation, preset
+  // click, Clear, resize) wipe history so Ctrl+Z never jumps across a
+  // load/regenerate/resize boundary.
+  const clearHistory = useCallback(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+    undoPendingRef.current = false;
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const popped = popSnapshot(undoStack);
+    if (!popped.top) return;
+    const current: HistorySnapshot = {
+      grid: { ...gridRef.current },
+      stitchTypes: { ...stitchTypesRef.current },
+      fractions: { ...fractionsRef.current },
+    };
+    setUndoStack(popped.stack);
+    setRedoStack(prev => pushSnapshot(prev, current));
+    setGrid({ ...popped.top.grid });
+    setGridStitchTypes({ ...popped.top.stitchTypes });
+    setCellFractions({ ...popped.top.fractions });
+    undoPendingRef.current = false; // a fresh gesture must re-arm before pushing
+  }, [undoStack]);
+
+  const handleRedo = useCallback(() => {
+    const popped = popSnapshot(redoStack);
+    if (!popped.top) return;
+    const current: HistorySnapshot = {
+      grid: { ...gridRef.current },
+      stitchTypes: { ...stitchTypesRef.current },
+      fractions: { ...fractionsRef.current },
+    };
+    setRedoStack(popped.stack);
+    setUndoStack(prev => pushSnapshot(prev, current));
+    setGrid({ ...popped.top.grid });
+    setGridStitchTypes({ ...popped.top.stitchTypes });
+    setCellFractions({ ...popped.top.fractions });
+  }, [redoStack]);
+
+  // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo. Ignore while
+  // typing in an input/select/textarea so text entry (alphabet, hex) is unaffected.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo(); else handleUndo();
+      } else if (key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleUndo, handleRedo]);
+
   const setCell = useCallback((row: number, col: number, color: string, stitch: string) => {
+    pushIfPending(); // snapshot once at the start of this gesture's first mutation
     const key = `${row},${col}`;
     setGrid(prev => ({ ...prev, [key]: color }));
     setGridStitchTypes(prev => ({ ...prev, [key]: stitch }));
@@ -951,9 +1045,10 @@ export const Designer: React.FC = () => {
       delete next[key];
       return next;
     });
-  }, []);
+  }, [pushIfPending]);
 
   const clearCell = useCallback((row: number, col: number) => {
+    pushIfPending(); // snapshot once at the start of this gesture's first mutation
     const key = `${row},${col}`;
     setGrid(prev => {
       const next = { ...prev };
@@ -971,10 +1066,11 @@ export const Designer: React.FC = () => {
       delete next[key];
       return next;
     });
-  }, []);
+  }, [pushIfPending]);
 
   const handlePlaceText = useCallback(() => {
     if (!alphabetText.trim()) return;
+    undoPendingRef.current = true; // the Place button isn't a canvas gesture — arm manually
     const font = FONTS.find(f => f.id === selectedFontId) || FONTS[0];
     renderTextToGrid(alphabetText, font, placeRow, placeCol, selectedColor, selectedStitch, gridWidth, gridHeight, setCell);
     setAlphabetText('');
@@ -994,6 +1090,7 @@ export const Designer: React.FC = () => {
     // Shape stamping: only when paint tool is active
     // If a shape is selected from the ShapePicker, clicking with paint stamps it
     if (selectedShape && activeTool === 'paint') {
+      pushIfPending(); // one stamp = one undo step
       const result = stampShape(grid, gridStitchTypes, selectedShape, row, col, selectedColor, selectedStitch, gridWidth, gridHeight);
       setGrid(result.grid);
       setGridStitchTypes(result.stitchTypes);
@@ -1101,6 +1198,7 @@ export const Designer: React.FC = () => {
         const targetColor = grid[key] || '';
         const fillColor = selectedColor;
         if (targetColor === fillColor) break;
+        pushIfPending(); // one flood fill = one undo step
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
         const newFractions = { ...cellFractions };
@@ -1197,6 +1295,7 @@ export const Designer: React.FC = () => {
         break;
       }
       default: {
+        pushIfPending(); // default tool toggles a cell — one toggle = one undo step
         const newGrid = { ...grid };
         const newStitchTypes = { ...gridStitchTypes };
         if (newGrid[key] === selectedColor) {
@@ -1228,7 +1327,7 @@ export const Designer: React.FC = () => {
         break;
       }
     }
-  }, [activeTool, alphabetText, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedFontId, selectedStitch, setCell, drawStart, selectedShape, cellFractions]);
+  }, [activeTool, alphabetText, clearCell, cloneSource, grid, gridStitchTypes, gridWidth, gridHeight, mirrorCellEdit, mirrorEnabled, selectedColor, selectedFontId, selectedStitch, setCell, drawStart, selectedShape, cellFractions, pushIfPending]);
 
   const handleCellHover = useCallback((row: number, col: number) => {
     if (!isMouseDown) return;
@@ -1256,6 +1355,7 @@ export const Designer: React.FC = () => {
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight, drawStart, setShapeEnd]);
 
   const handleClearGrid = () => {
+    clearHistory(); // Clear starts a brand-new baseline
     setGrid({});
     setGridStitchTypes({});
     setCellFractions({});
@@ -1325,6 +1425,7 @@ export const Designer: React.FC = () => {
       });
       setGrid(restored);
       setGridStitchTypes(restoredTypes);
+      clearHistory(); // loading a saved pattern is a fresh baseline
       // Show the whole loaded design in the panel (e.g. a granted stocking/trout)
       const el = canvasRef.current;
       if (el) {
@@ -1475,6 +1576,7 @@ export const Designer: React.FC = () => {
       }
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
+      clearHistory(); // AI generation is a fresh baseline — undo must not cross it
       // When a product template is active, the canvas becomes the preset size —
       // never a stale leftover size.
       if (activePreset && (presetW !== canvasW || presetH !== canvasH)) {
@@ -1531,6 +1633,7 @@ export const Designer: React.FC = () => {
   };
 
   const applyResize = (newW: number, newH: number) => {
+    clearHistory(); // a canvas resize changes dimensions — treat as a new baseline
     // Clip any stitches outside the new bounds
     const newGrid: Record<string, string> = {};
     const newStitchTypes: Record<string, string> = {};
@@ -1736,6 +1839,7 @@ export const Designer: React.FC = () => {
                         key={preset.name}
                         onClick={() => {
                           setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+                          clearHistory(); // a fresh preset canvas is a new baseline
                           // Selecting a product template starts a fresh canvas at
                           // that product's size — clear any prior content so a
                           // larger leftover canvas can never persist (owner:
@@ -2175,6 +2279,22 @@ export const Designer: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-white text-slate-600 border border-blush-100 hover:bg-blush-50 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1"
+                    title="Undo last edit (Ctrl+Z)"
+                  >
+                    <Undo2 className="h-3 w-3" /> Undo
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-white text-slate-600 border border-blush-100 hover:bg-blush-50 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1"
+                    title="Redo edit (Ctrl+Shift+Z / Ctrl+Y)"
+                  >
+                    <Redo2 className="h-3 w-3" /> Redo
+                  </button>
+                  <button
                     onClick={handleClearGrid}
                     className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1"
                     title="Clear entire grid and start over"
@@ -2245,6 +2365,7 @@ export const Designer: React.FC = () => {
               <div
                 ref={canvasRef}
                 className="w-full p-6 bg-amber-50/20 rounded-2xl border-4 border-dashed border-blush-100 shadow-inner min-h-[360px] flex items-center justify-center overflow-auto"
+                onMouseDownCapture={() => { undoPendingRef.current = true; }}
                 onMouseDown={() => setIsMouseDown(true)}
                 onMouseUp={() => { setIsMouseDown(false); }}
                 onMouseLeave={() => {
