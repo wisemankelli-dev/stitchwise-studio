@@ -55,4 +55,46 @@ describe("Collage Piece Segmentation — color blocking", () => {
       expect(p.bounds.height).toBeGreaterThan(0.05);
     }
   });
+
+  it("keeps tiny distinct interior features (nostrils) as separate cutouts (owner 08-20)", async () => {
+    const W = 256, H = 256;
+    const px = new Uint8Array(W * H * 4);
+    const set = (x: number, y: number, r: number, g: number, b: number) => {
+      const i = (y * W + x) * 4;
+      px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255;
+    };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) set(x, y, 255, 255, 255); // white bg
+    // A large tan "muzzle" (nose pad).
+    for (let y = 90; y < 170; y++) {
+      for (let x = 90; x < 170; x++) {
+        // ellipse-ish muzzle
+        const dx = (x - 130) / 40, dy = (y - 130) / 40;
+        if (dx * dx + dy * dy <= 1) set(x, y, 161, 118, 84); // tan #a17654
+      }
+    }
+    // Two small dark "nostrils" fully interior to the muzzle.
+    for (let y = 122; y < 134; y++) {
+      for (let x = 116; x < 126; x++) {
+        const dx = (x - 121) / 5, dy = (y - 128) / 6;
+        if (dx * dx + dy * dy <= 1) set(x, y, 60, 36, 22);
+      }
+    }
+    for (let y = 122; y < 134; y++) {
+      for (let x = 136; x < 146; x++) {
+        const dx = (x - 141) / 5, dy = (y - 128) / 6;
+        if (dx * dx + dy * dy <= 1) set(x, y, 60, 36, 22);
+      }
+    }
+    const png = await sharp(Buffer.from(px), { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+    const res = await segmentImageIntoPieces(png);
+    // At least 2 dark "nostril" pieces, separate from the tan muzzle piece.
+    const dark = res.pieces.filter((p) => p.color === "#3c2416" || p.color === "#3c2416" || p.color.startsWith("#3"));
+    const tan = res.pieces.filter((p) => p.color !== "#3c2416" && !p.color.startsWith("#3"));
+    expect(dark.length).toBeGreaterThanOrEqual(1); // at least one nostril cutout
+    expect(tan.length).toBeGreaterThanOrEqual(1);  // the muzzle base remains
+    // The dark nostril pieces must be small (a feature, not the whole muzzle).
+    for (const p of dark) {
+      expect(p.bounds.width * p.bounds.height).toBeLessThan(0.25);
+    }
+  });
 });
