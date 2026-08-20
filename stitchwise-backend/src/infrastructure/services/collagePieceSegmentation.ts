@@ -77,7 +77,31 @@ const COLOR_MERGE_DISTANCE = 18;
  * floor low just lets each real color region converge to ONE piece.
  */
 const MIN_PIECES_AFTER_MERGE = 1;
-
+/**
+ * Small-feature preservation (owner 08-20: "the nose should cut into 3 pieces —
+ * nose + 2 nostrils; distinct shades are merging into one"). Owner-approved.
+ *
+ * Root cause (diagnosed 08-20): at the fixed WORK_SIZE the k-means palette
+ * (k <= COLOR_MAX=48) does not carve a dedicated centroid for a tiny but
+ * visually distinct feature (a cow's nostril, a bird's eye, a spot). Those
+ * pixels get quantized to a NEARBY centroid that dominates the surrounding
+ * region (e.g. the dark nostril snaps to the tan muzzle's centroid), so
+ * connected-components merges them into the surrounding piece. Raising WORK_SIZE
+ * or COLOR_MERGE_DISTANCE does not help — the feature is erased at the label
+ * level before those stages run.
+ *
+ * Fix: BEFORE connected components, re-classify pixels whose color deviates from
+ * their assigned centroid by more than DETAIL_DIST (the palette "snapped" them)
+ * into their own fresh label, but ONLY when the blob is a true interior feature —
+ * fully surrounded by one uniform color — and not a block-edge anti-aliased band
+ * (which is surrounded by TWO different colors and must stay merged with its
+ * parent to preserve PR#134: 4 solid blocks → 4 pieces).
+ */
+const DETAIL_DIST = 26; // pixel–centroid distance beyond which a pixel is "detail"
+const DETAIL_MIN_AREA = 3; // ignore 1-2px speckle
+const DETAIL_MAX_FRACTION = 0.02; // a blob covering >2% is a real region, not detail
+const DETAIL_MIN_FRACTION = 0.00005; // below this ignore as noise
+const NEIGHBOR_UNIFORM = 30; // max spread among the blob's surround pixels (one color)
 export interface SegmentationOptions {
   maxPieces?: number;
 }
@@ -133,6 +157,12 @@ export async function segmentImageIntoPieces(
     if (bgMask[i]) labels[i] = -1; // -1 = background: never a piece
   }
 
+  // ── 1c. Preserve small distinct interior features (nostrils/eyes/spots) ─────
+  // The owner's nose should cut into muzzle + 2 nostrils: tiny dark nostrils are
+  // quantized into the muzzle's centroid by k-means, so no independent nostril
+  // region survives at the label stage. We split them out AFTER color-merge when
+  // the muzzle has converged to one large region (see splitInteriorFeatures).
+
   // ── 2. Median filter labels (majority of 3x3) to remove speckle ──────────
   const cleanLabels = medianFilterLabels(labels, w, h, 1);
 
@@ -159,6 +189,13 @@ export async function segmentImageIntoPieces(
   // not tiny gradient slivers. Repeatedly merge the closest-colored adjacent
   // pair until no pair is within COLOR_MERGE_DISTANCE or we hit the floor.
   kept = mergeSimilarColors(kept, pixels, w, h, COLOR_MERGE_DISTANCE, MIN_PIECES_AFTER_MERGE);
+
+  // ── 4c. Split interior color-distinct features (nostrils/eyes/spots) ────────
+  // Now that similar shades have merged, a calf's muzzle is ONE region — find any
+  // interior pocket of a clearly-different color (the two nostrils) and promote
+  // each to its own cutout piece. Edge anti-aliasing is rejected (touches the
+  // region boundary) so solid color blocks stay ONE piece (PR#134).
+  kept = splitInteriorFeatures(kept, pixels, w, h);
 
   // ── 5. Emit pieces ────────────────────────────────────────────────────────
   const pieces: CollagePiece[] = [];
@@ -341,6 +378,184 @@ function kmeansQuantize(
   }
 
   return { labels, centroids };
+}
+
+/**
+ * Split small color-distinct INTERIOR features (nostrils, eyes, spots) out of
+ * their surrounding region so they become separate cutouts. Owner 08-20: the
+ * cow's nose should cut into muzzle + 2 nostrils — tiny dark nostrils are
+ * quantized into the muzzle's k-means centroid, so no independent nostril region
+ * ever survives (raising WORK_SIZE or COLOR_MERGE_DISTANCE doesn't help).
+ *
+ * We run AFTER mergeSimilarColors (when the muzzle has converged to ONE large
+ * region) and scan each large region for an interior pocket of pixels whose own
+ * color is far from the region's average. Such a pocket is promoted to its own
+ * piece ONLY if it is fully INTERIOR (does not touch the region's outer boundary
+ * / background) and surrounded by a single uniform color. This keeps the cow's
+ * nostrils as cutouts while leaving anti-aliased block EDGES merged with their
+ * parent (an edge band touches the region boundary, so it is rejected) — thereby
+ * preserving PR#134 (4 solid blocks → 4 pieces) and PR#135 (interior subject
+ * pieces kept; backdrop dropped separately).
+ */
+function splitInteriorFeatures(
+  regions: Region[],
+  pixels: Uint8ClampedArray,
+  w: number,
+  h: number,
+): Region[] {
+  const n = w * h;
+  const out: Region[] = [];
+  for (const region of regions) {
+    const cells = region.cells;
+    // Only large uniform-ish regions can host a hidden interior feature.
+    if (cells.length < Math.max(200, n * 0.005)) {
+      out.push(region);
+      continue;
+    }
+    // Average color of the parent region.
+    let pr = 0;
+    let pg = 0;
+    let pb = 0;
+    for (const cell of cells) {
+      pr += pixels[cell * 4];
+      pg += pixels[cell * 4 + 1];
+      pb += pixels[cell * 4 + 2];
+    }
+    const m = cells.length;
+    const pavg: [number, number, number] = [pr / m, pg / m, pb / m];
+
+    // Flag pixels in this region far from its average (candidate features).
+    const inRegion = new Uint8Array(n);
+    const far = new Uint8Array(n);
+    for (const cell of cells) inRegion[cell] = 1;
+    for (const cell of cells) {
+      const d = Math.sqrt(
+        (pixels[cell * 4] - pavg[0]) ** 2 +
+          (pixels[cell * 4 + 1] - pavg[1]) ** 2 +
+          (pixels[cell * 4 + 2] - pavg[2]) ** 2,
+      );
+      if (d > 36) far[cell] = 1;
+    }
+
+    // Sub-blobs of "far" pixels inside this region.
+    const visited = new Uint8Array(n);
+    const subBlobs: number[][] = [];
+    for (const cell of cells) {
+      if (!far[cell] || visited[cell]) continue;
+      visited[cell] = 1;
+      const stack = [cell];
+      const blob: number[] = [];
+      while (stack.length) {
+        const idx = stack.pop()!;
+        blob.push(idx);
+        const r = Math.floor(idx / w);
+        const c = idx % w;
+        const nbs = [
+          r > 0 && inRegion[idx - w] ? idx - w : -1,
+          r < h - 1 && inRegion[idx + w] ? idx + w : -1,
+          c > 0 && inRegion[idx - 1] ? idx - 1 : -1,
+          c < w - 1 && inRegion[idx + 1] ? idx + 1 : -1,
+        ];
+        for (const nb of nbs) {
+          if (nb >= 0 && far[nb] && !visited[nb]) {
+            visited[nb] = 1;
+            stack.push(nb);
+          }
+        }
+      }
+      if (blob.length < DETAIL_MIN_AREA) continue;
+      const frac = blob.length / cells.length;
+      if (frac < 0.004 || frac > 0.4) continue;
+
+      // Interior: sub-blob must not touch the region's outer boundary (a
+      // 4-neighbor that is a different region, background, or image edge).
+      const blobSet = new Uint8Array(n);
+      for (const bc of blob) blobSet[bc] = 1;
+      let touchesBoundary = false;
+      let sr = 0;
+      let sg = 0;
+      let sb = 0;
+      let surround = 0;
+      for (const bc of blob) {
+        const r = Math.floor(bc / w);
+        const c = bc % w;
+        const nbs = [
+          r > 0 ? bc - w : -1,
+          r < h - 1 ? bc + w : -1,
+          c > 0 ? bc - 1 : -1,
+          c < w - 1 ? bc + 1 : -1,
+        ];
+        for (const nb of nbs) {
+          if (nb < 0) { touchesBoundary = true; continue; }
+          if (blobSet[nb]) continue;
+          if (!inRegion[nb]) { touchesBoundary = true; continue; }
+          sr += pixels[nb * 4];
+          sg += pixels[nb * 4 + 1];
+          sb += pixels[nb * 4 + 2];
+          surround++;
+        }
+      }
+      if (touchesBoundary) continue;
+      if (surround < 3) continue;
+      const sm = surround;
+      const sAvg: [number, number, number] = [sr / sm, sg / sm, sb / sm];
+      let maxSpread = 0;
+      for (const bc of blob) {
+        const r = Math.floor(bc / w);
+        const c = bc % w;
+        const nbs = [
+          r > 0 ? bc - w : -1,
+          r < h - 1 ? bc + w : -1,
+          c > 0 ? bc - 1 : -1,
+          c < w - 1 ? bc + 1 : -1,
+        ];
+        for (const nb of nbs) {
+          if (nb < 0 || blobSet[nb] || !inRegion[nb]) continue;
+          const d = Math.sqrt(
+            (pixels[nb * 4] - sAvg[0]) ** 2 +
+              (pixels[nb * 4 + 1] - sAvg[1]) ** 2 +
+              (pixels[nb * 4 + 2] - sAvg[2]) ** 2,
+          );
+          if (d > maxSpread) maxSpread = d;
+        }
+      }
+      if (maxSpread > NEIGHBOR_UNIFORM) continue;
+
+      // Blob color must be clearly distinct from the parent region's color.
+      let br = 0;
+      let bg = 0;
+      let bb = 0;
+      for (const bc of blob) { br += pixels[bc * 4]; bg += pixels[bc * 4 + 1]; bb += pixels[bc * 4 + 2]; }
+      const bAvg: [number, number, number] = [br / blob.length, bg / blob.length, bb / blob.length];
+      const bd = Math.sqrt(
+        (bAvg[0] - pavg[0]) ** 2 + (bAvg[1] - pavg[1]) ** 2 + (bAvg[2] - pavg[2]) ** 2,
+      );
+      if (bd <= COLOR_MERGE_DISTANCE) continue;
+
+      subBlobs.push(blob);
+    }
+
+    if (subBlobs.length === 0) {
+      out.push(region);
+      continue;
+    }
+    // Remove feature cells from the parent region (leaves a clean base) and emit
+    // each feature as its own piece.
+    const removed = new Uint8Array(n);
+    for (const blob of subBlobs) for (const bc of blob) removed[bc] = 1;
+    const parentCells = cells.filter((cell) => !removed[cell]);
+    // A near-empty parent after removal is meaningless — keep the original.
+    if (parentCells.length < 5) {
+      out.push(region);
+      continue;
+    }
+    out.push({ id: region.id, cells: parentCells });
+    let fid = out.length;
+    for (const blob of subBlobs) {
+      out.push({ id: fid++, cells: [...blob] });
+    }
+  }
+  return out;
 }
 
 /** 3x3 majority filter over the label map (mode filter), `passes` times. */
