@@ -49,6 +49,12 @@ export const CollageStudio: React.FC = () => {
   const [layers, setLayers] = useState<FabricLayer[]>(DEFAULT_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>('bg');
   const [zoom, setZoom] = useState(1);
+  // Real work-surface dimension (px). Default 500; "Large canvas" grows to ~950
+  // so there is real room to arrange pieces. All piece geometry scales with this.
+  const [canvasSize, setCanvasSize] = useState(CANVAS_WIDTH);
+  // Piece view: 'spread' = non-overlapping grid (default after generate);
+  // 'assembled' = each cutout back at its original artwork position.
+  const [layoutView, setLayoutView] = useState<'spread' | 'assembled'>('spread');
   // Pattern sheet style: 'value' = gray-tone value guide (CollageQuilter convention),
   // 'color' = true fabric colors, 'outline' = blank black-and-white coloring book.
   const [patternStyle, setPatternStyle] = useState<'value' | 'color' | 'outline'>('value');
@@ -267,7 +273,7 @@ export const CollageStudio: React.FC = () => {
       const title = (collageName.trim() || 'collage').replace(/\s+/g, '-');
       const pieces = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
         instanceId: `tray-${i}`, pieceId: piece.id, piece,
-        x: piece.bounds.x * 500, y: piece.bounds.y * 500, scale: 1, rotation: 0, zIndex: i,
+        x: piece.bounds.x * canvasSize, y: piece.bounds.y * canvasSize, scale: 1, rotation: 0, zIndex: i,
       }));
       const hasPieces = pieces.length > 0;
 
@@ -277,14 +283,14 @@ export const CollageStudio: React.FC = () => {
       const usableMm = 190;                                   // A4 (210mm) minus ~10mm side margins
       const tilesPerAxis = Math.max(1, Math.ceil(blockMm / usableMm));
       const tileMm = blockMm / tilesPerAxis;                  // e.g. 304.8/2 = 152.4 mm per tile
-      const mmPerPx = blockMm / 500;
+      const mmPerPx = blockMm / canvasSize;
       const pageW = 210;
       const tileTop = 36;                                     // header area on each tile page
       const tileX0 = (pageW - tileMm) / 2;                    // center the tile horizontally
       /** Rotate a normalized outline point (0..1) into pattern-mm coords (rotation around the piece center, matching the canvas). */
       const piecePointMm = (p: PlacedCollagePiece, ox: number, oy: number): [number, number] => {
-        const w = p.piece.bounds.width * 500 * p.scale;
-        const h = p.piece.bounds.height * 500 * p.scale;
+        const w = p.piece.bounds.width * canvasSize * p.scale;
+        const h = p.piece.bounds.height * canvasSize * p.scale;
         const rad = (p.rotation * Math.PI) / 180;
         const px = ox * w, py = oy * h;
         const cxr = w / 2, cyr = h / 2;
@@ -389,8 +395,8 @@ export const CollageStudio: React.FC = () => {
           const py = keyY + row * 62;
           // outline preview (scaled to ~34mm box)
           const box = 34;
-          const w = Math.max(40, p.piece.bounds.width * 500) * p.scale;
-          const h = Math.max(40, p.piece.bounds.height * 500) * p.scale;
+          const w = Math.max(40, p.piece.bounds.width * canvasSize) * p.scale;
+          const h = Math.max(40, p.piece.bounds.height * canvasSize) * p.scale;
           const s = Math.min(box / w, box / h);
           const ox = px + (box - w * s) / 2;
           const oy = py + (box - h * s) / 2;
@@ -482,6 +488,57 @@ export const CollageStudio: React.FC = () => {
   };
 
   // === Scrapbook piece workspace (cutout pieces of the actual art image) ===
+  /** Largest-first, row-major shelf layout of pieces into a non-overlapping grid. */
+  const spreadPlacements = (items: PlacedCollagePiece[], size: number): PlacedCollagePiece[] => {
+    const gap = 16;
+    const dim = (p: PlacedCollagePiece) => {
+      const w = Math.max(40, p.piece.bounds.width * size) * p.scale;
+      const h = Math.max(40, p.piece.bounds.height * size) * p.scale;
+      return [w, h] as const;
+    };
+    // largest-first so big pieces go left/up and nothing hides behind a small friend
+    const sorted = [...items].sort((a, b) => {
+      const [aw, ah] = dim(a), [bw, bh] = dim(b);
+      return (bw * bh) - (aw * ah);
+    });
+    const out: PlacedCollagePiece[] = [];
+    let cursorX = gap, cursorY = gap, rowH = 0;
+    const maxX = size - gap;
+    for (const p of sorted) {
+      const [w, h] = dim(p);
+      if (cursorX + w > maxX && cursorX > gap) { cursorX = gap; cursorY += rowH + gap; rowH = 0; }
+      out.push({ ...p, x: cursorX, y: cursorY });
+      cursorX += w + gap;
+      rowH = Math.max(rowH, h);
+    }
+    return out;
+  };
+  /** Next free slot to the right of / below the existing grid, so tray clicks never clump. */
+  const nextFreeSlot = (existing: PlacedCollagePiece[], w: number, size: number): { x: number; y: number } => {
+    const gap = 16;
+    let maxRight = gap, maxBottom = gap;
+    for (const p of existing) {
+      const pw = Math.max(40, p.piece.bounds.width * size) * p.scale;
+      const ph = Math.max(40, p.piece.bounds.height * size) * p.scale;
+      maxRight = Math.max(maxRight, p.x + pw);
+      maxBottom = Math.max(maxBottom, p.y + ph);
+    }
+    let x = maxRight + gap, y = gap;
+    if (x + w > size) { x = gap; y = maxBottom + gap; }
+    return { x, y };
+  };
+  /** Re-lay current pieces for the chosen view (spread grid vs assembled positions). */
+  const applyViewLayout = (mode: 'spread' | 'assembled') => {
+    setLayoutView(mode);
+    setPlacedPieces(prev => {
+      if (mode === 'spread') return spreadPlacements(prev, canvasSize);
+      return prev.map(p => ({
+        ...p,
+        x: Math.max(0, Math.min(canvasSize - Math.max(40, p.piece.bounds.width * canvasSize), p.piece.bounds.x * canvasSize)),
+        y: Math.max(0, Math.min(canvasSize - Math.max(40, p.piece.bounds.height * canvasSize), p.piece.bounds.y * canvasSize)),
+      }));
+    });
+  };
   /** Build a CSS clip-path polygon from a piece's normalized outline (0..1 coords). */
   const outlineClipPath = (outline: [number, number][]): string => {
     if (!outline || outline.length < 3) return 'none';
@@ -518,28 +575,33 @@ export const CollageStudio: React.FC = () => {
           instanceId: `placed-${Date.now()}-${i}`,
           pieceId: piece.id,
           piece,
-          x: piece.bounds.x * 500,
-          y: piece.bounds.y * 500,
+          x: piece.bounds.x * canvasSize,
+          y: piece.bounds.y * canvasSize,
           scale: 1,
           rotation: 0,
           zIndex: i + 1,
         };
       });
       setAvailablePieces(subjectPieces);
-      setPlacedPieces(placed);
+      // Default to the non-overlapping spread grid so many pieces never hide each other.
+      setPlacedPieces(spreadPlacements(placed, canvasSize));
+      setLayoutView('spread');
       setSelectedPieceId(null);
     }
   };
 
   const addPieceToCanvas = (piece: CollagePiece) => {
-    const w = Math.max(40, piece.bounds.width * 500);
-    const h = Math.max(40, piece.bounds.height * 500);
+    const w = Math.max(40, piece.bounds.width * canvasSize);
+    const h = Math.max(40, piece.bounds.height * canvasSize);
+    const slot = layoutView === 'assembled'
+      ? { x: Math.max(0, Math.min(canvasSize - w, piece.bounds.x * canvasSize)), y: Math.max(0, Math.min(canvasSize - h, piece.bounds.y * canvasSize)) }
+      : nextFreeSlot(placedPieces, w, canvasSize);
     const instance: PlacedCollagePiece = {
       instanceId: `placed-${Date.now()}`,
       pieceId: piece.id,
       piece,
-      x: Math.max(0, Math.min(CANVAS_WIDTH - w, 20 + Math.random() * 60)),
-      y: Math.max(0, Math.min(CANVAS_HEIGHT - h, 20 + Math.random() * 60)),
+      x: slot.x,
+      y: slot.y,
       scale: 1,
       rotation: 0,
       zIndex: placedPieces.length + 1,
@@ -586,8 +648,8 @@ export const CollageStudio: React.FC = () => {
     setSelectedPieceId(instanceId);
     const rect = pieceSpaceRect();
     if (!rect) return;
-    const px = (e.clientX - rect.left) / (rect.width / 500);
-    const py = (e.clientY - rect.top) / (rect.height / 500);
+    const px = (e.clientX - rect.left) / (rect.width / canvasSize);
+    const py = (e.clientY - rect.top) / (rect.height / canvasSize);
     const placed = placedPieces.find(p => p.instanceId === instanceId);
     if (!placed) return;
     setDragState({ id: instanceId, offsetX: px - placed.x, offsetY: py - placed.y });
@@ -597,8 +659,8 @@ export const CollageStudio: React.FC = () => {
     if (!dragState) return;
     const rect = pieceSpaceRect();
     if (!rect) return;
-    const px = (e.clientX - rect.left) / (rect.width / 500);
-    const py = (e.clientY - rect.top) / (rect.height / 500);
+    const px = (e.clientX - rect.left) / (rect.width / canvasSize);
+    const py = (e.clientY - rect.top) / (rect.height / canvasSize);
     updatePlacedPiece(dragState.id, { x: px - dragState.offsetX, y: py - dragState.offsetY });
   };
 
@@ -614,16 +676,16 @@ export const CollageStudio: React.FC = () => {
     if (!piece) return;
     const rect = pieceSpaceRect();
     if (!rect) return;
-    const w = Math.max(40, piece.bounds.width * 500);
-    const h = Math.max(40, piece.bounds.height * 500);
-    const px = (e.clientX - rect.left) / (rect.width / 500) - w / 2;
-    const py = (e.clientY - rect.top) / (rect.height / 500) - h / 2;
+    const w = Math.max(40, piece.bounds.width * canvasSize);
+    const h = Math.max(40, piece.bounds.height * canvasSize);
+    const px = (e.clientX - rect.left) / (rect.width / canvasSize) - w / 2;
+    const py = (e.clientY - rect.top) / (rect.height / canvasSize) - h / 2;
     const instance: PlacedCollagePiece = {
       instanceId: `placed-${Date.now()}`,
       pieceId: piece.id,
       piece,
-      x: Math.max(0, Math.min(CANVAS_WIDTH - w, px)),
-      y: Math.max(0, Math.min(CANVAS_HEIGHT - h, py)),
+      x: Math.max(0, Math.min(canvasSize - w, px)),
+      y: Math.max(0, Math.min(canvasSize - h, py)),
       scale: 1,
       rotation: 0,
       zIndex: placedPieces.length + 1,
@@ -945,6 +1007,55 @@ export const CollageStudio: React.FC = () => {
                       </button>
                     ))}
                   </div>
+                  <span className="mx-0.5 text-blush-200">|</span>
+                  {/* Piece view: spread grid (no overlap) vs assembled artwork positions */}
+                  <div className="flex items-center gap-0.5 bg-blush-50 p-0.5 rounded-lg border border-blush-100">
+                    {([['spread', 'Spread pieces'], ['assembled', 'Assembled']] as const).map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => applyViewLayout(id)}
+                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                          layoutView === id
+                            ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                        title={
+                          id === 'spread'
+                            ? 'Spread pieces into a non-overlapping grid so nothing is hidden behind another cutout'
+                            : 'Assemble pieces back at their original artwork positions (edge-to-edge reconstruction)'
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="mx-0.5 text-blush-200">|</span>
+                  {/* Larger work surface */}
+                  <button
+                    onClick={() => {
+                      const next = canvasSize === CANVAS_WIDTH ? 950 : CANVAS_WIDTH;
+                      setCanvasSize(next);
+                      // re-lay current view against the new surface so pieces re-fit
+                      setPlacedPieces(prev => layoutView === 'spread'
+                        ? spreadPlacements(prev, next)
+                        : prev.map(p => ({
+                            ...p,
+                            x: Math.max(0, Math.min(next - Math.max(40, p.piece.bounds.width * next), p.piece.bounds.x * next)),
+                            y: Math.max(0, Math.min(next - Math.max(40, p.piece.bounds.height * next), p.piece.bounds.y * next)),
+                          }))
+                      );
+                      setZoom(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+                      canvasSize > CANVAS_WIDTH
+                        ? 'bg-blush-500 text-white shadow-sm ring-1 ring-blush-600'
+                        : 'bg-blush-50 text-slate-500 border border-blush-100 hover:text-slate-700'
+                    }`}
+                    title="Widen the work surface (Large) so there is real room to arrange; zoom/PDF scale with it"
+                  >
+                    <Grid3X3 className="h-3 w-3" />
+                    {canvasSize > CANVAS_WIDTH ? 'Large' : 'Standard'}
+                  </button>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-blush-500">
                   <Grid3X3 className="h-3.5 w-3.5" />
@@ -1005,7 +1116,7 @@ export const CollageStudio: React.FC = () => {
               <div
                 ref={canvasRef}
                 className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden mx-auto"
-                style={{ height: '500px', width: '500px', maxWidth: '100%' }}
+                style={{ height: `${canvasSize}px`, width: `${canvasSize}px`, maxWidth: '100%' }}
                 onPointerMove={handleCanvasPointerMove}
                 onPointerUp={handleCanvasPointerUp}
                 onPointerLeave={handleCanvasPointerUp}
@@ -1080,8 +1191,8 @@ export const CollageStudio: React.FC = () => {
                       positions. Fill follows the selected pattern style: gray-tone value guide
                       (default, CollageQuilter convention), true fabric colors, or blank outlines. */}
                   {placedPieces.sort((a, b) => a.zIndex - b.zIndex).map((placed, placedIdx) => {
-                    const w = placed.piece.bounds.width * 500 * placed.scale;
-                    const h = placed.piece.bounds.height * 500 * placed.scale;
+                    const w = placed.piece.bounds.width * canvasSize * placed.scale;
+                    const h = placed.piece.bounds.height * canvasSize * placed.scale;
                     const isSelected = selectedPieceId === placed.instanceId && activeTool === 'select';
                     const placedOutline = placed.piece.outline || [];
                     const cxPct = placedOutline.length ? (placedOutline.reduce((s, [ox]) => s + ox, 0) / placedOutline.length) * 100 : 50;
@@ -1324,7 +1435,7 @@ export const CollageStudio: React.FC = () => {
                       <div key={piece.id} className="flex items-center gap-2 text-[10px] text-slate-600">
                         <div className="w-3 h-3 rounded border border-blush-100 shrink-0" style={{ backgroundColor: piece.color }} />
                         <span className="font-medium truncate">{piece.label}</span>
-                        <span className="text-slate-400 ml-auto">{Math.round(piece.bounds.width * 500)}×{Math.round(piece.bounds.height * 500)}px</span>
+                        <span className="text-slate-400 ml-auto">{Math.round(piece.bounds.width * canvasSize)}×{Math.round(piece.bounds.height * canvasSize)}px</span>
                       </div>
                     ))}
                   </div>
@@ -1441,7 +1552,7 @@ export const CollageStudio: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-slate-500">
                     <div className="w-4 h-4 rounded border border-blush-100" style={{ backgroundColor: sel.piece.color }} />
-                    <span>{sel.piece.color} · {Math.round(Math.max(40, sel.piece.bounds.width * 500) * sel.scale)}×{Math.round(Math.max(40, sel.piece.bounds.height * 500) * sel.scale)}px</span>
+                    <span>{sel.piece.color} · {Math.round(Math.max(40, sel.piece.bounds.width * canvasSize) * sel.scale)}×{Math.round(Math.max(40, sel.piece.bounds.height * canvasSize) * sel.scale)}px</span>
                   </div>
                 </div>
               );
