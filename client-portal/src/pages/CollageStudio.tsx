@@ -710,8 +710,8 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(p);
       setProgressPhase(
         p < 20 ? 'Interpreting your design vision...'
-          : p < 40 ? 'Detecting fabric patterns and colors...'
-          : p < 60 ? 'Arranging fabric layers...'
+          : p < 40 ? 'Tracing lines into cut pieces...'
+          : p < 60 ? 'Splitting into cuttable pieces...'
           : p < 80 ? 'Applying textures...'
           : 'Finalizing collage design...'
       );
@@ -751,8 +751,8 @@ export const CollageStudio: React.FC = () => {
       setGeneratorProgress(p);
       setProgressPhase(
         p < 20 ? 'Analyzing image composition...'
-          : p < 40 ? 'Detecting color regions...'
-          : p < 60 ? 'Mapping to fabric patches...'
+          : p < 40 ? 'Tracing outlines into cut pieces...'
+          : p < 60 ? 'Arranging cut pieces edge-to-edge...'
           : p < 80 ? 'Arranging radial layout...'
           : 'Finalizing collage design...'
       );
@@ -804,7 +804,7 @@ export const CollageStudio: React.FC = () => {
                   <Scissors className="h-5 w-5 text-blush-500 -rotate-45" />
                   Collage Studio
                 </h1>
-                <p className="text-[10px] text-blush-400">Floral Fabric Collage Designer</p>
+                <p className="text-[10px] text-blush-400">Coloring-Page Collage Designer</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -1293,7 +1293,7 @@ export const CollageStudio: React.FC = () => {
 
               {activeTab === 'prompt' ? (
                 <div>
-                  <p className="text-[11px] text-slate-500 mb-3">Describe your collage quilt design and AI will generate fabric layers.</p>
+                  <p className="text-[11px] text-slate-500 mb-3">Describe your coloring page and AI will trace it into cut pieces for your quilt.</p>
                   <form onSubmit={triggerTextGeneration} className="space-y-3">
                     <textarea rows={3} disabled={isGenerating} value={promptInput}
                       onChange={(e) => setPromptInput(e.target.value)}
@@ -1346,7 +1346,7 @@ export const CollageStudio: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-[11px] text-slate-500">Upload an image to convert into a fabric collage layout.</p>
+                  <p className="text-[11px] text-slate-500">Upload an image and AI will trace it into cuttable pieces for your collage.</p>
                   {!uploadedFile ? (
                     <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                       className={`border-2 border-dashed rounded-xl p-5 text-center transition-all ${
@@ -1413,7 +1413,7 @@ export const CollageStudio: React.FC = () => {
                   <p className="text-[11px] text-emerald-800">
                     <strong>Success!</strong>{' '}
                     {aiResult.pieces && aiResult.pieces.length > 0
-                      ? `${aiResult.pieces.length} fabric pieces assembled into your collage. Drag any piece to fine-tune, or use the tray below.`
+                      ? `${aiResult.pieces.length} cut pieces assembled into your collage. Drag any piece to fine-tune, or use the tray below.`
                       : `${aiResult.totalLayers} layers generated. Click "Apply to Canvas" above to use them.`}
                   </p>
                 </div>
