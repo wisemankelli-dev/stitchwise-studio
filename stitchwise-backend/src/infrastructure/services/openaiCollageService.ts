@@ -16,6 +16,7 @@ import { generateImageWithDallE } from "./openaiImageService";
 import { closestFabricColor } from "../../domain/collage/fabricColors";
 import { getRandomTexture } from "../../domain/collage/fabricTextures";
 import { segmentImageIntoPieces } from "./collagePieceSegmentation";
+import { traceColoringPageIntoPieces } from "./coloringPageTracing";
 
 /** OpenAI API base URL. */
 const UNUSED_API_BASE = "https://api.openai.com/v1";
@@ -52,7 +53,7 @@ function createClient() {
  * Reuses the same approach as the embroidery service.
  */
 export async function generateCollageImage(prompt: string, negativePrompt?: string, premium = false): Promise<OpenAIGenerationResponse> {
-  const artworkPrompt = `beautiful realistic artwork of ${prompt}; fabric collage quilt, thread-painted style, organic fabric shapes, painterly fabric art, realistic fabric portrait`;
+  const artworkPrompt = `black and white coloring book page of ${prompt}; bold clean outlines, white background, simple uncluttered shapes, no shading, suitable for coloring`;
   const result = await generateImageWithDallE(artworkPrompt, negativePrompt, undefined, premium);
   return result ? { id: "openai", url: result.url, buffer: result.buffer } : { id: "openai" };
 }
@@ -113,6 +114,40 @@ export async function imageBufferToCollageLayers(
   gridSize: number = 32,
 ): Promise<CollageGenerationResult> {
   const size = gridSize >= 8 && gridSize <= 200 ? gridSize : 32;
+
+  // Coloring-page tracing is the primary piece path. It follows ink boundaries
+  // into enclosed, non-overlapping cutouts and avoids the expensive color
+  // k-means pipeline for the normal line-art case. Color segmentation below is
+  // retained as a graceful fallback for uploads without usable closed outlines.
+  try {
+    const traced = await traceColoringPageIntoPieces(imageBuffer);
+    if (traced.pieces.length > 0) {
+      const baseLayer: CollageLayer = {
+        id: "bg",
+        name: "Base Fabric",
+        color: "#ffffff",
+        pattern: "solid",
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 400,
+        rotation: 0,
+        opacity: 1,
+        zIndex: 0,
+      };
+      return {
+        layers: [baseLayer],
+        regions: [],
+        gridSize: size,
+        layerCount: 1,
+        fabricColors: [{ hex: "#ffffff", name: "White", count: 1 }],
+        pieces: traced.pieces,
+        referenceImage: traced.referenceImage,
+      };
+    }
+  } catch (err) {
+    console.warn({ event: "coloring_page_trace_failed", error: String(err) });
+  }
 
   // Resize image using sharp
   const { data, info } = await sharp(imageBuffer)
@@ -352,6 +387,12 @@ export async function attachMockPiecesToCollage(
 ): Promise<CollageGenerationResult> {
   try {
     const artwork = await renderMockArtworkSvg(collage.layers, size);
+    // Keep mock mode aligned with the real path: try line tracing first, then
+    // retain the existing color segmentation fallback for generated rectangles.
+    const traced = await traceColoringPageIntoPieces(artwork);
+    if (traced.pieces.length > 0) {
+      return { ...collage, pieces: traced.pieces, referenceImage: traced.referenceImage };
+    }
     const seg = await segmentImageIntoPieces(artwork);
     return { ...collage, pieces: seg.pieces, referenceImage: seg.referenceImage };
   } catch (err) {
