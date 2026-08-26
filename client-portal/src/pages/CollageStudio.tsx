@@ -222,15 +222,65 @@ export const CollageStudio: React.FC = () => {
   };
 
   const handleExportPng = async () => {
-    if (!canvasRef.current) return;
-    const canvas = await html2canvas(canvasRef.current, {
-      backgroundColor: '#fdf2f8',
-      scale: 2,
+    const node = canvasRef.current;
+    const pieceSpace = pieceSpaceRef.current;
+    if (!node || !pieceSpace) return;
+    const MARGIN = 24;
+    const pieceRects = placedPieces.map((p) => {
+      const w = Math.max(40, p.piece.bounds.width * canvasSize) * p.scale;
+      const h = Math.max(40, p.piece.bounds.height * canvasSize) * p.scale;
+      return { l: p.x, t: p.y, r: p.x + w, b: p.y + h };
     });
-    const link = document.createElement('a');
-    link.download = `${collageName.trim() || 'collage'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    let minX = 0, minY = 0, maxX = canvasSize, maxY = canvasSize;
+    if (pieceRects.length) {
+      minX = Math.min(0, ...pieceRects.map((r) => r.l));
+      minY = Math.min(0, ...pieceRects.map((r) => r.t));
+      maxX = Math.max(canvasSize, ...pieceRects.map((r) => r.r));
+      maxY = Math.max(canvasSize, ...pieceRects.map((r) => r.b));
+    }
+    const extW = Math.max(canvasSize, maxX - minX) + MARGIN * 2;
+    const extH = Math.max(canvasSize, maxY - minY) + MARGIN * 2;
+    const saved = {
+      width: node.style.width, height: node.style.height, maxWidth: node.style.maxWidth,
+      overflow: node.style.overflow, border: node.style.border, borderRadius: node.style.borderRadius,
+      left: pieceSpace.style.left, top: pieceSpace.style.top,
+      right: pieceSpace.style.right, bottom: pieceSpace.style.bottom,
+      transform: pieceSpace.style.transform, transformOrigin: pieceSpace.style.transformOrigin,
+      backgroundImage: pieceSpace.style.backgroundImage,
+    };
+    try {
+      node.classList.add('sw-exporting');
+      node.style.width = `${extW}px`;
+      node.style.height = `${extH}px`;
+      node.style.maxWidth = 'none';
+      node.style.overflow = 'visible';
+      node.style.border = 'none';
+      node.style.borderRadius = '0';
+      pieceSpace.style.left = `${MARGIN - minX}px`;
+      pieceSpace.style.top = `${MARGIN - minY}px`;
+      pieceSpace.style.right = 'auto';
+      pieceSpace.style.bottom = 'auto';
+      pieceSpace.style.transform = 'none';
+      pieceSpace.style.backgroundImage = 'none';
+      const canvas = await html2canvas(node, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        width: extW,
+        height: extH,
+      });
+      const link = document.createElement('a');
+      link.download = `${collageName.trim() || 'collage'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } finally {
+      node.classList.remove('sw-exporting');
+      node.style.width = saved.width; node.style.height = saved.height; node.style.maxWidth = saved.maxWidth;
+      node.style.overflow = saved.overflow; node.style.border = saved.border; node.style.borderRadius = saved.borderRadius;
+      pieceSpace.style.left = saved.left; pieceSpace.style.top = saved.top;
+      pieceSpace.style.right = saved.right; pieceSpace.style.bottom = saved.bottom;
+      pieceSpace.style.transform = saved.transform; pieceSpace.style.transformOrigin = saved.transformOrigin;
+      pieceSpace.style.backgroundImage = saved.backgroundImage;
+    }
   };
 
   const hexToRgb = (hex: string): [number, number, number] => {
@@ -844,6 +894,10 @@ export const CollageStudio: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-floral-soft">
+      <style>{`
+        .sw-exporting [data-export-hidden] { display: none !important; }
+        .sw-exporting .sw-png-layer { box-shadow: none !important; }
+      `}</style>
       {/* Header */}
       <div className="bg-white border-b border-blush-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -1199,7 +1253,7 @@ export const CollageStudio: React.FC = () => {
                       <div
                         key={layer.id}
                         onClick={() => handleCanvasClick(layer.id)}
-                        className={`absolute transition-shadow duration-200 ${
+                        className={`absolute transition-shadow duration-200 sw-png-layer ${
                           selectedLayerId === layer.id && activeTool === 'select'
                             ? 'ring-2 ring-blush-500 ring-offset-2'
                             : isInteractable
@@ -1222,18 +1276,18 @@ export const CollageStudio: React.FC = () => {
                         }}
                       >
                         {layer.id !== 'bg' && (
-                          <div className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
+                          <div data-export-hidden className="absolute -top-6 left-0 text-[9px] text-blush-500 font-medium whitespace-nowrap bg-white/80 px-1.5 py-0.5 rounded">
                             {layer.name}
                           </div>
                         )}
                         {/* Tool indicator badge */}
                         {isEraseTool && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
+                          <div data-export-hidden className="absolute inset-0 flex items-center justify-center bg-rose-500/20 rounded-xl">
                             <Eraser className="h-6 w-6 text-rose-500 opacity-70" />
                           </div>
                         )}
                         {isCloneTool && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
+                          <div data-export-hidden className="absolute inset-0 flex items-center justify-center bg-emerald-500/20 rounded-xl">
                             <Copy className="h-6 w-6 text-emerald-500 opacity-70" />
                           </div>
                         )}
@@ -1289,6 +1343,7 @@ export const CollageStudio: React.FC = () => {
                         )}
                         {/* Piece number — white halo keeps it readable on dark/colored fills */}
                         <span
+                          data-export-hidden
                           className="absolute text-[10px] font-bold text-black pointer-events-none select-none"
                           style={{
                             left: `${cxPct}%`,
@@ -1301,7 +1356,7 @@ export const CollageStudio: React.FC = () => {
                         </span>
                         {/* Selection ring + label */}
                         {isSelected && (
-                          <div className="absolute inset-0 pointer-events-none">
+                          <div data-export-hidden className="absolute inset-0 pointer-events-none">
                             <div className="absolute inset-0 ring-2 ring-blush-500 rounded-sm" />
                             <span className="absolute -top-5 left-0 text-[9px] font-bold text-white bg-blush-500 px-1.5 py-0.5 rounded whitespace-nowrap">
                               {placed.piece.label || 'Piece'}
