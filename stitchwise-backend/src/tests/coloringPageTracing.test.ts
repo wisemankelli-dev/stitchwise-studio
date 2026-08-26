@@ -14,6 +14,47 @@ async function makeLineArt(): Promise<Buffer> {
   return sharp(svg).png().toBuffer();
 }
 
+/** A large outlined region with many impractical specks and one real eye-sized feature. */
+async function makeSpeckFixture(): Promise<Buffer> {
+  const specks: string[] = [];
+  for (let row = 0; row < 12; row++) {
+    for (let col = 0; col < 16; col++) {
+      const cx = 60 + col * 25;
+      const cy = 65 + row * 30;
+      specks.push(`<circle cx="${cx}" cy="${cy}" r="3" fill="white" stroke="black" stroke-width="3" />`);
+    }
+  }
+  const svg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+      <rect width="512" height="512" fill="white" />
+      <rect x="32" y="32" width="448" height="448" fill="white" stroke="black" stroke-width="8" />
+      ${specks.join("\n      ")}
+      <circle cx="430" cy="430" r="16" fill="white" stroke="black" stroke-width="4" />
+    </svg>
+  `);
+  return sharp(svg).png().toBuffer();
+}
+
+/** 120 meaningful regions exercise the final cap without tiny-region merging. */
+async function makePieceCapFixture(): Promise<Buffer> {
+  const regions: string[] = [];
+  for (let row = 0; row < 10; row++) {
+    for (let col = 0; col < 12; col++) {
+      const cx = 60 + col * 36;
+      const cy = 70 + row * 40;
+      regions.push(`<circle cx="${cx}" cy="${cy}" r="8" fill="white" stroke="black" stroke-width="3" />`);
+    }
+  }
+  const svg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+      <rect width="512" height="512" fill="white" />
+      <rect x="32" y="32" width="448" height="448" fill="white" stroke="black" stroke-width="8" />
+      ${regions.join("\n      ")}
+    </svg>
+  `);
+  return sharp(svg).png().toBuffer();
+}
+
 describe("coloring-page line tracing", () => {
   it("returns enclosed pieces, including an interior feature, without the border background", async () => {
     const result = await traceColoringPageIntoPieces(await makeLineArt());
@@ -60,5 +101,21 @@ describe("coloring-page line tracing", () => {
     const result = await traceColoringPageIntoPieces(color);
     expect(result.pieces).toHaveLength(0);
     expect(result.referenceImage).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("merges tiny enclosed specks into their surrounding shape but keeps a real eye-sized region", async () => {
+    const result = await traceColoringPageIntoPieces(await makeSpeckFixture());
+
+    // Before the merge floor this fixture produced 194 regions (one body,
+    // 192 specks, and one eye). The cuttable floor reduces that to body + eye.
+    expect(result.pieces).toHaveLength(2);
+    const eye = result.pieces.find((piece) => piece.bounds.width < 0.1);
+    expect(eye).toBeDefined();
+    expect(eye!.bounds.width * eye!.bounds.height).toBeGreaterThan(0.001);
+  });
+
+  it("caps patterns at 100 pieces by merging the smallest neighboring regions", async () => {
+    const result = await traceColoringPageIntoPieces(await makePieceCapFixture());
+    expect(result.pieces.length).toBeLessThanOrEqual(100);
   });
 });
