@@ -12,7 +12,15 @@ import type { CollagePiece } from "../../domain/ai/collageAI";
 
 const WORK_SIZE = 512;
 const INK_THRESHOLD = 120;
-const MIN_REGION_PIXELS = 3;
+/**
+ * A 512×512 analysis canvas has 262,144 pixels. Regions below 50 pixels are
+ * typically anti-aliasing flecks or tiny decorative dots (under roughly 0.02%
+ * of the canvas), not practical fabric pieces. They are merged into the
+ * largest adjacent enclosed region instead of being silently discarded.
+ */
+const MIN_REGION_PIXELS = 50;
+/** Keep the final pattern within a human-cuttable piece count. */
+const MAX_PIECES = 100;
 const MAX_OUTLINE_POINTS = 120;
 
 export interface ColoringPageTracingResult {
@@ -96,7 +104,10 @@ export async function traceColoringPageIntoPieces(
         }
       }
     }
-    if (cells.length >= MIN_REGION_PIXELS) regions.push(cells);
+    // Keep every non-empty component for now. Small components must be merged
+    // into a neighboring region so their pixels are not dropped and the final
+    // pattern remains edge-complete.
+    if (cells.length > 0) regions.push(cells);
   }
 
   // Stable ordering makes generated labels deterministic across runs.
@@ -105,6 +116,12 @@ export async function traceColoringPageIntoPieces(
     const firstB = Math.min(...b);
     return firstA - firstB;
   });
+
+  // Merge impractical specks first, then enforce the overall human-cuttable
+  // cap. Both passes merge into the largest neighboring region; no cells are
+  // discarded and meaningful regions above the floor survive naturally.
+  mergeSmallRegions(regions, ink, MIN_REGION_PIXELS);
+  mergeSmallestRegionsToCap(regions, ink, MAX_PIECES);
 
   const pieces: CollagePiece[] = [];
   for (let i = 0; i < regions.length; i++) {
@@ -143,6 +160,140 @@ export async function traceColoringPageIntoPieces(
     pieces,
     referenceImage: await makeReferenceImage(imageBuffer),
   };
+}
+
+/**
+ * Merge every region below the practical cuttable floor into its largest
+ * neighboring region. Components are separated by ink lines, so "neighbor"
+ * means the closest enclosed region reached by walking through the separating
+ * ink. This correctly maps a tiny dot inside a larger outlined shape back to
+ * the shape around it, rather than merging it with an unrelated nearby piece.
+ */
+function mergeSmallRegions(regions: number[][], ink: Uint8Array, minimum: number): void {
+  while (regions.length > 1) {
+    let smallest = -1;
+    let smallestSize = minimum;
+    for (let i = 0; i < regions.length; i++) {
+      if (regions[i].length < smallestSize) {
+        smallest = i;
+        smallestSize = regions[i].length;
+      }
+    }
+    if (smallest < 0) break;
+    if (!mergeRegionIntoLargestNeighbor(regions, smallest, ink)) break;
+  }
+}
+
+/** Merge the smallest regions until the output is within the human-cuttable cap. */
+function mergeSmallestRegionsToCap(regions: number[][], ink: Uint8Array, cap: number): void {
+  while (regions.length > cap) {
+    let smallest = 0;
+    for (let i = 1; i < regions.length; i++) {
+      if (regions[i].length < regions[smallest].length) smallest = i;
+    }
+    if (!mergeRegionIntoLargestNeighbor(regions, smallest, ink)) break;
+  }
+}
+
+/** Merge one region into its largest closest neighbor without dropping pixels. */
+function mergeRegionIntoLargestNeighbor(
+  regions: number[][],
+  sourceIndex: number,
+  ink: Uint8Array,
+): boolean {
+  if (regions.length < 2) return false;
+  const regionMap = buildRegionMap(regions);
+  let targetIndex = findLargestNeighbor(regions, sourceIndex, regionMap, ink);
+  if (targetIndex < 0) {
+    // Every enclosed region should have a surrounding region, but retain a
+    // lossless fallback for malformed/open artwork rather than dropping cells.
+    targetIndex = findLargestOtherRegion(regions, sourceIndex);
+  }
+  if (targetIndex < 0) return false;
+  regions[targetIndex].push(...regions[sourceIndex]);
+  regions.splice(sourceIndex, 1);
+  return true;
+}
+
+function buildRegionMap(regions: number[][]): Int32Array {
+  const map = new Int32Array(WORK_SIZE * WORK_SIZE).fill(-1);
+  for (let regionIndex = 0; regionIndex < regions.length; regionIndex++) {
+    for (const cell of regions[regionIndex]) map[cell] = regionIndex;
+  }
+  return map;
+}
+
+/**
+ * Find candidates at the smallest ink-crossing distance, then choose the
+ * largest candidate. Eight-connectivity lets this work with anti-aliased and
+ * diagonal line boundaries while retaining the existing four-connected white
+ * component extraction.
+ */
+function findLargestNeighbor(
+  regions: number[][],
+  sourceIndex: number,
+  regionMap: Int32Array,
+  ink: Uint8Array,
+): number {
+  const source = regions[sourceIndex];
+  const n = WORK_SIZE * WORK_SIZE;
+  const seen = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  const distance = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
+  let nearestDistance = Infinity;
+  const candidates = new Set<number>();
+  const directions: Array<[number, number]> = [
+    [-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1],
+    [1, -1], [1, 0], [1, 1],
+  ];
+  const inspect = (cell: number, nextDistance: number) => {
+    const row = Math.floor(cell / WORK_SIZE);
+    const col = cell % WORK_SIZE;
+    for (const [dr, dc] of directions) {
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr < 0 || nr >= WORK_SIZE || nc < 0 || nc >= WORK_SIZE) continue;
+      const neighbor = nr * WORK_SIZE + nc;
+      const neighborRegion = regionMap[neighbor];
+      if (neighborRegion >= 0 && neighborRegion !== sourceIndex) {
+        if (nextDistance < nearestDistance) {
+          nearestDistance = nextDistance;
+          candidates.clear();
+        }
+        if (nextDistance === nearestDistance) candidates.add(neighborRegion);
+      } else if (neighborRegion < 0 && ink[neighbor] && !seen[neighbor]) {
+        seen[neighbor] = 1;
+        queue[tail] = neighbor;
+        distance[tail] = nextDistance;
+        tail++;
+      }
+    }
+  };
+  for (const cell of source) inspect(cell, 0);
+  while (head < tail) {
+    const cell = queue[head];
+    const cellDistance = distance[head];
+    head++;
+    if (cellDistance > nearestDistance) break;
+    inspect(cell, cellDistance + 1);
+  }
+  let largest = -1;
+  for (const candidate of candidates) {
+    if (candidate >= 0 && (largest < 0 || regions[candidate].length > regions[largest].length)) {
+      largest = candidate;
+    }
+  }
+  return largest;
+}
+
+function findLargestOtherRegion(regions: number[][], sourceIndex: number): number {
+  let largest = -1;
+  for (let i = 0; i < regions.length; i++) {
+    if (i !== sourceIndex && (largest < 0 || regions[i].length > regions[largest].length)) largest = i;
+  }
+  return largest;
 }
 
 /** Render a white filled, transparent-outside crop for the piece tray. */
