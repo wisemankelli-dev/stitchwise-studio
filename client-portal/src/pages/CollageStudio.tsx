@@ -282,6 +282,10 @@ export const CollageStudio: React.FC = () => {
       const blockMm = blockSize * 25.4;                       // e.g. 12" → 304.8 mm, 24" → 609.6 mm
       const usableMm = 190;                                   // A4 (210mm) minus ~10mm side margins
       const tilesPerAxis = Math.max(1, Math.ceil(blockMm / usableMm));
+      const totalPatternPages = tilesPerAxis * tilesPerAxis;
+      // Page 1 is a full-pattern OVERVIEW (when there are pieces), followed by the
+      // real-size tile pages, then reference art (if any), then the piece cutting guide.
+      const totalPdfPages = (hasPieces ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + (hasPieces ? 1 : 0);
       const tileMm = blockMm / tilesPerAxis;                  // e.g. 304.8/2 = 152.4 mm per tile
       const mmPerPx = blockMm / canvasSize;
       const pageW = 210;
@@ -326,15 +330,56 @@ export const CollageStudio: React.FC = () => {
       };
       if (hasPieces) {
         const n = tilesPerAxis;
+        // ── Page 1: FULL-PATTERN OVERVIEW ─────────────────────────────────
+        // The real-size tile pages that follow only show one tile per page
+        // (e.g. a quarter of a 12" block). Always lead with the complete pattern
+        // scaled to fit a single A4 page so the whole design is viewable on page 1.
+        doc.setFontSize(14);
+        doc.setTextColor(139, 92, 118);
+        doc.text('Collage Quilt Pattern — Overview', pageW / 2, 14, { align: 'center' });
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces · full pattern (not to scale)`, pageW / 2, 20, { align: 'center' });
+        doc.setFontSize(7);
+        doc.setTextColor(160, 60, 80);
+        doc.text(`Prints at real size on the following ${totalPatternPages} tile page${totalPatternPages > 1 ? 's' : ''} — this page is a preview only.`, pageW / 2, 26, { align: 'center' });
+        // Fit the whole pattern into the A4 body (below the header, above the footer)
+        const ovW = pageW - 40;
+        const ovH = 250;
+        const ovScale = Math.min(ovW / blockMm, ovH / blockMm);
+        const ovLeft = (pageW - blockMm * ovScale) / 2;
+        const ovTop = 36;
+        doc.setDrawColor(190, 190, 200);
+        doc.setLineWidth(0.2);
+        doc.rect(ovLeft, ovTop, blockMm * ovScale, blockMm * ovScale);
+        // Draw pieces scaled into overview coords (full pattern fit to page),
+        // reusing piecePointMm (canvasSize-aware) so the overview matches the real layout.
+        const drawOverviewPiece = (p: PlacedCollagePiece) => {
+          const outline = (p.piece.outline || []).map(([ox, oy]) => {
+            const [mx, my] = piecePointMm(p, ox, oy);
+            return [ovLeft + mx * ovScale, ovTop + my * ovScale] as [number, number];
+          });
+          if (outline.length < 3) return;
+          const [fr, fg, fb] = patternFillRgb(p.piece.color);
+          doc.setFillColor(fr, fg, fb);
+          doc.setDrawColor(17, 17, 17);
+          doc.setLineWidth(0.4);
+          doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
+          for (let k = 2; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
+          doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
+        };
+        pieces.forEach((p) => drawOverviewPiece(p));
+        // ── Full-scale tile pages (real size, print at 100%) ──────────────
         for (let tj = 0; tj < n; tj++) {
           for (let ti = 0; ti < n; ti++) {
-            if (ti > 0 || tj > 0) doc.addPage();
+            const tilePageNum = tj * n + ti + 2; // page 1 = overview
+            doc.addPage();
             doc.setFontSize(14);
             doc.setTextColor(139, 92, 118);
             doc.text('Collage Quilt Pattern — Print & Cut', pageW / 2, 14, { align: 'center' });
             doc.setFontSize(8);
             doc.setTextColor(100, 100, 100);
-            doc.text(`Tile ${tj * n + ti + 1} of ${n * n} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
+            doc.text(`Page ${tilePageNum} of ${totalPdfPages} · Tile ${tj * n + ti + 1} of ${totalPatternPages} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
             doc.setFontSize(7);
             doc.setTextColor(160, 60, 80);
             doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit)', pageW / 2, 26, { align: 'center' });
@@ -364,12 +409,16 @@ export const CollageStudio: React.FC = () => {
           }
         }
       }
-      // Page 2: Reference art (if any)
+      // Reference art (if any) — comes after the overview + tile pages
       if (referenceArt) {
         doc.addPage();
+        const refPage = hasPieces ? totalPatternPages + 2 : 1;
         doc.setFontSize(16);
         doc.setTextColor(139, 92, 118);
         doc.text('Reference Art', 20, 20);
+        doc.setFontSize(8);
+        doc.setTextColor(130, 130, 130);
+        doc.text(`Page ${refPage} of ${totalPdfPages} — reference artwork (not to scale)`, 20, 27);
         try {
           const img = new window.Image();
           img.src = referenceArt;
@@ -381,12 +430,16 @@ export const CollageStudio: React.FC = () => {
         } catch { /* image may not embed */ }
       }
 
-      // Page 2/3: Cutting guide with numbered piece outlines + colors
+      // Piece Cutting Guide (numbered outlines + colors) — last page
       if (hasPieces) {
         doc.addPage();
+        const cutPage = totalPatternPages + 2 + (referenceArt ? 1 : 0);
         doc.setFontSize(16);
         doc.setTextColor(139, 92, 118);
         doc.text('Piece Cutting Guide', 20, 20);
+        doc.setFontSize(8);
+        doc.setTextColor(130, 130, 130);
+        doc.text(`Page ${cutPage} of ${totalPdfPages} — numbered piece outlines and colors`, 20, 27);
         const keyY = 32;
         pieces.forEach((p, i) => {
           const row = Math.floor(i / 2);
