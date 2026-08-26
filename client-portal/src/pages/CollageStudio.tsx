@@ -226,28 +226,35 @@ export const CollageStudio: React.FC = () => {
     const pieceSpace = pieceSpaceRef.current;
     if (!node || !pieceSpace) return;
     const MARGIN = 24;
-    const pieceRects = placedPieces.map((p) => {
-      const w = Math.max(40, p.piece.bounds.width * canvasSize) * p.scale;
-      const h = Math.max(40, p.piece.bounds.height * canvasSize) * p.scale;
-      return { l: p.x, t: p.y, r: p.x + w, b: p.y + h };
-    });
+    // Export the ASSEMBLED pattern (the actual design), not the spread workspace grid:
+    // every piece lands at its assembled coords (bounds.x*canvasSize / bounds.y*canvasSize —
+    // same math the PDF overview uses) regardless of the current layout view, and the canvas
+    // container temporarily grows to the FULL piece extent so nothing is clipped (owner 08-26).
+    const wrappers = Array.from(pieceSpace.querySelectorAll<HTMLElement>('[data-export-piece]'));
+    const rects = wrappers.map((el) => ({
+      x: parseFloat(el.dataset.px || '0'),
+      y: parseFloat(el.dataset.py || '0'),
+      w: parseFloat(el.dataset.pw || '0'),
+      h: parseFloat(el.dataset.ph || '0'),
+    }));
     let minX = 0, minY = 0, maxX = canvasSize, maxY = canvasSize;
-    if (pieceRects.length) {
-      minX = Math.min(0, ...pieceRects.map((r) => r.l));
-      minY = Math.min(0, ...pieceRects.map((r) => r.t));
-      maxX = Math.max(canvasSize, ...pieceRects.map((r) => r.r));
-      maxY = Math.max(canvasSize, ...pieceRects.map((r) => r.b));
+    for (const r of rects) {
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w);
+      maxY = Math.max(maxY, r.y + r.h);
     }
     const extW = Math.max(canvasSize, maxX - minX) + MARGIN * 2;
     const extH = Math.max(canvasSize, maxY - minY) + MARGIN * 2;
     const saved = {
       width: node.style.width, height: node.style.height, maxWidth: node.style.maxWidth,
       overflow: node.style.overflow, border: node.style.border, borderRadius: node.style.borderRadius,
-      left: pieceSpace.style.left, top: pieceSpace.style.top,
-      right: pieceSpace.style.right, bottom: pieceSpace.style.bottom,
       transform: pieceSpace.style.transform, transformOrigin: pieceSpace.style.transformOrigin,
       backgroundImage: pieceSpace.style.backgroundImage,
     };
+    const savedPieces = wrappers.map((el) => ({
+      el, left: el.style.left, top: el.style.top, right: el.style.right, bottom: el.style.bottom,
+    }));
     try {
       node.classList.add('sw-exporting');
       node.style.width = `${extW}px`;
@@ -256,12 +263,17 @@ export const CollageStudio: React.FC = () => {
       node.style.overflow = 'visible';
       node.style.border = 'none';
       node.style.borderRadius = '0';
-      pieceSpace.style.left = `${MARGIN - minX}px`;
-      pieceSpace.style.top = `${MARGIN - minY}px`;
-      pieceSpace.style.right = 'auto';
-      pieceSpace.style.bottom = 'auto';
-      pieceSpace.style.transform = 'none';
-      pieceSpace.style.backgroundImage = 'none';
+      pieceSpace.style.transform = 'none';              // export 1:1 (ignore on-screen zoom)
+      pieceSpace.style.backgroundImage = 'none';        // drop the editing grid
+      // Lay the pieces at their ASSEMBLED positions, shifted so the whole pattern's
+      // top-left lands inside the export margin.
+      wrappers.forEach((el, i) => {
+        const r = rects[i];
+        el.style.left = `${MARGIN - minX + r.x}px`;
+        el.style.top = `${MARGIN - minY + r.y}px`;
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+      });
       const canvas = await html2canvas(node, {
         backgroundColor: '#ffffff',
         scale: 2,
@@ -276,13 +288,14 @@ export const CollageStudio: React.FC = () => {
       node.classList.remove('sw-exporting');
       node.style.width = saved.width; node.style.height = saved.height; node.style.maxWidth = saved.maxWidth;
       node.style.overflow = saved.overflow; node.style.border = saved.border; node.style.borderRadius = saved.borderRadius;
-      pieceSpace.style.left = saved.left; pieceSpace.style.top = saved.top;
-      pieceSpace.style.right = saved.right; pieceSpace.style.bottom = saved.bottom;
       pieceSpace.style.transform = saved.transform; pieceSpace.style.transformOrigin = saved.transformOrigin;
       pieceSpace.style.backgroundImage = saved.backgroundImage;
+      for (const s of savedPieces) {
+        s.el.style.left = s.left; s.el.style.top = s.top;
+        s.el.style.right = s.right; s.el.style.bottom = s.bottom;
+      }
     }
   };
-
   const hexToRgb = (hex: string): [number, number, number] => {
     const h = hex.replace('#', '');
     return [parseInt(h.slice(0, 2), 16) || 0, parseInt(h.slice(2, 4), 16) || 0, parseInt(h.slice(4, 6), 16) || 0];
@@ -319,7 +332,7 @@ export const CollageStudio: React.FC = () => {
   const handleExportPdf = async () => {
     try {
       const { jsPDF } = await import('jspdf');
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
       const title = (collageName.trim() || 'collage').replace(/\s+/g, '-');
       const pieces = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
         instanceId: `tray-${i}`, pieceId: piece.id, piece,
@@ -330,7 +343,7 @@ export const CollageStudio: React.FC = () => {
       // ── Full-scale pattern pages: complete assembled pattern at REAL size ──
       // Canvas is 500px square → blockSize inches. 1 canvas px = blockSize*25.4/500 mm.
       const blockMm = blockSize * 25.4;                       // e.g. 12" → 304.8 mm, 24" → 609.6 mm
-      const usableMm = 190;                                   // A4 (210mm) minus ~10mm side margins
+      const usableMm = 196;                                   // US Letter (215.9mm) minus ~10mm side margins
       const tilesPerAxis = Math.max(1, Math.ceil(blockMm / usableMm));
       const totalPatternPages = tilesPerAxis * tilesPerAxis;
       // Page 1 is a full-pattern OVERVIEW (when there are pieces), followed by the
@@ -338,7 +351,7 @@ export const CollageStudio: React.FC = () => {
       const totalPdfPages = (hasPieces ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + (hasPieces ? 1 : 0);
       const tileMm = blockMm / tilesPerAxis;                  // e.g. 304.8/2 = 152.4 mm per tile
       const mmPerPx = blockMm / canvasSize;
-      const pageW = 210;
+      const pageW = 215.9;                                    // US Letter width (mm)
       const tileTop = 36;                                     // header area on each tile page
       const tileX0 = (pageW - tileMm) / 2;                    // center the tile horizontally
       /** Rotate a normalized outline point (0..1) into pattern-mm coords (rotation around the piece center, matching the canvas). */
@@ -395,7 +408,7 @@ export const CollageStudio: React.FC = () => {
         doc.text(`Prints at real size on the following ${totalPatternPages} tile page${totalPatternPages > 1 ? 's' : ''} — this page is a preview only.`, pageW / 2, 26, { align: 'center' });
         // Fit the whole pattern into the A4 body (below the header, above the footer)
         const ovW = pageW - 40;
-        const ovH = 250;
+        const ovH = 230;                                       // fits inside US Letter height (279.4mm) below the header
         const ovScale = Math.min(ovW / blockMm, ovH / blockMm);
         const ovLeft = (pageW - blockMm * ovScale) / 2;
         const ovTop = 36;
@@ -432,7 +445,7 @@ export const CollageStudio: React.FC = () => {
             doc.text(`Page ${tilePageNum} of ${totalPdfPages} · Tile ${tj * n + ti + 1} of ${totalPatternPages} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
             doc.setFontSize(7);
             doc.setTextColor(160, 60, 80);
-            doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit)', pageW / 2, 26, { align: 'center' });
+            doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit) · designed for US Letter (8.5×11)', pageW / 2, 26, { align: 'center' });
 
             const tLeft = tileX0, tTop = tileTop, tRight = tileX0 + tileMm, tBottom = tileTop + tileMm;
             doc.setDrawColor(190, 190, 200);
@@ -1307,6 +1320,11 @@ export const CollageStudio: React.FC = () => {
                     return (
                       <div
                         key={placed.instanceId}
+                        data-export-piece
+                        data-px={placed.piece.bounds.x * canvasSize}
+                        data-py={placed.piece.bounds.y * canvasSize}
+                        data-pw={w}
+                        data-ph={h}
                         onPointerDown={(e) => handlePiecePointerDown(e, placed.instanceId)}
                         onDoubleClick={() => duplicatePlacedPiece(placed.instanceId)}
                         className={`absolute ${activeTool === 'select' ? 'cursor-move' : 'cursor-default'}`}
