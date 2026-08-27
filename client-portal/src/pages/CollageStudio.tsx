@@ -431,8 +431,11 @@ export const CollageStudio: React.FC = () => {
       const tilesX = hasExtent ? Math.max(1, Math.ceil(extW / usableMm)) : 0;
       const tilesY = hasExtent ? Math.max(1, Math.ceil(extH / usableMm)) : 0;
       const totalPatternPages = tilesX * tilesY;
-      // Page 1 overview + real-size tile pages + (reference art) + cutting guide
-      const totalPdfPages = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + (hasPieces ? 1 : 0);
+      // Page 1 overview + real-size tile pages + (reference art) + cutting guide (paginated)
+      const cutRowsPerPage = 3;                              // 3 rows x 62mm fit within the ~239mm printable height of US Letter
+      const piecesPerCutPage = cutRowsPerPage * 2;           // 2 columns -> 6 pieces per cutting-guide page
+      const cutGuidePages = hasPieces ? Math.max(1, Math.ceil(pieces.length / piecesPerCutPage)) : 0;
+      const totalPdfPages = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + cutGuidePages;
       if (hasExtent) {
         const tileW = extW / tilesX;                          // real-size mm per tile
         const tileH = extH / tilesY;
@@ -529,45 +532,53 @@ export const CollageStudio: React.FC = () => {
         } catch { /* image may not embed */ }
       }
 
-      // Piece Cutting Guide (numbered outlines + colors) — last page
+      // Piece Cutting Guide (numbered outlines + colors) — paginated so many pieces
+      // don't flood off the bottom of the page (owner 08-27, after #143)
       if (hasPieces) {
-        doc.addPage();
-        const cutPage = totalPatternPages + 2 + (referenceArt ? 1 : 0);
-        doc.setFontSize(16);
-        doc.setTextColor(139, 92, 118);
-        doc.text('Piece Cutting Guide', 20, 20);
-        doc.setFontSize(8);
-        doc.setTextColor(130, 130, 130);
-        doc.text(`Page ${cutPage} of ${totalPdfPages} — numbered piece outlines and colors`, 20, 27);
-        const keyY = 32;
-        pieces.forEach((p, i) => {
-          const row = Math.floor(i / 2);
-          const col = i % 2;
-          const px = 20 + col * 95;
-          const py = keyY + row * 62;
-          // outline preview (scaled to ~34mm box)
-          const box = 34;
-          const w = Math.max(40, p.piece.bounds.width * canvasSize) * p.scale;
-          const h = Math.max(40, p.piece.bounds.height * canvasSize) * p.scale;
-          const s = Math.min(box / w, box / h);
-          const ox = px + (box - w * s) / 2;
-          const oy = py + (box - h * s) / 2;
-          const outline = (p.piece.outline || []).map(([ox2, oy2]) => [ox + ox2 * w * s, oy + oy2 * h * s] as [number, number]);
-          if (outline.length >= 3) {
-            const [r, g, b] = hexToRgb(p.piece.color || '#f472b6');
-            doc.setFillColor(r, g, b);
-            doc.setDrawColor(120, 90, 110);
-            doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
-            for (let k = 2; k < outline.length; k++) doc.line(outline[k - 1][0], outline[k - 1][1], outline[k][0], outline[k][1]);
-            doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
-          }
-          doc.setFontSize(10);
-          doc.setTextColor(60, 60, 60);
-          doc.text(`#${i + 1} ${p.piece.label || 'Piece'}`, px + box + 6, py + 8);
+        const beforeCut = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0);
+        for (let cutPg = 0; cutPg < cutGuidePages; cutPg++) {
+          const cutPage = beforeCut + 1 + cutPg;
+          doc.addPage();
+          doc.setFontSize(16);
+          doc.setTextColor(139, 92, 118);
+          doc.text('Piece Cutting Guide', 20, 20);
           doc.setFontSize(8);
           doc.setTextColor(130, 130, 130);
-          doc.text(`${p.piece.color || ''} · ${Math.round(w)}×${Math.round(h)}px`, px + box + 6, py + 16);
-        });
+          doc.text(`Page ${cutPage} of ${totalPdfPages} · cutting guide ${cutPg + 1} of ${cutGuidePages} — numbered piece outlines and colors`, 20, 27);
+          const keyY = 32;
+          const start = cutPg * piecesPerCutPage;
+          const end = Math.min(start + piecesPerCutPage, pieces.length);
+          for (let i = start; i < end; i++) {
+            const p = pieces[i];
+            const localIdx = i - start;
+            const row = Math.floor(localIdx / 2);
+            const col = localIdx % 2;
+            const px = 20 + col * 95;
+            const py = keyY + row * 62;
+              // outline preview (scaled to ~34mm box)
+              const box = 34;
+              const w = Math.max(40, p.piece.bounds.width * canvasSize) * p.scale;
+              const h = Math.max(40, p.piece.bounds.height * canvasSize) * p.scale;
+              const s = Math.min(box / w, box / h);
+              const ox = px + (box - w * s) / 2;
+              const oy = py + (box - h * s) / 2;
+              const outline = (p.piece.outline || []).map(([ox2, oy2]) => [ox + ox2 * w * s, oy + oy2 * h * s] as [number, number]);
+              if (outline.length >= 3) {
+                const [r, g, b] = hexToRgb(p.piece.color || '#f472b6');
+                doc.setFillColor(r, g, b);
+                doc.setDrawColor(120, 90, 110);
+                doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
+                for (let k = 2; k < outline.length; k++) doc.line(outline[k - 1][0], outline[k - 1][1], outline[k][0], outline[k][1]);
+                doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
+              }
+              doc.setFontSize(10);
+              doc.setTextColor(60, 60, 60);
+              doc.text(`#${i + 1} ${p.piece.label || 'Piece'}`, px + box + 6, py + 8);
+              doc.setFontSize(8);
+              doc.setTextColor(130, 130, 130);
+              doc.text(`${p.piece.color || ''} · ${Math.round(w)}×${Math.round(h)}px`, px + box + 6, py + 16);
+          }
+        }
       }
 
       doc.save(`${title}.pdf`);
