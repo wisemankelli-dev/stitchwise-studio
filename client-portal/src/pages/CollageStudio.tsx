@@ -334,9 +334,33 @@ export const CollageStudio: React.FC = () => {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
       const title = (collageName.trim() || 'collage').replace(/\s+/g, '-');
-      const pieces = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
+      // Export the ASSEMBLED pattern (the actual design), NOT the current workspace view:
+      // every piece is pinned to its ORIGINAL artwork coords (bounds.x*canvasSize /
+      // bounds.y*canvasSize, scale 1, rotation 0) regardless of the spread/assembled toggle
+      // or any manual drag — mirroring handleExportPng (data-px/data-py). The spread grid is
+      // a cutting WORKSPACE; manual drag positions are not part of the printed pattern.
+      const placedSourceRaw = placedPieces.length > 0 ? placedPieces : availablePieces.map((piece, i) => ({
         instanceId: `tray-${i}`, pieceId: piece.id, piece,
         x: piece.bounds.x * canvasSize, y: piece.bounds.y * canvasSize, scale: 1, rotation: 0, zIndex: i,
+      }));
+      // The assembled pattern is one cutout per source piece — dedupe by pieceId so a
+      // workspace or saved project containing doubled pieces (import double-load, 08-26)
+      // exports the real pattern, not two identical stacked cutouts.
+      const seenIds = new Set<string>();
+      const placedSource = placedSourceRaw.filter(p => {
+        if (seenIds.has(p.pieceId)) return false;
+        seenIds.add(p.pieceId);
+        return true;
+      });
+      const pieces: PlacedCollagePiece[] = placedSource.map((p) => ({
+        instanceId: p.instanceId,
+        pieceId: p.pieceId,
+        piece: p.piece,
+        x: p.piece.bounds.x * canvasSize,
+        y: p.piece.bounds.y * canvasSize,
+        scale: 1,
+        rotation: 0,
+        zIndex: p.zIndex,
       }));
       const hasPieces = pieces.length > 0;
 
@@ -344,16 +368,9 @@ export const CollageStudio: React.FC = () => {
       // Canvas is 500px square → blockSize inches. 1 canvas px = blockSize*25.4/500 mm.
       const blockMm = blockSize * 25.4;                       // e.g. 12" → 304.8 mm, 24" → 609.6 mm
       const usableMm = 196;                                   // US Letter (215.9mm) minus ~10mm side margins
-      const tilesPerAxis = Math.max(1, Math.ceil(blockMm / usableMm));
-      const totalPatternPages = tilesPerAxis * tilesPerAxis;
-      // Page 1 is a full-pattern OVERVIEW (when there are pieces), followed by the
-      // real-size tile pages, then reference art (if any), then the piece cutting guide.
-      const totalPdfPages = (hasPieces ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + (hasPieces ? 1 : 0);
-      const tileMm = blockMm / tilesPerAxis;                  // e.g. 304.8/2 = 152.4 mm per tile
       const mmPerPx = blockMm / canvasSize;
       const pageW = 215.9;                                    // US Letter width (mm)
       const tileTop = 36;                                     // header area on each tile page
-      const tileX0 = (pageW - tileMm) / 2;                    // center the tile horizontally
       /** Rotate a normalized outline point (0..1) into pattern-mm coords (rotation around the piece center, matching the canvas). */
       const piecePointMm = (p: PlacedCollagePiece, ox: number, oy: number): [number, number] => {
         const w = p.piece.bounds.width * canvasSize * p.scale;
@@ -365,25 +382,28 @@ export const CollageStudio: React.FC = () => {
         const ry = cyr + (px - cxr) * Math.sin(rad) + (py - cyr) * Math.cos(rad);
         return [(p.x + rx) * mmPerPx, (p.y + ry) * mmPerPx];
       };
-      const pieceCentroidMm = (p: PlacedCollagePiece): [number, number] => {
-        const o = p.piece.outline || [];
-        let sx = 0, sy = 0;
-        for (const [ox, oy] of o) { const [mx, my] = piecePointMm(p, ox, oy); sx += mx; sy += my; }
-        return o.length ? [sx / o.length, sy / o.length] : [0, 0];
-      };
-      const drawPatternPiece = (p: PlacedCollagePiece, idx: number) => {
-        const outline = (p.piece.outline || []).map(([ox, oy]) => piecePointMm(p, ox, oy));
+      const drawPiecePage = (
+        p: PlacedCollagePiece,
+        idx: number,
+        proj: (mmX: number, mmY: number) => [number, number],
+        lineW: number,
+      ) => {
+        const outline = (p.piece.outline || []).map(([ox, oy]) => {
+          const [mx, my] = piecePointMm(p, ox, oy);
+          return proj(mx, my);
+        });
         if (outline.length < 3) return;
-        // Pattern-style fill on the assembled template page (value guide / colored / outline)
         const [fr, fg, fb] = patternFillRgb(p.piece.color);
         doc.setFillColor(fr, fg, fb);
         doc.setDrawColor(17, 17, 17);
-        doc.setLineWidth(0.5);
+        doc.setLineWidth(lineW);
         doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
         for (let k = 2; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
         doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
-        const [cxr, cyr] = pieceCentroidMm(p);
-        // Number with a white halo so it stays readable on dark/colored fills
+        // Number label at the piece centroid, projected into page coords
+        const cs = outline.reduce((acc, pt) => [acc[0] + pt[0], acc[1] + pt[1]] as [number, number], [0, 0] as [number, number]);
+        const cxr = outline.length ? cs[0] / outline.length : 0;
+        const cyr = outline.length ? cs[1] / outline.length : 0;
         doc.setFontSize(9);
         doc.setTextColor(255, 255, 255);
         doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
@@ -391,72 +411,87 @@ export const CollageStudio: React.FC = () => {
         doc.setTextColor(17, 17, 17);
         doc.text(String(idx + 1), cxr, cyr, { align: 'center', baseline: 'middle' });
       };
-      if (hasPieces) {
-        const n = tilesPerAxis;
-        // ── Page 1: FULL-PATTERN OVERVIEW ─────────────────────────────────
-        // The real-size tile pages that follow only show one tile per page
-        // (e.g. a quarter of a 12" block). Always lead with the complete pattern
-        // scaled to fit a single A4 page so the whole design is viewable on page 1.
+      // ── TRUE assembled extent of the WHOLE pattern (mm) ──
+      // Evaluate every outline point of every piece so nothing can fall outside the
+      // printed pages — regardless of a many-piece layout or piece rotation/scale.
+      let exX0 = Infinity, exY0 = Infinity, exX1 = -Infinity, exY1 = -Infinity;
+      for (const p of pieces) {
+        const o = p.piece.outline || [];
+        for (const [ox, oy] of o) {
+          const [mx, my] = piecePointMm(p, ox, oy);
+          if (mx < exX0) exX0 = mx;
+          if (my < exY0) exY0 = my;
+          if (mx > exX1) exX1 = mx;
+          if (my > exY1) exY1 = my;
+        }
+      }
+      const hasExtent = hasPieces && isFinite(exX0) && exX1 > exX0 && exY1 > exY0;
+      const extW = hasExtent ? exX1 - exX0 : 0;
+      const extH = hasExtent ? exY1 - exY0 : 0;
+      const tilesX = hasExtent ? Math.max(1, Math.ceil(extW / usableMm)) : 0;
+      const tilesY = hasExtent ? Math.max(1, Math.ceil(extH / usableMm)) : 0;
+      const totalPatternPages = tilesX * tilesY;
+      // Page 1 overview + real-size tile pages + (reference art) + cutting guide
+      const totalPdfPages = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + (hasPieces ? 1 : 0);
+      if (hasExtent) {
+        const tileW = extW / tilesX;                          // real-size mm per tile
+        const tileH = extH / tilesY;
+        const tileX0 = (pageW - tileW) / 2;                   // center the tile grid on Letter width
+
+        // ── Page 1: FULL-PATTERN OVERVIEW (scale-to-fit the TRUE extent) ────
         doc.setFontSize(14);
         doc.setTextColor(139, 92, 118);
         doc.text('Collage Quilt Pattern — Overview', pageW / 2, 14, { align: 'center' });
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces · full pattern (not to scale)`, pageW / 2, 20, { align: 'center' });
+        doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces · full pattern (not to scale)`, pageW / 2, 20, { align: 'center' });
         doc.setFontSize(7);
         doc.setTextColor(160, 60, 80);
         doc.text(`Prints at real size on the following ${totalPatternPages} tile page${totalPatternPages > 1 ? 's' : ''} — this page is a preview only.`, pageW / 2, 26, { align: 'center' });
-        // Fit the whole pattern into the A4 body (below the header, above the footer)
+        // letterbox the TRUE extent into the page body (ovW × ovH), centered
         const ovW = pageW - 40;
-        const ovH = 230;                                       // fits inside US Letter height (279.4mm) below the header
-        const ovScale = Math.min(ovW / blockMm, ovH / blockMm);
-        const ovLeft = (pageW - blockMm * ovScale) / 2;
-        const ovTop = 36;
+        const ovH = 230;
+        const ovScale = Math.min(ovW / extW, ovH / extH);
+        const boxW = extW * ovScale, boxH = extH * ovScale;
+        const ovLeft = (pageW - boxW) / 2;
+        const ovTop = 36 + (ovH - boxH) / 2;
         doc.setDrawColor(190, 190, 200);
         doc.setLineWidth(0.2);
-        doc.rect(ovLeft, ovTop, blockMm * ovScale, blockMm * ovScale);
-        // Draw pieces scaled into overview coords (full pattern fit to page),
-        // reusing piecePointMm (canvasSize-aware) so the overview matches the real layout.
-        const drawOverviewPiece = (p: PlacedCollagePiece) => {
-          const outline = (p.piece.outline || []).map(([ox, oy]) => {
-            const [mx, my] = piecePointMm(p, ox, oy);
-            return [ovLeft + mx * ovScale, ovTop + my * ovScale] as [number, number];
-          });
-          if (outline.length < 3) return;
-          const [fr, fg, fb] = patternFillRgb(p.piece.color);
-          doc.setFillColor(fr, fg, fb);
-          doc.setDrawColor(17, 17, 17);
-          doc.setLineWidth(0.4);
-          doc.triangle(outline[0][0], outline[0][1], outline[1][0], outline[1][1], outline[2][0], outline[2][1], 'FD');
-          for (let k = 2; k < outline.length - 1; k++) doc.line(outline[k][0], outline[k][1], outline[k + 1][0], outline[k + 1][1]);
-          doc.line(outline[outline.length - 1][0], outline[outline.length - 1][1], outline[0][0], outline[0][1]);
-        };
-        pieces.forEach((p) => drawOverviewPiece(p));
-        // ── Full-scale tile pages (real size, print at 100%) ──────────────
-        for (let tj = 0; tj < n; tj++) {
-          for (let ti = 0; ti < n; ti++) {
-            const tilePageNum = tj * n + ti + 2; // page 1 = overview
+        doc.rect(ovLeft, ovTop, boxW, boxH);
+        const overviewProj = (mx: number, my: number): [number, number] =>
+          [ovLeft + (mx - exX0) * ovScale, ovTop + (my - exY0) * ovScale] as [number, number];
+        pieces.forEach((p, idx) => drawPiecePage(p, idx, overviewProj, 0.4));
+
+        // ── Full-scale tile pages (real size, print at 100%) ─────────────────
+        for (let ty = 0; ty < tilesY; ty++) {
+          for (let tx = 0; tx < tilesX; tx++) {
+            const tilePageNum = ty * tilesX + tx + 2; // page 1 = overview
             doc.addPage();
             doc.setFontSize(14);
             doc.setTextColor(139, 92, 118);
             doc.text('Collage Quilt Pattern — Print & Cut', pageW / 2, 14, { align: 'center' });
             doc.setFontSize(8);
             doc.setTextColor(100, 100, 100);
-            doc.text(`Page ${tilePageNum} of ${totalPdfPages} · Tile ${tj * n + ti + 1} of ${totalPatternPages} · ${blockSize}" × ${blockSize}" block · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
+            doc.text(`Page ${tilePageNum} of ${totalPdfPages} · Tile ${ty * tilesX + tx + 1} of ${totalPatternPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
             doc.setFontSize(7);
             doc.setTextColor(160, 60, 80);
             doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit) · designed for US Letter (8.5×11)', pageW / 2, 26, { align: 'center' });
 
-            const tLeft = tileX0, tTop = tileTop, tRight = tileX0 + tileMm, tBottom = tileTop + tileMm;
+            const tOriginX = exX0 + tx * tileW;
+            const tOriginY = exY0 + ty * tileH;
+            const tLeft = tileX0, tTop = tileTop;
+            const tRight = tileX0 + tileW, tBottom = tileTop + tileH;
             doc.setDrawColor(190, 190, 200);
             doc.setLineWidth(0.2);
-            doc.rect(tLeft, tTop, tileMm, tileMm);
-            // draw the pattern clipped to this tile (pieces crossing seams continue on the neighbour page)
+            doc.rect(tLeft, tTop, tileW, tileH);
+            // draw the pattern clipped to this tile (pieces crossing seams continue on neighbours)
             doc.saveGraphicsState();
-            doc.rect(tLeft, tTop, tileMm, tileMm);
+            doc.rect(tLeft, tTop, tileW, tileH);
             doc.clip();
             doc.discardPath();
-            pieces.forEach((p, idx) => drawPatternPiece(p, idx));
+            const tileProj = (mx: number, my: number): [number, number] =>
+              [tileX0 + (mx - tOriginX), tileTop + (my - tOriginY)] as [number, number];
+            pieces.forEach((p, idx) => drawPiecePage(p, idx, tileProj, 0.5));
             doc.restoreGraphicsState();
             // crop/alignment "+" marks at the tile corners
             doc.setDrawColor(60, 60, 70);
@@ -472,6 +507,7 @@ export const CollageStudio: React.FC = () => {
           }
         }
       }
+
       // Reference art (if any) — comes after the overview + tile pages
       if (referenceArt) {
         doc.addPage();
@@ -683,7 +719,17 @@ export const CollageStudio: React.FC = () => {
       // piece covering the whole pattern — owner bug "piece 33 overlays the
       // entire pattern" 08-19). In a collage quilt the backdrop is the BASE
       // FABRIC, not a cutout piece: exclude it and let the canvas show through.
-      const subjectPieces = result.pieces.filter(p => !isCollageBackgroundPiece(p));
+      // Dedupe by piece id: a single import/upload must never yield duplicate entries
+      // (owner 08-26 — the rooster coloring page appeared twice, doubling every piece and
+      // overflowing the export). The backend may emit a piece more than once; keep only the
+      // first occurrence and drop any doubled backdrop.
+      const seen = new Set<string>();
+      const subjectPieces = result.pieces.filter(p => {
+        if (isCollageBackgroundPiece(p)) return false;
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
       // Assemble ONLY the subject pieces at their ORIGINAL artwork positions so
       // the cutouts reconstruct the artwork shape (bounds are normalized 0..1).
       const placed: PlacedCollagePiece[] = subjectPieces.map((piece, i) => {
