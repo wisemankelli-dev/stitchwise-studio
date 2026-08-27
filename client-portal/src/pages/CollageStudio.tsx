@@ -447,7 +447,7 @@ export const CollageStudio: React.FC = () => {
         doc.text('Collage Quilt Pattern — Overview', pageW / 2, 14, { align: 'center' });
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces · full pattern (not to scale)`, pageW / 2, 20, { align: 'center' });
+        doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces · full pattern (not to scale) · build 20260827`, pageW / 2, 20, { align: 'center' });
         doc.setFontSize(7);
         doc.setTextColor(160, 60, 80);
         doc.text(`Prints at real size on the following ${totalPatternPages} tile page${totalPatternPages > 1 ? 's' : ''} — this page is a preview only.`, pageW / 2, 26, { align: 'center' });
