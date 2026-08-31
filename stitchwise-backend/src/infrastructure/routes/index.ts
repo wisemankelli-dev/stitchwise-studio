@@ -21,3 +21,4 @@ export { createTextToImageRouter } from "./textToImage";
 export { createPatternPersistenceRouter } from "./patternPersistence";
 export { createPatternsRouter } from "./patterns";
 export { createPatternGrantRouter } from "./patternGrants";
+export { createAdminDbBackupRouter } from "./adminDbBackup";
