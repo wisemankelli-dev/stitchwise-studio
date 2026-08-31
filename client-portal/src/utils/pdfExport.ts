@@ -34,24 +34,37 @@ const SYMBOL_MIN_PX = CHART_PX_PER_STITCH; // draw per-cell symbols only at char
 
 /**
  * Vendor-style chart symbols, assigned deterministically by palette index.
- * Every symbol is drawable as pure canvas 2D paths (no fonts, no images) so
- * they stay crisp at chart-tile scale and render identically in tests.
+ * This list REPLICATES the backend CROSS_STITCH_SYMBOLS ordered glyph list
+ * (stitchwise-backend/src/domain/stitch/types.ts) so the printed PDF chart and
+ * the in-app pattern share the same symbol convention. Each glyph is drawn as
+ * pure canvas-2D vector paths (no fonts, no images), so symbols stay crisp at
+ * chart-tile scale, render identically in tests, and never depend on a font
+ * being present in the PDF rasterizer.
  */
 export const CHART_SYMBOLS = [
-  'cross',     // ×
-  'slash',     // /
-  'backslash', // \
-  'circle',    // ○
-  'dot',       // ●
-  'plus',      // +
-  'square',    // □
-  'tri-up',    // △
-  'tri-down',  // ▽
-  'diamond',   // ◇
-  'star',      // ✦ (4-point sparkle)
-  'wave',      // ~
+  'heart',        // ♥
+  'diamond',      // ◆
+  'dot',          // ●
+  'star',         // ★ (5-point filled star)
+  'tri-up',       // ▲
+  'tri-down',     // ▼
+  'square',       // ◼ (filled)
+  'pentagon',     // ⬟
+  'sparkle',      // ✦ (4-point sparkle)
+  'open-sparkle', // ✧
+  'flower',       // ✿
+  'diamond-plus', // ❖
+  'arrow',        // ➤
+  'plus',         // ✚
+  'square-open',  // ⬒ (open square — same intent as the ◻-style glyph)
 ] as const;
 export type ChartSymbol = (typeof CHART_SYMBOLS)[number];
+
+/** Symbols drawn as solid filled glyphs; the rest are stroked outlines. */
+const SOLID_SYMBOLS: ReadonlySet<ChartSymbol> = new Set<ChartSymbol>([
+  'heart', 'diamond', 'dot', 'star', 'square', 'pentagon', 'sparkle',
+  'flower', 'diamond-plus', 'arrow',
+]);
 
 /** Stable per-index symbol; wraps when the palette exceeds the symbol set. */
 export function symbolForIndex(index: number): ChartSymbol {
@@ -159,35 +172,41 @@ function drawSymbolPath(
 ): void {
   ctx.beginPath();
   switch (symbol) {
-    case 'cross':
-      ctx.moveTo(cx - s, cy - s);
-      ctx.lineTo(cx + s, cy + s);
-      ctx.moveTo(cx - s, cy + s);
-      ctx.lineTo(cx + s, cy - s);
-      break;
-    case 'slash':
-      ctx.moveTo(cx - s, cy + s);
-      ctx.lineTo(cx + s, cy - s);
-      break;
-    case 'backslash':
-      ctx.moveTo(cx - s, cy - s);
-      ctx.lineTo(cx + s, cy + s);
-      break;
-    case 'plus':
-      ctx.moveTo(cx, cy - s);
+    case 'heart': {
+      // Two circles + a downward triangle → classic heart outline
+      ctx.moveTo(cx, cy - s * 0.35);
+      ctx.arc(cx - s * 0.45, cy - s * 0.3, s * 0.5, 0, Math.PI * 2);
+      ctx.moveTo(cx, cy - s * 0.35);
+      ctx.arc(cx + s * 0.45, cy - s * 0.3, s * 0.5, 0, Math.PI * 2);
+      ctx.moveTo(cx - s * 0.95, cy - s * 0.28);
       ctx.lineTo(cx, cy + s);
-      ctx.moveTo(cx - s, cy);
-      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx + s * 0.95, cy - s * 0.28);
+      ctx.closePath();
       break;
-    case 'circle':
-      ctx.arc(cx, cy, s, 0, Math.PI * 2);
+    }
+    case 'diamond':
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
       break;
     case 'dot':
       ctx.arc(cx, cy, s * 0.72, 0, Math.PI * 2);
       break;
-    case 'square':
-      ctx.rect(cx - s, cy - s, s * 2, s * 2);
+    case 'star': {
+      // 5-pointed star (★) — outer 5 points, inner 5 concave notches
+      for (let i = 0; i < 10; i++) {
+        const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? s : s * 0.45;
+        const px = cx + r * Math.cos(ang);
+        const py = cy + r * Math.sin(ang);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
       break;
+    }
     case 'tri-up':
       ctx.moveTo(cx, cy - s);
       ctx.lineTo(cx - s, cy + s);
@@ -200,15 +219,23 @@ function drawSymbolPath(
       ctx.lineTo(cx + s, cy - s);
       ctx.closePath();
       break;
-    case 'diamond':
-      ctx.moveTo(cx, cy - s);
-      ctx.lineTo(cx + s, cy);
-      ctx.lineTo(cx, cy + s);
-      ctx.lineTo(cx - s, cy);
+    case 'square':
+      ctx.rect(cx - s, cy - s, s * 2, s * 2);
+      break;
+    case 'pentagon': {
+      // Regular pentagon (all sides equal)
+      for (let i = 0; i < 5; i++) {
+        const ang = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+        const px = cx + s * Math.cos(ang);
+        const py = cy + s * Math.sin(ang);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
       ctx.closePath();
       break;
-    case 'star': {
-      // 4-point sparkle: concave diamond
+    }
+    case 'sparkle': {
+      // 4-point sparkle: concave diamond (✦)
       ctx.moveTo(cx, cy - s);
       ctx.lineTo(cx + s * 0.3, cy - s * 0.3);
       ctx.lineTo(cx + s, cy);
@@ -220,12 +247,64 @@ function drawSymbolPath(
       ctx.closePath();
       break;
     }
-    case 'wave':
-      ctx.moveTo(cx - s, cy);
-      ctx.lineTo(cx - s * 0.5, cy - s * 0.5);
-      ctx.lineTo(cx, cy);
-      ctx.lineTo(cx + s * 0.5, cy - s * 0.5);
+    case 'open-sparkle': {
+      // Open 4-point sparkle (✧) — stroked, not filled
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s * 0.3, cy - s * 0.3);
       ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx + s * 0.3, cy + s * 0.3);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s * 0.3, cy + s * 0.3);
+      ctx.lineTo(cx - s, cy);
+      ctx.lineTo(cx - s * 0.3, cy - s * 0.3);
+      break;
+    }
+    case 'flower': {
+      // Six-petal flower (✿)
+      for (let i = 0; i < 6; i++) {
+        const ang = (i * Math.PI) / 3;
+        ctx.moveTo(cx, cy);
+        ctx.arc(
+          cx + s * 0.6 * Math.cos(ang),
+          cy + s * 0.6 * Math.sin(ang),
+          s * 0.42,
+          0,
+          Math.PI * 2,
+        );
+      }
+      break;
+    }
+    case 'diamond-plus': {
+      // Diamond with inner cross (❖)
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
+      break;
+    }
+    case 'arrow': {
+      // Right-pointing solid arrow (➤)
+      ctx.moveTo(cx - s, cy - s * 0.62);
+      ctx.lineTo(cx + s * 0.35, cy - s * 0.62);
+      ctx.lineTo(cx + s * 0.35, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx + s * 0.35, cy + s);
+      ctx.lineTo(cx + s * 0.35, cy + s * 0.62);
+      ctx.lineTo(cx - s, cy + s * 0.62);
+      ctx.closePath();
+      break;
+    }
+    case 'plus': {
+      // Greek cross (✚)
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx, cy + s);
+      ctx.moveTo(cx - s, cy);
+      ctx.lineTo(cx + s, cy);
+      break;
+    }
+    case 'square-open':
+      ctx.rect(cx - s, cy - s, s * 2, s * 2);
       break;
   }
 }
@@ -243,13 +322,13 @@ function drawCellSymbol(
   fill: string,
   ink?: string,
 ): void {
-  const s = px * 0.34; // symbol spans ~68% of the cell
+  const s = px * 0.29; // symbol spans ~58% of the cell (55–60% per spec)
   const color = ink ?? symbolInk(fill);
-  ctx.lineWidth = Math.max(1, px * 0.14);
+  ctx.lineWidth = Math.max(1, px * 0.15);
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   drawSymbolPath(ctx, symbol, cx, cy, s);
-  if (symbol === 'dot' || symbol === 'star') {
+  if (SOLID_SYMBOLS.has(symbol)) {
     ctx.fill();
   } else {
     ctx.stroke();
@@ -572,7 +651,7 @@ export function buildPatternPdf(options: PdfExportOptions): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(ROSE[0], ROSE[1], ROSE[2]);
-  doc.text('Full Design Overview', MARGIN, 20);
+  doc.text('Full Design Overview — each square = 1 stitch', MARGIN, 20);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(100, 100, 100);
