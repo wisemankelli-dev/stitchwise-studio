@@ -202,6 +202,19 @@ describe('pdfExport — palette & skein math', () => {
 });
 
 describe('pdfExport — v2 chart symbols', () => {
+  it('replicates the backend CROSS_STITCH_SYMBOLS ordered list, in order', () => {
+    // Source of truth: stitchwise-backend/src/domain/stitch/types.ts
+    // "♥","◆","●","★","▲","▼","◼","⬟","✦","✧","✿","❖","➤","✚","⬒"
+    expect(CHART_SYMBOLS).toEqual([
+      'heart', 'diamond', 'dot', 'star', 'tri-up', 'tri-down', 'square',
+      'pentagon', 'sparkle', 'open-sparkle', 'flower', 'diamond-plus',
+      'arrow', 'plus', 'square-open',
+    ]);
+    expect(CHART_SYMBOLS).toHaveLength(15);
+    // Same palette never maps two colors to the same symbol until it must wrap.
+    expect(new Set(CHART_SYMBOLS).size).toBe(15);
+  });
+
   it('assigns symbols deterministically by palette index (stable across calls)', () => {
     const palette = buildPalette({
       '0,0': '#e11d48',
@@ -213,9 +226,9 @@ describe('pdfExport — v2 chart symbols', () => {
     const second = assignSymbols(palette);
     expect(first).toEqual(second); // stability
     expect(first).toEqual({
-      '#e11d48': 'cross', // palette order: most-used first
-      '#2563eb': 'slash',
-      '#facc15': 'backslash',
+      '#e11d48': 'heart', // palette order: most-used first → symbol #0 (♥)
+      '#2563eb': 'diamond', // → symbol #1 (◆)
+      '#facc15': 'dot', // → symbol #2 (●)
     });
   });
 
@@ -223,18 +236,18 @@ describe('pdfExport — v2 chart symbols', () => {
     const colors = [
       '#e11d48', '#2563eb', '#facc15', '#22c55e', '#a855f7', '#f97316',
       '#06b6d4', '#ef4444', '#84cc16', '#ec4899', '#6366f1', '#14b8a6',
-      '#f59e0b', '#0ea5e9', '#d946ef',
+      '#f59e0b', '#0ea5e9', '#d946ef', '#f472b6', '#38bdf8', '#a3e635',
     ];
     const grid: Record<string, string> = {};
     colors.forEach((c, i) => { grid[`0,${i}`] = c; });
     const syms = assignSymbols(buildPalette(grid));
     // first CHART_SYMBOLS.length get distinct symbols, then the set repeats
-    expect(syms[colors[0]]).toBe('cross');
-    expect(syms[colors[CHART_SYMBOLS.length]]).toBe('cross');
-    expect(syms[colors[CHART_SYMBOLS.length + 1]]).toBe('slash');
+    expect(syms[colors[0]]).toBe('heart');
+    expect(syms[colors[CHART_SYMBOLS.length]]).toBe('heart');
+    expect(syms[colors[CHART_SYMBOLS.length + 1]]).toBe('diamond');
     expect(new Set(colors.map((c) => syms[c])).size).toBe(CHART_SYMBOLS.length);
-    expect(symbolForIndex(0)).toBe('cross');
-    expect(symbolForIndex(CHART_SYMBOLS.length)).toBe('cross');
+    expect(symbolForIndex(0)).toBe('heart');
+    expect(symbolForIndex(CHART_SYMBOLS.length)).toBe('heart');
   });
 
   it('symbol ink contrasts with the cell fill (white on dark, dark on light)', () => {
@@ -355,7 +368,8 @@ describe('pdfExport — multi-page pattern sheet structure', () => {
   it('page 3 is the full-design overview, numbered every 10 on both axes', () => {
     const doc = buildPatternPdf(sampleOptions()) as unknown as FakeJsPDF;
     const p3 = doc.pages[2].join('\n');
-    expect(p3).toContain('Full Design Overview');
+    // exact vendor-style header: "Full Design Overview — each square = 1 stitch"
+    expect(p3).toContain('Full Design Overview — each square = 1 stitch');
     expect(p3).toContain('every 10 stitches');
     // box numbers on both axes (top row + left column), origin labelled "1"
     expect(doc.numbers).toContain('1');
@@ -420,6 +434,20 @@ describe('pdfExport — multi-page pattern sheet structure', () => {
   it('draws every filled stitch as a pixel rectangle (preview + 4 tiles)', () => {
     buildPatternPdf(sampleOptions());
     expect(ctx.fillRects).toBeGreaterThan(10000);
+  });
+
+  it('draws a per-cell symbol on chart tiles but suppresses them on the small overview', () => {
+    // Full stitches are drawn with fillRect (counted in fillRects); the solid
+    // chart symbols (♥ ◆ ● ★ for the sample's 4 colors) are drawn with fill()
+    // (counted in fillCalls). The overview page renders at 10px/stitch, below
+    // the symbol threshold, so it draws no symbols — its only fill() calls are
+    // the sample's handful of fractional cells.
+    buildPatternPdf(sampleOptions());
+    // ~9,000 filled stitches, all at chart-tile scale (12px ≥ symbol threshold),
+    // each emitting one fill() for its solid symbol.
+    expect(ctx.fillCalls).toBeGreaterThan(8000);
+    // Sanity: stitches themselves go through fillRect, not the fill() symbol path.
+    expect(ctx.fillRects).toBeGreaterThan(ctx.fillCalls);
   });
 });
 
