@@ -428,8 +428,22 @@ export const CollageStudio: React.FC = () => {
       const hasExtent = hasPieces && isFinite(exX0) && exX1 > exX0 && exY1 > exY0;
       const extW = hasExtent ? exX1 - exX0 : 0;
       const extH = hasExtent ? exY1 - exY0 : 0;
-      const tilesX = hasExtent ? Math.max(1, Math.ceil(extW / usableMm)) : 0;
-      const tilesY = hasExtent ? Math.max(1, Math.ceil(extH / usableMm)) : 0;
+      // ── Overlapping real-size pages (Option A): NO piece is ever split ──
+      // Each page is a usableMm × usableMm window. Consecutive page origins step by
+      // (usableMm - overlap) where overlap >= the largest single piece's span, so every
+      // piece lies wholly inside at least one page window and nothing prints half-on-half.
+      const maxSpanX = hasExtent ? Math.max(1, ...pieces.map(p => p.piece.bounds.width * blockMm)) : 0;
+      const maxSpanY = hasExtent ? Math.max(1, ...pieces.map(p => p.piece.bounds.height * blockMm)) : 0;
+      const overlapX = hasExtent ? Math.min(maxSpanX, usableMm - 5) : 0;   // clamp so step >= 5mm
+      const overlapY = hasExtent ? Math.min(maxSpanY, usableMm - 5) : 0;
+      const stepX = hasExtent ? Math.max(5, usableMm - overlapX) : 0;
+      const stepY = hasExtent ? Math.max(5, usableMm - overlapY) : 0;
+      const origX: number[] = hasExtent ? [exX0] : [];
+      while (hasExtent && origX[origX.length - 1] + usableMm < exX1) origX.push(origX[origX.length - 1] + stepX);
+      const origY: number[] = hasExtent ? [exY0] : [];
+      while (hasExtent && origY[origY.length - 1] + usableMm < exY1) origY.push(origY[origY.length - 1] + stepY);
+      const tilesX = origX.length;
+      const tilesY = origY.length;
       const totalPatternPages = tilesX * tilesY;
       // Page 1 overview + real-size tile pages + (reference art) + cutting guide (paginated)
       const cutRowsPerPage = 3;                              // 3 rows x 62mm fit within the ~239mm printable height of US Letter
@@ -437,9 +451,9 @@ export const CollageStudio: React.FC = () => {
       const cutGuidePages = hasPieces ? Math.max(1, Math.ceil(pieces.length / piecesPerCutPage)) : 0;
       const totalPdfPages = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + cutGuidePages;
       if (hasExtent) {
-        const tileW = extW / tilesX;                          // real-size mm per tile
-        const tileH = extH / tilesY;
-        const tileX0 = (pageW - tileW) / 2;                   // center the tile grid on Letter width
+        const tileW = usableMm;                               // each page window is usableMm × usableMm
+        const tileH = usableMm;
+        const tileX0 = (pageW - tileW) / 2;                   // center the page window on Letter width
 
         // ── Page 1: FULL-PATTERN OVERVIEW (scale-to-fit the TRUE extent) ────
         doc.setFontSize(14);
@@ -480,8 +494,8 @@ export const CollageStudio: React.FC = () => {
             doc.setTextColor(160, 60, 80);
             doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit) · designed for US Letter (8.5×11)', pageW / 2, 26, { align: 'center' });
 
-            const tOriginX = exX0 + tx * tileW;
-            const tOriginY = exY0 + ty * tileH;
+            const tOriginX = origX[tx];
+            const tOriginY = origY[ty];
             const tLeft = tileX0, tTop = tileTop;
             const tRight = tileX0 + tileW, tBottom = tileTop + tileH;
             doc.setDrawColor(190, 190, 200);
@@ -506,7 +520,7 @@ export const CollageStudio: React.FC = () => {
             doc.line(tRight - arm, tBottom, tRight + arm, tBottom); doc.line(tRight, tBottom - arm, tRight, tBottom + arm);
             doc.setFontSize(6.5);
             doc.setTextColor(120, 120, 130);
-            doc.text('Trim along the seam lines and match the "+" corner marks. Pieces crossing a seam continue on the neighbouring tile.', tLeft, tBottom + 6);
+            doc.text('Pages overlap so NO piece is split. Match the "+" corner marks to align panels; every piece appears complete on at least one page.', tLeft, tBottom + 6);
           }
         }
       }
