@@ -86,6 +86,18 @@ export const DmcLegend: React.FC<{ palette: StitchGridData['dmcPalette'] }> = ({
 // ── Drawing helpers ──────────────────────────────────────────────────────────
 
 const BASE_CELL_SIZE = 12; // pixels per cell at zoom=1 (before devicePixelRatio)
+/** Left/top gutter (CSS px) reserved for edge row/column numbers. Cells still
+ *  start at (GUTTER, GUTTER) via the canvas transform; the canvas CSS/buffer
+ *  size is grown by this much so the numbers sit in a clean margin strip. */
+export const GRID_GUTTER = 18;
+/** Gridline/number positions matching the PDF chart convention
+ *  (src/utils/pdfExport.ts labelPositions): every-10 stitch boundary plus the
+ *  design origin. For length N this returns [0, 10, 20, ..., N]. */
+export function gridlinePositions(length: number, every = 10): number[] {
+  const positions: number[] = [0];
+  for (let g = every; g <= length; g += every) positions.push(g);
+  return positions;
+}
 
 /** Determine if a hex color is "light" (luminance > 0.5) */
 function isLightColor(hex: string): boolean {
@@ -450,8 +462,10 @@ export function mouseToGrid(
   const rect = canvas.getBoundingClientRect();
   // Use CSS coordinates directly — cellSize is in CSS pixels (BASE_CELL_SIZE * zoom),
   // not canvas buffer pixels (which are scaled by devicePixelRatio).
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
+  // Canvas CSS size includes the top/left gutter, so subtract it before
+  // mapping to cell coordinates.
+  const x = clientX - rect.left - GRID_GUTTER;
+  const y = clientY - rect.top - GRID_GUTTER;
   const col = Math.floor(x / cellSize);
   const row = Math.floor(y / cellSize);
   if (col < 0 || col >= width || row < 0 || row >= height) return null;
@@ -549,8 +563,10 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     // exceeded Chrome's ~268MP area cap and rendered nothing).
     const rawArea = cw * dpr * ch * dpr;
     const bufferScale = rawArea > MAX_BUFFER_AREA ? Math.sqrt(MAX_BUFFER_AREA / rawArea) : 1;
-    const bw = Math.max(1, Math.round(cw * dpr * bufferScale));
-    const bh = Math.max(1, Math.round(ch * dpr * bufferScale));
+    // Gutter adds edge-numbering margin on the top/left in device px.
+    const gutPx = GRID_GUTTER * dpr * bufferScale;
+    const bw = Math.max(1, Math.round(cw * dpr * bufferScale) + Math.round(gutPx));
+    const bh = Math.max(1, Math.round(ch * dpr * bufferScale) + Math.round(gutPx));
     // Only reallocate when the buffer size actually changes (reallocating on every
     // draw clears the canvas and reallocates GPU memory on each paint event).
     if (canvas.width !== bw || canvas.height !== bh) {
@@ -558,16 +574,20 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       canvas.height = bh;
     }
     // Set CSS display size
-    canvas.style.width = `${cw}px`;
-    canvas.style.height = `${ch}px`;
+    canvas.style.width = `${cw + GRID_GUTTER}px`;
+    canvas.style.height = `${ch + GRID_GUTTER}px`;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, gutPx, gutPx);
 
-    // Clear
-    ctx.clearRect(0, 0, cw, ch);
+    // Clear everything including the gutter
+    ctx.clearRect(-GRID_GUTTER, -GRID_GUTTER, cw + GRID_GUTTER, ch + GRID_GUTTER);
 
-    // Background
+    // Gutter background (top/left numbering margin)
+    ctx.fillStyle = '#f4f1f7';
+    ctx.fillRect(-GRID_GUTTER, -GRID_GUTTER, cw + GRID_GUTTER, ch + GRID_GUTTER);
+
+    // Cell background
     ctx.fillStyle = '#fdf2f8';
     ctx.fillRect(0, 0, cw, ch);
 
@@ -641,7 +661,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       ctx.stroke();
 
       // Bold 10×10 grid lines
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.strokeStyle = cellSize < 6 ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.25)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let r = 10; r < data.height; r += 10) {
@@ -655,6 +675,21 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         ctx.lineTo(x, ch);
       }
       ctx.stroke();
+      // Edge numbering (matches the PDF chart: origin "1", then every 10)
+      const numFont = Math.max(7, cellSize * 0.5);
+      ctx.font = `${numFont}px system-ui, sans-serif`;
+      ctx.fillStyle = '#334155'; // slate-700
+      ctx.textBaseline = 'middle';
+      for (const g of gridlinePositions(data.width)) {
+        ctx.textAlign = 'center';
+        ctx.fillText(String(g === 0 ? 1 : g), g * cellSize, -GRID_GUTTER / 2);
+      }
+      for (const g of gridlinePositions(data.height)) {
+        ctx.textAlign = 'right';
+        ctx.fillText(String(g === 0 ? 1 : g), -5, g * cellSize);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
     }
 
     // ── Shape drag preview (live dashed outline for rect/circle/line) ──
@@ -803,7 +838,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const { dpr, cellSize, bufferScale } = getCanvasTransform();
-    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, GRID_GUTTER * dpr * bufferScale, GRID_GUTTER * dpr * bufferScale);
     for (const p of cells) {
       const x = p.col * cellSize;
       const y = p.row * cellSize;
@@ -840,7 +875,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const { dpr, cellSize, bufferScale } = getCanvasTransform();
-    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, GRID_GUTTER * dpr * bufferScale, GRID_GUTTER * dpr * bufferScale);
     const x = c * cellSize;
     const y = r * cellSize;
     const cell = data.grid[r]?.[c];
@@ -871,7 +906,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const { dpr, cellSize, bufferScale } = getCanvasTransform();
-    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, 0, 0);
+    ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, GRID_GUTTER * dpr * bufferScale, GRID_GUTTER * dpr * bufferScale);
     drawHoverHighlight(ctx, c * cellSize, r * cellSize, cellSize);
   }, [getCanvasTransform]);
   // ── Mouse event handlers ──

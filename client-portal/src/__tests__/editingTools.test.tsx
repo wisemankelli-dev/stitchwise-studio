@@ -233,8 +233,10 @@ describe("mouseToGrid — Coordinate Conversion", () => {
     });
 
     // BASE_CELL_SIZE=4 * zoom=1 = 4px per cell
-    // Click at (2, 2) → row: floor(2/4)=0, col: floor(2/4)=0
-    const pos = mouseToGrid(2, 2, canvas, 4, 10, 10);
+    // Canvas CSS includes an 18px top/left gutter, so a click that should
+    // land on cell (0,0) must be 18px in from the canvas corner.
+    // local = (20-18, 20-18) = (2,2) → row: floor(2/4)=0, col: floor(2/4)=0
+    const pos = mouseToGrid(20, 20, canvas, 4, 10, 10);
     expect(pos).toEqual({ row: 0, col: 0 });
   });
 
@@ -249,7 +251,7 @@ describe("mouseToGrid — Coordinate Conversion", () => {
       }),
     });
 
-    // Click far outside: x=100, y=100 but grid is only 40px wide
+    // Click far outside: x=100, y=100; local=(82,82) well past the 40px grid
     const pos = mouseToGrid(100, 100, canvas, 4, 10, 10);
     expect(pos).toBeNull();
   });
@@ -267,9 +269,10 @@ describe("mouseToGrid — Coordinate Conversion", () => {
       }),
     });
 
-    // Canvas starts at (50, 50). Click at (55, 55) = canvas-local (5, 5)
+    // Canvas starts at (50, 50) plus an 18px gutter. Click at (73, 73):
+    // canvas-local = (73-50-18, 73-50-18) = (5, 5)
     // cellSize=4, so row=1, col=1
-    const pos = mouseToGrid(55, 55, canvas, 4, 10, 10);
+    const pos = mouseToGrid(73, 73, canvas, 4, 10, 10);
     expect(pos).toEqual({ row: 1, col: 1 });
   });
 });

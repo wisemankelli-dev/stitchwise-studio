@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 .venv/
 *.local
+client-portal/node_modules
