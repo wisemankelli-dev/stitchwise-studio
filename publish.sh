@@ -5,6 +5,14 @@ set -euo pipefail
 SITE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SITE_DIR"
 
+# Safety gate: snapshot the RUNNING live DB before touching publish output.
+# LIVE_DB_BACKUP_URL must point at /api/admin/db-backup on the live app.
+if [[ ! -x "$SITE_DIR/scripts/backup-live-db.sh" ]]; then
+  echo "error: live DB backup script missing; refusing to publish" >&2
+  exit 1
+fi
+bash "$SITE_DIR/scripts/backup-live-db.sh"
+
 # ── 0. Self-heal node_modules layout (added 2026-08-12) ──────────
 # node_modules is a symlink to /tmp/site-node_modules (WORKFLOW.md rule 2).
 # /tmp gets wiped (twice on 2026-08-12), which breaks prisma SIBLING
@@ -19,14 +27,25 @@ if [ -L "$SITE_DIR/node_modules" ]; then
   ln -sfn . "$NM_TARGET/node_modules" 2>/dev/null || true
 fi
 
-# ── 1. Prisma: copy schema + generate client ─────────────────────
+# ── 1. Prisma: generate client without copying any database file ─
 PRISMA_SRC="$SITE_DIR/dist/backend/prisma"
-if [ -d "$PRISMA_SRC" ]; then
-  cp -r "$PRISMA_SRC" "$SITE_DIR/prisma" 2>/dev/null || true
+if [ -f "$PRISMA_SRC/schema.prisma" ]; then
+  mkdir -p "$SITE_DIR/prisma"
+  cp "$PRISMA_SRC/schema.prisma" "$SITE_DIR/prisma/schema.prisma" 2>/dev/null || true
 fi
 if [ -f "$SITE_DIR/prisma/schema.prisma" ]; then
   npx prisma generate --schema="$SITE_DIR/prisma/schema.prisma" 2>&1 | tail -2 || true
-  echo "-> prisma generated"
+  echo "-> prisma generated (live DB remains outside artifact)"
+fi
+
+# Remove stale local SQLite files and fail closed if any remain in the artifact.
+mapfile -t db_artifacts < <(find "$SITE_DIR/dist" -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -print 2>/dev/null)
+for db_file in "${db_artifacts[@]}"; do
+  rm -f -- "$db_file"
+done
+if find "$SITE_DIR/dist" -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -print -quit 2>/dev/null | grep -q .; then
+  echo "error: refusing to publish a local database artifact" >&2
+  exit 1
 fi
 
 # ── 2. SPA (non-fatal) ───────────────────────────────────────────
