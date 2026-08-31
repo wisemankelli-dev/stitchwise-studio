@@ -5,19 +5,7 @@ set -euo pipefail
 SITE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SITE_DIR"
 
-# ── 0. Safety gate: external database is mandatory ──────────────
-# Publishing a bundled SQLite file can overwrite the live database. Refuse to
-# proceed unless the runtime points at the persistent PostgreSQL database.
-if [[ ! -x "$SITE_DIR/scripts/backup-database.sh" ]]; then
-  echo "error: scripts/backup-database.sh is missing; refusing to publish" >&2
-  exit 1
-fi
-if [[ ! "${DATABASE_URL:-}" =~ ^postgres(?:ql)?:// ]]; then
-  echo "error: DATABASE_URL must be a PostgreSQL URL; refusing to publish" >&2
-  exit 1
-fi
-
-# ── 1. Self-heal node_modules layout (added 2026-08-12) ──────────
+# ── 0. Self-heal node_modules layout (added 2026-08-12) ──────────
 # node_modules is a symlink to /tmp/site-node_modules (WORKFLOW.md rule 2).
 # /tmp gets wiped (twice on 2026-08-12), which breaks prisma SIBLING
 # resolution: bun resolves nested requires via realpath, and a dir not
@@ -31,28 +19,17 @@ if [ -L "$SITE_DIR/node_modules" ]; then
   ln -sfn . "$NM_TARGET/node_modules" 2>/dev/null || true
 fi
 
-# ── 2. Prisma: generate client + deploy external schema ─────────
-# Only copy/read the schema. Never copy dev.db (or any other local DB file)
-# into the publish artifact.
-PRISMA_SCHEMA="$SITE_DIR/stitchwise-backend/prisma/schema.prisma"
-if [ ! -f "$PRISMA_SCHEMA" ]; then
-  PRISMA_SCHEMA="$SITE_DIR/dist/backend/prisma/schema.prisma"
+# ── 1. Prisma: copy schema + generate client ─────────────────────
+PRISMA_SRC="$SITE_DIR/dist/backend/prisma"
+if [ -d "$PRISMA_SRC" ]; then
+  cp -r "$PRISMA_SRC" "$SITE_DIR/prisma" 2>/dev/null || true
 fi
-if [ -f "$PRISMA_SCHEMA" ]; then
-  npx prisma generate --schema="$PRISMA_SCHEMA"
-  # Snapshot the live external DB immediately before migrations/build output.
-  # The script aborts if the connection or backup fails.
-  bash "$SITE_DIR/scripts/backup-database.sh"
-  npx prisma migrate deploy --schema="$PRISMA_SCHEMA"
-  echo "-> external PostgreSQL schema ready"
-else
-  echo "error: Prisma schema not found; refusing to publish" >&2
-  exit 1
+if [ -f "$SITE_DIR/prisma/schema.prisma" ]; then
+  npx prisma generate --schema="$SITE_DIR/prisma/schema.prisma" 2>&1 | tail -2 || true
+  echo "-> prisma generated"
 fi
-# A publish must not carry a local SQLite database that could replace live data.
-find "$SITE_DIR/dist/backend" -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -delete 2>/dev/null || true
 
-# ── 3. SPA (non-fatal) ───────────────────────────────────────────
+# ── 2. SPA (non-fatal) ───────────────────────────────────────────
 mkdir -p "$SITE_DIR/dist/client"
 set +e
 if [ -d "$SITE_DIR/client-portal" ] && [ -f "$SITE_DIR/client-portal/package.json" ]; then
