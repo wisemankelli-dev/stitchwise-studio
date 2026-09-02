@@ -496,7 +496,7 @@ export function framePatternInGrid(
   }
   if (maxR < 0) return { grid, stitchTypes, cellFractions }; // no content
 
-  const M = Math.max(3, Math.round(0.05 * Math.min(width, height)));
+  const M = Math.max(2, Math.round(0.02 * Math.min(width, height)));
 
   // Count fully-empty (absent) rows/cols from each edge inward — a design that
   // already has ≥ M empty cells on all four sides is well-framed: leave it alone.
@@ -530,10 +530,13 @@ export function framePatternInGrid(
       const sc = Math.min(minC + Math.floor(tc / scale), maxC);
       const srcKey = `${sr},${sc}`;
       const color = grid[srcKey];
-      // Omit background-colored cells — they become empty fabric, not stitches.
-      if (color && color !== bg) {
+      // Keep EVERY cell as a stitch (owner 09-03: no background-hollowing —
+      // a 27%-fill canvas is not stitchable). Background-colored cells become
+      // the light fabric color #ffffff so coverage stays dense and the chart
+      // reads as a real cross-stitch pattern, not blank holes.
+      if (color) {
         const dstKey = `${offsetY + tr},${offsetX + tc}`;
-        newGrid[dstKey] = color;
+        newGrid[dstKey] = color === bg ? '#ffffff' : color;
         if (stitchTypes[srcKey]) newStitchTypes[dstKey] = stitchTypes[srcKey];
         if (cellFractions[srcKey] !== undefined) newCellFractions[dstKey] = cellFractions[srcKey];
       }
@@ -1385,7 +1388,12 @@ export const Designer: React.FC = () => {
     setIsSavingPattern(true);
     setPatternSaveMsg(null);
     try {
-      await api.savePattern(name, payloadGrid, stitchData.dmcPalette, gridSize, stitchData.totalStitches);
+      // Save provenance: the AI prompt + source artwork (data URL) travel with
+      // the design so it round-trips on load (backend persists both columns).
+      await api.savePattern(name, payloadGrid, stitchData.dmcPalette, gridSize, stitchData.totalStitches, {
+        prompt: aiPrompt.trim() || undefined,
+        sourceImage: aiArtworkUrl || undefined,
+      });
       setPatternName('');
       setShowPatternLoad(false);
       setPatternSaveMsg(`Saved "${name}"!`);
@@ -1468,31 +1476,43 @@ export const Designer: React.FC = () => {
       // we already have, exactly like image upload does.
       const canvasW = gridWidth;
       const canvasH = gridHeight;
-      // ONLY the default blank canvas (no product preset) generates at the
-      // max 240 and adopts the pattern size — that's what makes small
-      // features (eyes, feet, wing lines) resolve (owner: blob-like, no
-      // detail). Preset canvases (ornament, pillow, frames, stocking) have a
-      // FIXED product size and shape guide — they keep the old
-      // frame-into-canvas behavior, or the guide is erased and the image
-      // overflows the allowed canvas (owner: ornament circle guide erased +
-      // Generation resolution: always super-sample the artwork (>= 200 cells,
-      // max 240) for detail, then FRAME INTO the existing canvas dims — the
-      // pattern's size and shape never change. The old "adopt the generated
-      // 240-cell size" path was removed: on the default 100×100 canvas it
-      // resized the canvas to 240 cells, which is ~17.1in on 14ct fabric
-      // (owner 08-18: "Pattern was made on a 17inx17in again").
+      // A selected product template (preset) IS the output size: when one is
+      // active, always force the target to the preset's physical stitch dims at
+      // this fabric count, so a stale/larger canvas can never make the pattern
+      // come out at the wrong size (owner 08-18: picked the 5x5 ornament
+      // template but the pattern was made on a 17x17 canvas left over from an
+      // earlier generation). Computed BEFORE the API call so the backend can
+      // generate art at the exact canvas aspect/size (owner 09-03: a square
+      // 200x200 art crushed into a 154x238 stocking lost coverage -> 27% fill).
+      const presetW = activePreset ? inchesToStitches(activePreset.inchW, fabricCount) : canvasW;
+      const presetH = activePreset ? inchesToStitches(activePreset.inchH, fabricCount) : canvasH;
+      const targetW = presetW;
+      const targetH = presetH;
+      // Legacy gridSize stays for backward compat; the backend uses
+      // canvasWidth/canvasHeight when present to generate at the correct
+      // aspect. No maxColors:6 — the backend decides the color cap so scenes
+      // keep 10-16 distinct colors instead of collapsing to 5 browns.
       const gridSize = Math.min(240, Math.max(canvasW, canvasH, 200));
       setPollingStatus(
         premiumModel && isStudioTier
           ? 'Generating with the premium art model — this can take 1–3 minutes…'
           : 'Generating your pattern — this usually takes about a minute…'
       );
-
       const data = await api.generatePatternFromText(aiPrompt.trim(), {
         gridSize,
-        maxColors: 6,
+        fabricCount,
+        canvasWidth: targetW,
+        canvasHeight: targetH,
+        shape: activeGuide?.type,
         premiumModel: premiumModel && isStudioTier ? true : undefined,
       });
+      // Backend quality gate: if the image didn't convert cleanly, say so
+      // instead of silently showing a bad grid (owner 09-03 definition of done).
+      if (data.conversionWarning) {
+        setAiError(
+          `${data.conversionWarning} This didn't convert to a clean stitchable pattern — try rewording your prompt and generating again.`
+        );
+      }
 
       // Process the response into the grid
       const newGrid: Record<string, string> = {};
@@ -1517,32 +1537,27 @@ export const Designer: React.FC = () => {
 
       const newH = data.grid.length;
       const newW = data.grid[0]?.length || 0;
-      // Hoisted to function scope: used by BOTH the auto-framing block below
-      // AND the product-shape mask. (Owner bug report 08-18: "TargetW is not
-      // defined" — these were block-scoped inside the framing if, then read
-      // outside it, so any AI generation on a preset canvas with a shape
-      // guide — ornament, pillow, stocking — threw a ReferenceError.)
-      // A selected product template (preset) IS the output size: when one is
-      // active, always force the target to the preset's physical stitch dims at
-      // this fabric count, so a stale/larger canvas can never make the pattern
-      // come out at the wrong size (owner 08-18: picked the 5x5 ornament
-      // template but the pattern was made on a 17x17 canvas left over from an
-      // earlier generation).
-      const presetW = activePreset ? inchesToStitches(activePreset.inchW, fabricCount) : canvasW;
-      const presetH = activePreset ? inchesToStitches(activePreset.inchH, fabricCount) : canvasH;
-      const targetW = presetW;
-      const targetH = presetH;
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
       if (newW > 0 && newH > 0) {
-        // Auto-frame: fit + center with a margin, drop the detected background
-        // (owner bug report — generated subjects were running flush into the
-        // border). Frame INTO THE EXISTING canvas dims — never adopt the
-        // returned square's dims, so presets like the 11x17 stocking keep
-        // their canvas (154x238) when the art is generated.
-        const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
-        finalGrid = framed.grid;
-        finalStitchTypes = framed.stitchTypes;
+        // The backend generates the grid at the EXACT requested canvas
+        // aspect/size when canvasWidth/canvasHeight are sent (non-square
+        // supported): use the returned grid VERBATIM, no re-framing — this
+        // keeps coverage dense instead of re-fitting a square onto the 154x238
+        // stocking (owner 09-03: 27% fill / 73% blank was the re-frame crush).
+        const dimsMatch =
+          Math.abs(data.width - targetW) <= 2 && Math.abs(data.height - targetH) <= 2;
+        if (dimsMatch) {
+          finalGrid = newGrid;
+          finalStitchTypes = newStitchTypes;
+        } else {
+          // Legacy fallback (old square backend response): keep background
+          // cells as stitches — map the detected background to a light fabric
+          // color instead of deleting them to empty, so coverage stays dense.
+          const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
+          finalGrid = framed.grid;
+          finalStitchTypes = framed.stitchTypes;
+        }
       }
 
       // Mask generated art to the ACTIVE PRODUCT-SHAPE GUIDE (owner request:
@@ -1567,11 +1582,11 @@ export const Designer: React.FC = () => {
         finalStitchTypes = masked.types;
       }
 
-      // Back-stitch outlines for small product canvases (ornament, pillow):
-      // trace color boundaries so fine features stay crisp (owner wanted detail
-      // like eyes on the bird). Skip large/long canvases (stocking) — they
-      // already have enough resolution and dense outlines would clutter.
-      if (activePreset && Math.min(targetW, targetH) <= 120) {
+      // Back-stitch only on canvases big enough to read outlines (>=90).
+      // Tiny ornament canvases (42x42, 70x70) get NO auto back-stitch — the
+      // boundaries traced on every other cell made them a 'blob mess'
+      // (owner 09-03). Larger canvases keep the denser-outline behavior.
+      if (activePreset && Math.min(targetW, targetH) >= 90) {
         finalStitchTypes = applyBackstitchOutlines(finalGrid, finalStitchTypes, targetW, targetH);
       }
       setGrid(finalGrid);
@@ -1606,7 +1621,7 @@ export const Designer: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, premiumModel, isStudioTier, activePreset, activeGuide]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, activeGuide]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};

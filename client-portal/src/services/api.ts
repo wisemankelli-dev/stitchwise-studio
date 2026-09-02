@@ -127,6 +127,8 @@ export interface AIPatternResponse {
   /** Fabric context returned by backend */
   fabric?: FabricInfo;
   fabricPiece?: FabricPieceInfo;
+  /** Backend quality-gate flag: the image did not convert to a clean stitchable pattern */
+  conversionWarning?: string;
 }
 
 /** Cell format returned by the text-to-line-art-pattern endpoint */
@@ -974,7 +976,15 @@ class ApiClient {
    */
   async generatePatternFromText(
     prompt: string,
-    options?: { gridSize?: number; maxColors?: number; premiumModel?: boolean }
+    options?: {
+      gridSize?: number;
+      maxColors?: number;
+      premiumModel?: boolean;
+      fabricCount?: number;
+      canvasWidth?: number;
+      canvasHeight?: number;
+      shape?: string;
+    }
   ): Promise<AIPatternResponse> {
     if (!this.isLiveBackend) {
       throw new Error('Backend not available. Pattern generation requires a live backend connection.');
@@ -2231,13 +2241,17 @@ class ApiClient {
     palette: { code: string; name: string; hex: string; count: number }[],
     gridSize: number,
     stitchCount: number,
+    provenance?: { prompt?: string; sourceImage?: string },
   ): Promise<SavedPatternSummary> {
     if (this.isLiveBackend) {
       try {
+        // Backend SaveSchema already accepts optional prompt + sourceImage and
+        // persists them (patternPersistence.ts) — forward so saved designs
+        // keep their AI prompt + source artwork (owner 09-03 save provenance).
         const res = await fetch(`${this.apiBaseUrl}/patterns`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ name, grid, palette, gridSize, stitchCount }),
+          body: JSON.stringify({ name, grid, palette, gridSize, stitchCount, ...(provenance || {}) }),
         });
         if (res.ok) return await res.json();
       } catch { /* fall through to mock */ }
