@@ -57,7 +57,60 @@ if [ -f "$SITE_DIR/prisma/schema.prisma" ]; then
   echo "-> prisma generated (live DB remains outside artifact)"
 fi
 
-# Remove stale local SQLite files and fail closed if any remain in the artifact.
+# ── 1b. Whole-tree stale-DB quarantine (recurrence fix, 09-02) ────
+# The live environment's dev.db is the ONLY source of truth. Any *.db on the
+# build disk is at best a stale copy, at worst the exact stale file whose
+# re-ship wiped the live DB on 09-02 (site/prisma/dev.db + site/prisma/prisma/
+# dev.db were byte-identical to the wiped 1,400,832-byte live DB: hash
+# f39faa2c…). Quarantine (move, never delete) EVERY *.db / *.db-wal / *.db-shm
+# under the site EXCEPT the backup dir and node_modules, BEFORE anything ships.
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP_DIR_FOR_Q="${DB_BACKUP_DIR:-/home/team/shared/db-backups}"
+QUARANTINE_ROOT="${BACKUP_DIR_FOR_Q}/quarantine-${STAMP}"
+mkdir -p "$QUARANTINE_ROOT"
+
+mapfile -t db_files < <(
+  find "$SITE_DIR" -path "$SITE_DIR/node_modules" -prune -o \
+    -path "$SITE_DIR/db-backups" -prune -o \
+    -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -print 2>/dev/null
+)
+
+# ── 1c. Stale-DB guard ────────────────────────────────────────────
+# Compare the latest verified live backup (the source of truth) against each
+# build-disk *.db before quarantine. Do NOT proceed if quarantine failed.
+if [[ "${#db_files[@]}" -gt 0 ]]; then
+  # find the newest verified live backup that actually exists
+  LATEST_BACKUP="$(find "${BACKUP_DIR_FOR_Q}" -maxdepth 1 -type f -name 'live-dev-*.db' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)"
+  for db_file in "${db_files[@]}"; do
+    rel="${db_file#$SITE_DIR/}"
+    echo "-> quarantine build-disk DB: $rel"
+    if [[ -n "$LATEST_BACKUP" && -f "$LATEST_BACKUP" ]]; then
+      if sha256sum "$db_file" | awk '{print $1}' | grep -qx "$(sha256sum "$LATEST_BACKUP" | awk '{print $1}')"; then
+        echo "   matches latest verified live backup ($(basename "$LATEST_BACKUP")) — quarantine copy safe"
+      else
+        echo "   warning: DIFFERS from latest verified live backup ($(basename "$LATEST_BACKUP")) — stale/unknown; quarantining"
+      fi
+    else
+      echo "   warning: no verified live backup found — quarantining (could not compare)"
+    fi
+  done
+fi
+
+# Quarantine only if NOTHING could already be inside the quarantine dir.
+if ! find "$QUARANTINE_ROOT" -mindepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+  moved=""
+  for db_file in "${db_files[@]}"; do
+    mkdir -p "$QUARANTINE_ROOT/$(dirname "${db_file#$SITE_DIR/}")"
+    if mv -- "$db_file" "$QUARANTINE_ROOT/${db_file#$SITE_DIR/}" 2>/dev/null; then
+      moved="$moved $db_file"
+    fi
+  done
+else
+  echo "error: quarantine dir prepopulated; refusing to publish" >&2
+  exit 1
+fi
+
+# Remove stale local SQLite files from the artifact and fail closed if any remain.
 mapfile -t db_artifacts < <(find "$SITE_DIR/dist" -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) -print 2>/dev/null)
 for db_file in "${db_artifacts[@]}"; do
   rm -f -- "$db_file"
