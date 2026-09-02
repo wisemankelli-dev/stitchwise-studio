@@ -113,7 +113,11 @@ export function createAdminDbBackupRouter(prisma: PrismaClient): Router {
       // the authoritative source, immune to DATABASE_URL spelling differences.
       const dbPath = await liveSqlitePath(prisma);
       const info = await stat(dbPath);
-      if (!info.isFile() || info.size < 16) {
+      // A JUST-CREATED empty file (0 bytes) is a valid live DB that simply has
+      // never been written — stream it (the backup script's magic-header check
+      // will reject the empty snapshot and refuse to publish, which is the
+      // correct fail-closed signal for a wiped/blank live DB).
+      if (!info.isFile()) {
         res.status(503).json({ error: "Live database file is unavailable" });
         return;
       }
@@ -184,13 +188,22 @@ export function createAdminDbBackupRouter(prisma: PrismaClient): Router {
         // 1) resolve the REAL live DB path (authoritative — same as backup)
         const live = await liveSqlitePath(prisma);
         const info = await stat(live);
-        if (!info.isFile() || info.size < 16) {
+        // A JUST-CREATED empty file (0 bytes) is a valid live DB that simply has
+        // never been written — restore INTO it (see the runbook: a publish that
+        // ships no *.db leaves the live env with a blank DB; this endpoint is
+        // the recovery path for that exact state).
+        if (!info.isFile()) {
           res.status(503).json({ error: "Live database file is unavailable" });
           return;
         }
 
-        // 2) flush + empty the current WAL before any change
-        await runSqlite3(live, ".timeout 15000", "PRAGMA wal_checkpoint(TRUNCATE);");
+        // 2) flush + empty the current WAL before any change.
+        //    A blank 0-byte live DB (fresh post-swap with no shipped *.db) has
+        //    no WAL yet — sqlite3 would error "file is not a database" if we
+        //    tried. Only checkpoint when the file is already a real SQLite DB.
+        if (info.size >= 16) {
+          await runSqlite3(live, ".timeout 15000", "PRAGMA wal_checkpoint(TRUNCATE);");
+        }
 
         // 3) stash the exact current live DB next to itself (belt & braces)
         const stash = `${live}.pre-restore-${new Date().toISOString().replace(/[:.]/g, "-")}`;
