@@ -133,6 +133,28 @@ describe("AI Embroidery Schemas", () => {
       const result = TextToPatternSchema.safeParse({ prompt: "test", gridSize: 10 });
       expect(result.success).toBe(false);
     });
+
+    it("accepts every fabric count the Designer offers", () => {
+      // Designer picker = [11, 13, 14, 18, 22, 25, 28, 32, 36];
+      // the backend must NOT 400 on 13 (the reported bug) or any other.
+      for (const fabricCount of [11, 13, 14, 18, 22, 25, 28, 32, 36]) {
+        const result = TextToPatternSchema.safeParse({ prompt: "a red rose", fabricCount });
+        expect(result.success).toBe(true);
+        if (!result.success) {
+          console.error("fabricCount", fabricCount, "failed:", result.error.issues);
+        }
+      }
+    });
+
+    it("accepts legacy fabric counts 16 and 20", () => {
+      expect(TextToPatternSchema.safeParse({ prompt: "a rose", fabricCount: 16 }).success).toBe(true);
+      expect(TextToPatternSchema.safeParse({ prompt: "a rose", fabricCount: 20 }).success).toBe(true);
+    });
+
+    it("rejects an out-of-set fabric count", () => {
+      const result = TextToPatternSchema.safeParse({ prompt: "test", fabricCount: 15 });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("ImageToPatternSchema", () => {

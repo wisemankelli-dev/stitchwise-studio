@@ -17,8 +17,13 @@ import {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 describe("fabric count constants", () => {
-  it("has 5 supported fabric counts", () => {
-    expect(Object.keys(FABRIC_COUNTS)).toHaveLength(5);
+  it("supports the Designer's full fabric picker set", () => {
+    // The Designer offers [11, 13, 14, 18, 22, 25, 28, 32, 36] — every one
+    // of those must exist in the backend table (plus legacy 16 and 20).
+    for (const count of [11, 13, 14, 18, 22, 25, 28, 32, 36]) {
+      expect(FABRIC_COUNTS[count]).toBeDefined();
+    }
+    expect(Object.keys(FABRIC_COUNTS)).toHaveLength(11);
   });
 
   it("AVAILABLE_FABRIC_COUNTS is sorted ascending", () => {
@@ -69,13 +74,21 @@ describe("isValidFabricCount", () => {
     expect(isValidFabricCount(18)).toBe(true);
     expect(isValidFabricCount(11)).toBe(true);
     expect(isValidFabricCount(20)).toBe(true);
+    // Designer-only counts now supported
+    expect(isValidFabricCount(13)).toBe(true);
+    expect(isValidFabricCount(22)).toBe(true);
+    expect(isValidFabricCount(25)).toBe(true);
+    expect(isValidFabricCount(28)).toBe(true);
+    expect(isValidFabricCount(32)).toBe(true);
+    expect(isValidFabricCount(36)).toBe(true);
   });
 
   it("returns false for unsupported counts", () => {
     expect(isValidFabricCount(10)).toBe(false);
     expect(isValidFabricCount(15)).toBe(false);
     expect(isValidFabricCount(0)).toBe(false);
-    expect(isValidFabricCount(22)).toBe(false);
+    expect(isValidFabricCount(17)).toBe(false);
+    expect(isValidFabricCount(40)).toBe(false);
   });
 });
 
@@ -136,9 +149,9 @@ describe("isPaletteWithinLimit", () => {
 describe("getCompatibleFabricCounts", () => {
   it("returns all counts for small color palettes", () => {
     const counts = getCompatibleFabricCounts(20);
-    // 20 colors — all counts from 11 up should work
+    // 20 colors — every count whose maxColors ≥ 20 works (starts at 16ct)
     expect(counts.length).toBeGreaterThanOrEqual(1);
-    expect(counts[0]).toBe(11); // 11-count: max 30 colors ≥ 20
+    expect(counts[0]).toBe(16); // 11/13/14 have maxColors 10/13/15 < 20
   });
 
   it("returns fewer counts for large color palettes", () => {
@@ -149,8 +162,8 @@ describe("getCompatibleFabricCounts", () => {
 
   it("returns only high counts for larger palettes", () => {
     const counts = getCompatibleFabricCounts(24);
-    // Only 18-count (24) and 20-count (30) support 24
-    expect(counts).toEqual([18, 20]);
+    // 18-count (24) and every finer count support 24 now
+    expect(counts).toEqual([18, 20, 22, 25, 28, 32, 36]);
   });
 
   it("returns empty array when no fabric count supports the palette", () => {
