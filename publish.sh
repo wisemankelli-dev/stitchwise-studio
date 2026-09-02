@@ -5,6 +5,25 @@ set -euo pipefail
 SITE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SITE_DIR"
 
+# ── .env loader (fill-gap only; never clobber runner-provided vars) ──
+# The platform build runner does not always export the project .env into this
+# script's environment, yet the backup gate (and its env: ALLOW_TRANSITIONAL_
+# PUBLISH, LIVE_DB_BACKUP_URL, PATTERN_ADMIN_SECRET) depends on those vars.
+# Load them here so the gate always sees the real values. Runner-provided vars
+# win (do not overwrite something already set).
+if [ -f "$SITE_DIR/.env" ]; then
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    case "$_line" in ''|\#*) continue ;; esac
+    _key="${_line%%=*}"
+    [ -z "$_key" ] && continue
+    if [ -n "${!_key:-}" ]; then continue; fi   # don't clobber runner env
+    _val="${_line#*=}"
+    _val="${_val%\"}"; _val="${_val#\"}"
+    _val="${_val%\'}"; _val="${_val#\'}"
+    export "$_key=$_val"
+  done < "$SITE_DIR/.env"
+fi
+
 # Safety gate: snapshot the RUNNING live DB before touching publish output.
 # LIVE_DB_BACKUP_URL must point at /api/admin/db-backup on the live app.
 if [[ ! -x "$SITE_DIR/scripts/backup-live-db.sh" ]]; then
