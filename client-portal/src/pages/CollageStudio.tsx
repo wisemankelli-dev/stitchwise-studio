@@ -367,10 +367,8 @@ export const CollageStudio: React.FC = () => {
       // ── Full-scale pattern pages: complete assembled pattern at REAL size ──
       // Canvas is 500px square → blockSize inches. 1 canvas px = blockSize*25.4/500 mm.
       const blockMm = blockSize * 25.4;                       // e.g. 12" → 304.8 mm, 24" → 609.6 mm
-      const usableMm = 196;                                   // US Letter (215.9mm) minus ~10mm side margins
       const mmPerPx = blockMm / canvasSize;
       const pageW = 215.9;                                    // US Letter width (mm)
-      const tileTop = 36;                                     // header area on each tile page
       /** Rotate a normalized outline point (0..1) into pattern-mm coords (rotation around the piece center, matching the canvas). */
       const piecePointMm = (p: PlacedCollagePiece, ox: number, oy: number): [number, number] => {
         const w = p.piece.bounds.width * canvasSize * p.scale;
@@ -428,32 +426,12 @@ export const CollageStudio: React.FC = () => {
       const hasExtent = hasPieces && isFinite(exX0) && exX1 > exX0 && exY1 > exY0;
       const extW = hasExtent ? exX1 - exX0 : 0;
       const extH = hasExtent ? exY1 - exY0 : 0;
-      // ── Overlapping real-size pages (Option A): NO piece is ever split ──
-      // Each page is a usableMm × usableMm window. Consecutive page origins step by
-      // (usableMm - overlap) where overlap >= the largest single piece's span, so every
-      // piece lies wholly inside at least one page window and nothing prints half-on-half.
-      const maxSpanX = hasExtent ? Math.max(1, ...pieces.map(p => p.piece.bounds.width * blockMm)) : 0;
-      const maxSpanY = hasExtent ? Math.max(1, ...pieces.map(p => p.piece.bounds.height * blockMm)) : 0;
-      const overlapX = hasExtent ? Math.min(maxSpanX, usableMm - 5) : 0;   // clamp so step >= 5mm
-      const overlapY = hasExtent ? Math.min(maxSpanY, usableMm - 5) : 0;
-      const stepX = hasExtent ? Math.max(5, usableMm - overlapX) : 0;
-      const stepY = hasExtent ? Math.max(5, usableMm - overlapY) : 0;
-      const origX: number[] = hasExtent ? [exX0] : [];
-      while (hasExtent && origX[origX.length - 1] + usableMm < exX1) origX.push(origX[origX.length - 1] + stepX);
-      const origY: number[] = hasExtent ? [exY0] : [];
-      while (hasExtent && origY[origY.length - 1] + usableMm < exY1) origY.push(origY[origY.length - 1] + stepY);
-      const tilesX = origX.length;
-      const tilesY = origY.length;
-      const totalPatternPages = tilesX * tilesY;
-      // Page 1 overview + real-size tile pages + (reference art) + cutting guide (paginated)
+      // Page 1 overview + (reference art) + numbered Piece Cutting Guide (paginated)
       const cutRowsPerPage = 3;                              // 3 rows x 62mm fit within the ~239mm printable height of US Letter
       const piecesPerCutPage = cutRowsPerPage * 2;           // 2 columns -> 6 pieces per cutting-guide page
       const cutGuidePages = hasPieces ? Math.max(1, Math.ceil(pieces.length / piecesPerCutPage)) : 0;
-      const totalPdfPages = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0) + cutGuidePages;
+      const totalPdfPages = (hasExtent ? 1 : 0) + (referenceArt ? 1 : 0) + cutGuidePages;
       if (hasExtent) {
-        const tileW = usableMm;                               // each page window is usableMm × usableMm
-        const tileH = usableMm;
-        const tileX0 = (pageW - tileW) / 2;                   // center the page window on Letter width
 
         // ── Page 1: FULL-PATTERN OVERVIEW (scale-to-fit the TRUE extent) ────
         doc.setFontSize(14);
@@ -464,7 +442,7 @@ export const CollageStudio: React.FC = () => {
         doc.text(`Page 1 of ${totalPdfPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces · full pattern (not to scale) · build 20260827`, pageW / 2, 20, { align: 'center' });
         doc.setFontSize(7);
         doc.setTextColor(160, 60, 80);
-        doc.text(`Prints at real size on the following ${totalPatternPages} tile page${totalPatternPages > 1 ? 's' : ''} — this page is a preview only.`, pageW / 2, 26, { align: 'center' });
+        doc.text(`Piece numbers below match this overview. Individual pieces print on the following pages — assemble them on the ${blockSize}" block.`, pageW / 2, 26, { align: 'center' });
         // letterbox the TRUE extent into the page body (ovW × ovH), centered
         const ovW = pageW - 40;
         const ovH = 230;
@@ -478,57 +456,12 @@ export const CollageStudio: React.FC = () => {
         const overviewProj = (mx: number, my: number): [number, number] =>
           [ovLeft + (mx - exX0) * ovScale, ovTop + (my - exY0) * ovScale] as [number, number];
         pieces.forEach((p, idx) => drawPiecePage(p, idx, overviewProj, 0.4));
-
-        // ── Full-scale tile pages (real size, print at 100%) ─────────────────
-        for (let ty = 0; ty < tilesY; ty++) {
-          for (let tx = 0; tx < tilesX; tx++) {
-            const tilePageNum = ty * tilesX + tx + 2; // page 1 = overview
-            doc.addPage();
-            doc.setFontSize(14);
-            doc.setTextColor(139, 92, 118);
-            doc.text('Collage Quilt Pattern — Print & Cut', pageW / 2, 14, { align: 'center' });
-            doc.setFontSize(8);
-            doc.setTextColor(100, 100, 100);
-            doc.text(`Page ${tilePageNum} of ${totalPdfPages} · Tile ${ty * tilesX + tx + 1} of ${totalPatternPages} · ${blockSize}" × ${blockSize}" block template · ${pieces.length} pieces`, pageW / 2, 20, { align: 'center' });
-            doc.setFontSize(7);
-            doc.setTextColor(160, 60, 80);
-            doc.text('PRINT AT 100% / ACTUAL SIZE — printer scaling: None / "Actual size" (do not auto-fit) · designed for US Letter (8.5×11)', pageW / 2, 26, { align: 'center' });
-
-            const tOriginX = origX[tx];
-            const tOriginY = origY[ty];
-            const tLeft = tileX0, tTop = tileTop;
-            const tRight = tileX0 + tileW, tBottom = tileTop + tileH;
-            doc.setDrawColor(190, 190, 200);
-            doc.setLineWidth(0.2);
-            doc.rect(tLeft, tTop, tileW, tileH);
-            // draw the pattern clipped to this tile (pieces crossing seams continue on neighbours)
-            doc.saveGraphicsState();
-            doc.rect(tLeft, tTop, tileW, tileH);
-            doc.clip();
-            doc.discardPath();
-            const tileProj = (mx: number, my: number): [number, number] =>
-              [tileX0 + (mx - tOriginX), tileTop + (my - tOriginY)] as [number, number];
-            pieces.forEach((p, idx) => drawPiecePage(p, idx, tileProj, 0.5));
-            doc.restoreGraphicsState();
-            // crop/alignment "+" marks at the tile corners
-            doc.setDrawColor(60, 60, 70);
-            doc.setLineWidth(0.3);
-            const arm = 7;
-            doc.line(tLeft - arm, tTop, tLeft + arm, tTop); doc.line(tLeft, tTop - arm, tLeft, tTop + arm);
-            doc.line(tRight - arm, tTop, tRight + arm, tTop); doc.line(tRight, tTop - arm, tRight, tTop + arm);
-            doc.line(tLeft - arm, tBottom, tLeft + arm, tBottom); doc.line(tLeft, tBottom - arm, tLeft, tBottom + arm);
-            doc.line(tRight - arm, tBottom, tRight + arm, tBottom); doc.line(tRight, tBottom - arm, tRight, tBottom + arm);
-            doc.setFontSize(6.5);
-            doc.setTextColor(120, 120, 130);
-            doc.text('Pages overlap so NO piece is split. Match the "+" corner marks to align panels; every piece appears complete on at least one page.', tLeft, tBottom + 6);
-          }
-        }
       }
 
       // Reference art (if any) — comes after the overview + tile pages
       if (referenceArt) {
         doc.addPage();
-        const refPage = hasPieces ? totalPatternPages + 2 : 1;
+        const refPage = (hasExtent ? 1 : 0) + 1;
         doc.setFontSize(16);
         doc.setTextColor(139, 92, 118);
         doc.text('Reference Art', 20, 20);
@@ -549,7 +482,7 @@ export const CollageStudio: React.FC = () => {
       // Piece Cutting Guide (numbered outlines + colors) — paginated so many pieces
       // don't flood off the bottom of the page (owner 08-27, after #143)
       if (hasPieces) {
-        const beforeCut = (hasExtent ? 1 + totalPatternPages : 0) + (referenceArt ? 1 : 0);
+        const beforeCut = (hasExtent ? 1 : 0) + (referenceArt ? 1 : 0);
         for (let cutPg = 0; cutPg < cutGuidePages; cutPg++) {
           const cutPage = beforeCut + 1 + cutPg;
           doc.addPage();
@@ -559,6 +492,9 @@ export const CollageStudio: React.FC = () => {
           doc.setFontSize(8);
           doc.setTextColor(130, 130, 130);
           doc.text(`Page ${cutPage} of ${totalPdfPages} · cutting guide ${cutPg + 1} of ${cutGuidePages} — numbered piece outlines and colors`, 20, 27);
+          doc.setFontSize(7);
+          doc.setTextColor(120, 120, 120);
+          doc.text(`Cut along solid lines. Piece numbers match the overview layout. Assemble on the ${blockSize}" block following the overview.`, 20, 24);
           const keyY = 32;
           const start = cutPg * piecesPerCutPage;
           const end = Math.min(start + piecesPerCutPage, pieces.length);
