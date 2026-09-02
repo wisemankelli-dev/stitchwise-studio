@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutDashboard, Clock, ArrowRight, ShieldCheck, Heart, Sparkles, FolderHeart, CreditCard, Crown, ShoppingBag, Star } from 'lucide-react';
-import { Project, MarketplaceListing, api } from '../services/api';
+import { Project, MarketplaceListing, CollageProject, QuiltBlockDesign, api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTier, setActiveTier] = useState<string>('Hobbyist');
   const [projects, setProjects] = useState<Project[]>([]);
+  const [collageProjects, setCollageProjects] = useState<CollageProject[]>([]);
+  const [quiltBlocks, setQuiltBlocks] = useState<QuiltBlockDesign[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListing[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState<boolean>(true);
@@ -20,6 +22,14 @@ export const Dashboard: React.FC = () => {
 
         const projList = await api.getProjects();
         setProjects(projList);
+        // Also list the member's Collage and Quilt Block saves so the Dashboard
+        // shows every project type (owner-approved, 09-03).
+        const [collageList, quiltList] = await Promise.all([
+          api.listCollageProjects().catch(() => [] as CollageProject[]),
+          api.listQuiltBlocks().catch(() => [] as QuiltBlockDesign[]),
+        ]);
+        setCollageProjects(collageList);
+        setQuiltBlocks(quiltList);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       } finally {
@@ -94,30 +104,28 @@ export const Dashboard: React.FC = () => {
                   My Patterns
                 </h3>
                 <span className="inline-flex items-center rounded-full bg-blush-50 px-2.5 py-0.5 text-xs font-medium text-blush-700">
-                  {projects.length} created
+                  {projects.length + collageProjects.length + quiltBlocks.length} created
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {projects.map((project) => (
-                  <div 
-                    key={project.id} 
+                  <div
+                    key={`cross-${project.id}`}
                     className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
                   >
                     <div className={`h-2.5 bg-gradient-to-r ${project.previewColor}`} />
-                    
                     <div className="p-6 flex-grow flex flex-col justify-between">
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blush-50 text-blush-700">
-                            {project.gridSize}
+                            Cross-stitch
                           </span>
                           <span className="text-xs text-blush-400 font-medium flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             {project.lastUpdated}
                           </span>
                         </div>
-
                         <Link to={`/projects/${project.id}`} className="hover:text-blush-600 transition-colors">
                           <h4 className="text-base font-bold text-slate-800 line-clamp-1 mb-1">{project.name}</h4>
                         </Link>
@@ -126,14 +134,12 @@ export const Dashboard: React.FC = () => {
                           <span>Owner: <strong className="text-slate-700 font-semibold">{project.owner}</strong></span>
                         </div>
                       </div>
-
                       <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
                           <span className="inline-flex items-center rounded-full bg-blush-50 px-2 py-0.5 text-[10px] font-medium text-blush-700">
                             {project.gridSize}
                           </span>
                         </div>
-                        
                         <Link
                           to={`/projects/${project.id}`}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-colors"
@@ -145,6 +151,98 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
                 ))}
+                {collageProjects.map((project) => (
+                  <div
+                    key={`collage-${project.id}`}
+                    className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
+                  >
+                    <div className="h-2.5 bg-gradient-to-r from-violet-400 to-violet-300" />
+                    <div className="p-6 flex-grow flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-50 text-violet-700">
+                            Collage
+                          </span>
+                          <span className="text-xs text-blush-400 font-medium flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(project.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <Link to="/collage" className="hover:text-blush-600 transition-colors">
+                          <h4 className="text-base font-bold text-slate-800 line-clamp-1 mb-1">{project.name}</h4>
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                          <span className="text-base">🧵</span>
+                          <span>{project.pieces?.length ?? project.layers.length} pieces</span>
+                        </div>
+                      </div>
+                      <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                            Collage Studio
+                          </span>
+                        </div>
+                        <Link
+                          to="/collage"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-colors"
+                        >
+                          Open Studio
+                          <ArrowRight className="h-3.5 w-3.5 text-blush-500" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {quiltBlocks.map((block) => (
+                  <div
+                    key={`quilt-${block.id}`}
+                    className="bg-white rounded-2xl border border-blush-100 shadow-petal overflow-hidden hover:shadow-blush transition-all duration-200 flex flex-col h-full"
+                  >
+                    <div className="h-2.5 bg-gradient-to-r from-emerald-400 to-emerald-300" />
+                    <div className="p-6 flex-grow flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                            Quilt Block
+                          </span>
+                          <span className="text-xs text-blush-400 font-medium flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(block.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <Link to="/quilt-block" className="hover:text-blush-600 transition-colors">
+                          <h4 className="text-base font-bold text-slate-800 line-clamp-1 mb-1">{block.name}</h4>
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                          <span className="text-base">🪡</span>
+                          <span>{block.shapes.length} shapes · {block.blockSize}"</span>
+                        </div>
+                      </div>
+                      <div className="mt-6 pt-4 border-t border-blush-50 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                            Quilt Block Studio
+                          </span>
+                        </div>
+                        <Link
+                          to="/quilt-block"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-blush-700 bg-blush-50 hover:bg-blush-100 border border-blush-200 transition-colors"
+                        >
+                          Open Studio
+                          <ArrowRight className="h-3.5 w-3.5 text-blush-500" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {projects.length + collageProjects.length + quiltBlocks.length === 0 ? (
+                  <div className="col-span-full bg-white rounded-2xl border border-dashed border-blush-200 p-8 text-center">
+                    <FolderHeart className="h-8 w-8 text-blush-300 mx-auto mb-3" />
+                    <p className="text-sm text-blush-600/70">
+                      No saved projects yet — create a cross-stitch pattern, a collage quilt, or a quilt block to see it here.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
 
