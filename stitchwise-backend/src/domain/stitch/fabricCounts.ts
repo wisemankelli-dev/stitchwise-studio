@@ -1,7 +1,9 @@
 // ─── Fabric Count Types ──────────────────────────────────────────────────────
 // Fabric count = stitches per inch. Higher count = smaller stitches = more detail.
-// Owner's directive: 11/14/16/18/20 are the primary counts.
-// Color limits: larger mesh = more colors (up to 30 at 20ct).
+// Owner's directive: the Designer's fabric picker is the authoritative set:
+// [11, 13, 14, 18, 22, 25, 28, 32, 36]. The backend MUST accept every count
+// the Designer offers (AI conversion posts the selected fabricCount).
+// Color limits: larger mesh = more colors.
 
 /** Supported fabric counts with metadata. */
 export interface FabricCountInfo {
@@ -15,13 +17,24 @@ export interface FabricCountInfo {
   category: "beginner" | "standard" | "detail";
 }
 
-/** Primary supported fabric counts. Keyed by stitches-per-inch value. */
+/**
+ * Supported fabric counts, keyed by stitches-per-inch value.
+ * Mirrors the Designer's FABRIC_COUNTS picker (client-portal Designer.tsx):
+ * [11, 13, 14, 18, 22, 25, 28, 32, 36]. Keep the two in sync — this table
+ * drives API validation, DMC-color floors, and dimension math.
+ */
 export const FABRIC_COUNTS: Record<number, FabricCountInfo> = {
   11: { name: "11-count Aida", stitchesPerInch: 11, maxColors: 10, category: "beginner" },
+  13: { name: "13-count Aida", stitchesPerInch: 13, maxColors: 13, category: "beginner" },
   14: { name: "14-count Aida", stitchesPerInch: 14, maxColors: 15, category: "standard" },
   16: { name: "16-count Aida", stitchesPerInch: 16, maxColors: 20, category: "standard" },
-  18: { name: "18-count Aida", stitchesPerInch: 18, maxColors: 24, category: "detail" },
+  18: { name: "18-count Aida", stitchesPerInch: 18, maxColors: 24, category: "standard" },
   20: { name: "20-count Aida", stitchesPerInch: 20, maxColors: 30, category: "detail" },
+  22: { name: "22-count Hardanger", stitchesPerInch: 22, maxColors: 33, category: "detail" },
+  25: { name: "25-count Evenweave", stitchesPerInch: 25, maxColors: 36, category: "detail" },
+  28: { name: "28-count Evenweave", stitchesPerInch: 28, maxColors: 39, category: "detail" },
+  32: { name: "32-count Evenweave", stitchesPerInch: 32, maxColors: 42, category: "detail" },
+  36: { name: "36-count Evenweave", stitchesPerInch: 36, maxColors: 45, category: "detail" },
 };
 
 /** Sorted list of available fabric count values. */

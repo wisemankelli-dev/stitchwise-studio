@@ -13,6 +13,7 @@
 import { z } from "zod";
 import type { StitchCell, StitchGrid, DmcUsage, PatternResult } from "../stitch/types";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE } from "../stitch/types";
+import { AVAILABLE_FABRIC_COUNTS, isValidFabricCount } from "../stitch/fabricCounts";
 
 // ─── Re-exports (backward compatibility) ────────────────────────────────────
 
@@ -63,12 +64,25 @@ export interface ResizePatternRequest {
 // Designer canvas sizes can be any integer in [8, 240] (11×17 stocking at 14ct = 238).
 const gridSizeSchema = z.number().int().min(8).max(240).optional().default(50);
 
+/**
+ * All fabric counts the Designer's picker offers and the backend accepts.
+ * Driven by the shared fabricCounts table so the API and the UI can never
+ * drift again: [11, 13, 14, 18, 22, 25, 28, 32, 36] (14 is the default).
+ * NOTE: AVAILABLE_FABRIC_COUNTS also includes 16 and 20 (legacy table
+ * entries); the Designer's picker omits those, but accepting them is
+ * backward-compatible and keeps existing tests untouched.
+ */
+const supportedFabricCount = z.number().int().refine(
+  (n) => isValidFabricCount(n) && AVAILABLE_FABRIC_COUNTS.includes(n),
+  "Invalid fabricCount — must be one of " + AVAILABLE_FABRIC_COUNTS.join(", "),
+);
+
 export const TextToPatternSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
   gridSize: gridSizeSchema,
   maxColors: z.number().int().min(2).max(80).optional().default(24),
   negativePrompt: z.string().max(500).optional(),
-  fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
+  fabricCount: supportedFabricCount.optional(),
   desiredInches: z.number().positive().max(30).optional(),
   premiumModel: z.boolean().optional(),
   /** Canvas dims for aspect-aware generation (e.g. 154×238 stocking). */
@@ -83,7 +97,7 @@ export const TextToPatternSchema = z.object({
 export const ImageToPatternSchema = z.object({
   gridSize: gridSizeSchema,
   maxColors: z.number().int().min(2).max(80).optional().default(24),
-  fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
+  fabricCount: supportedFabricCount.optional(),
   desiredInches: z.number().positive().max(30).optional(),
 });
 
