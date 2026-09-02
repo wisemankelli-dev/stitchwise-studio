@@ -47,4 +47,15 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     badge: "New",
     active: false,
   },
+  {
+    id: "rooster-collage",
+    title: "Rooster",
+    description:
+      "A bold farmhouse rooster collage quilting pattern with vibrant comb and feather detail. 94 cuttable pieces ready to arrange on your block. PDF cutting guide with numbered pieces delivered by email after purchase.",
+    priceLabel: "$4.50",
+    imageUrl: "/patterns/rooster-collage.png",
+    paymentUrl: "https://buy.stripe.com/aFa6oJ9drfF537t28L9EI04",
+    badge: "New",
+    active: true,
+  },
 ];
