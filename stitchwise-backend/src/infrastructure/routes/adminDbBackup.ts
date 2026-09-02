@@ -112,9 +112,19 @@ export function createAdminDbBackupRouter(prisma: PrismaClient): Router {
       // Resolve the real path of the database this process actually opened —
       // the authoritative source, immune to DATABASE_URL spelling differences.
       const dbPath = await liveSqlitePath(prisma);
-      const info = await stat(dbPath);
-      if (!info.isFile() || info.size < 16) {
-        res.status(503).json({ error: "Live database file is unavailable" });
+      let info;
+      try {
+        info = await stat(dbPath);
+      } catch {
+        info = null;
+      }
+      // A 0-byte file or a MISSING file (fresh post-swap live env with no
+      // shipped *.db) is the exact state that requires RECOVERY (the owner's
+      // data lives only in the pre-publish live backup). Signal it distinctly
+      // so the operator knows a restore is required, rather than conflating it
+      // with "connection not configured".
+      if (!info || !info.isFile() || info.size < 16) {
+        res.status(503).json({ error: "Live database file is missing or empty — restore required" });
         return;
       }
       res.status(200);
@@ -183,18 +193,37 @@ export function createAdminDbBackupRouter(prisma: PrismaClient): Router {
 
         // 1) resolve the REAL live DB path (authoritative — same as backup)
         const live = await liveSqlitePath(prisma);
-        const info = await stat(live);
-        if (!info.isFile() || info.size < 16) {
-          res.status(503).json({ error: "Live database file is unavailable" });
-          return;
+        let info;
+        try {
+          info = await stat(live);
+        } catch {
+          info = null;
+        }
+        // A MISSING or BLANK (<16 byte) live DB is the exact recovery state
+        // this endpoint exists for: every publish replaces the live working
+        // dir, so the live dev.db can be absent or a fresh 0-byte file. Do NOT
+        // abort — restore INTO it (sqlite3's backup API creates the file).
+        const liveExists = !!info && info.isFile() && info.size >= 16;
+
+        // 2) flush + empty the current WAL before any change.
+        //    A blank 0-byte/missing live DB has no WAL — sqlite3 would error
+        //    ("file is not a database"). Best-effort: wrap in try/catch.
+        if (liveExists) {
+          try {
+            await runSqlite3(live, ".timeout 15000", "PRAGMA wal_checkpoint(TRUNCATE);");
+          } catch (err) {
+            console.error({ event: "admin_restore_checkpoint", error: String(err) });
+          }
         }
 
-        // 2) flush + empty the current WAL before any change
-        await runSqlite3(live, ".timeout 15000", "PRAGMA wal_checkpoint(TRUNCATE);");
-
-        // 3) stash the exact current live DB next to itself (belt & braces)
+        // 3) stash the exact current live DB next to itself (belt & braces).
+        //    Skip (log) when there's no file to copy — nothing to lose.
         const stash = `${live}.pre-restore-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-        await copyFile(live, stash);
+        if (liveExists) {
+          await copyFile(live, stash);
+        } else {
+          console.error({ event: "admin_restore_stash_skipped", path: live, stashPath: stash });
+        }
 
         // 4) pre-flight integrity check of the upload
         const quick = (await runSqlite3(tmpFile, "PRAGMA quick_check;")).trim();
