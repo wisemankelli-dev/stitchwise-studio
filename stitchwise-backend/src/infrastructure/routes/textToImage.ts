@@ -42,8 +42,11 @@ export function createTextToImageRouter(): Router {
         const { prompt, gridSize, premiumModel } = parsed.data;
         const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
-        // Style hints for embroidery-suitable artwork
-        const styleHints = "flat vector art, solid flat colors only, no gradients, no shading, no photorealistic details, clean simple shapes, clip art style, white background, suitable for cross-stitch embroidery pattern, needlepoint aesthetic";
+        // Style hints for embroidery-suitable artwork — VIBRANT, color-rich,
+        // subject-fills-frame. NO color-draining hints ("flat vector art, solid
+        // flat colors only, no gradients, no shading, white background" gutted
+        // colorful asks — owner 09-03 the floral stocking came out 5 browns).
+        const styleHints = "vibrant, saturated, colorful illustration, rich detail, elegant refined artwork, subject fills most of the frame, clean uncluttered backdrop, no text, no watermark, no border";
 
         const generateImage = (p: string) => generateImageWithDallE(p, styleHints, undefined, premium);
         const pattern = await generatePatternFromImage(

@@ -91,10 +91,18 @@ export async function imageBufferToStitchGrid(
   imageBuffer: Buffer,
   gridSize: number = DEFAULT_GRID_SIZE,
   maxColors: number = 24,
+  target?: { width: number; height: number },
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
   const size = gridSize >= 8 && gridSize <= 240 ? gridSize : DEFAULT_GRID_SIZE;
+  // Aspect-aware: when the caller supplies canvas dims (e.g. a 154×238 stocking
+  // canvas), produce a NON-SQUARE grid at those dims instead of always square.
+  // The frontend frames the returned grid by its own dims, so matching the
+  // canvas aspect directly fixes the 27%-fill bug (square art scaled into a
+  // narrow canvas leaves most cells outside the fitted bbox).
+  const outW = target?.width && target.width >= 8 && target.width <= 300 ? target.width : size;
+  const outH = target?.height && target.height >= 8 && target.height <= 300 ? target.height : size;
 
   // Step 0: Auto-crop the light background so the subject fills the grid
   // (recognizability fix — a small subject on a huge white field converts to
@@ -129,7 +137,7 @@ export async function imageBufferToStitchGrid(
   //   No dithering — every pixel is forced into one of maxColors solid regions.
   // Step 3: Extract raw pixels from the posterized image for DMC mapping.
   const posterizedPng = await sharp(workingBuffer)
-    .resize(size, size, {
+    .resize(outW, outH, {
       fit: "cover",
       position: "centre",
       kernel: sharp.kernel.lanczos3,
@@ -143,8 +151,8 @@ export async function imageBufferToStitchGrid(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Step 4: Delegate to the model-agnostic pixel→grid pipeline
-  return pixelsToStitchGrid(new Uint8Array(data), size);
+  // Step 4: Delegate to the model-agnostic pixel→grid pipeline (non-square aware)
+  return pixelsToStitchGrid(new Uint8Array(data), outW, undefined, outH);
 }
 
 /**

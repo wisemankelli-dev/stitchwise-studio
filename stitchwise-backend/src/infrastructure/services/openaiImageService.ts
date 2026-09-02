@@ -40,6 +40,7 @@ export async function generateImageWithGemini(
   styleHints?: string,
   userId?: string,
   premium = false,
+  aspectRatio: "1:1" | "2:3" | "3:4" | "9:16" | "16:9" = "1:1",
 ): Promise<{ url: string; buffer: Buffer } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -65,13 +66,14 @@ export async function generateImageWithGemini(
         model,
         attempt,
         originalPrompt: prompt,
+        aspectRatio,
       }));
       const res = await fetch(url, {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: enhancedPrompt }] }],
-          generationConfig: { imageConfig: { aspectRatio: "1:1" } },
+          generationConfig: { imageConfig: { aspectRatio } },
         }),
         signal: AbortSignal.timeout(90_000),
       });
@@ -145,6 +147,7 @@ export async function generateImageWithDallE(
   styleHints?: string,
   userId?: string,
   premium = false,
+  aspectRatio: "1:1" | "2:3" | "3:4" | "9:16" | "16:9" = "1:1",
 ): Promise<{ url: string; buffer: Buffer } | null> {
   if (!process.env.GEMINI_API_KEY) {
     console.error(JSON.stringify({
@@ -153,5 +156,5 @@ export async function generateImageWithDallE(
     }));
     return null;
   }
-  return generateImageWithGemini(prompt, styleHints, userId, premium);
+  return generateImageWithGemini(prompt, styleHints, userId, premium, aspectRatio);
 }
