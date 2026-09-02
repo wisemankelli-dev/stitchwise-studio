@@ -38,7 +38,7 @@ export interface User {
  * tier strings. Unknown values fall back to "Hobbyist".
  */
 export function mapBackendTier(tier: unknown): User['subscriptionTier'] {
-  const raw = typeof tier === 'string' ? tier.trim().toUpperCase() : '';
+  const raw = typeof tier === 'string' ? tier.trim().toUpperCase().replace(/[\s-]+/g, '_') : '';
   switch (raw) {
     case 'PRO':
     case 'PRO_CRAFTER':
