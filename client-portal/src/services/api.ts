@@ -32,6 +32,26 @@ export interface User {
   avatarUrl?: string;
 }
 
+/**
+ * Maps a backend tier value (e.g. "HOBBYIST" | "PRO" | "STUDIO", or the
+ * humanized "Pro Crafter" / "Design Studio") to the frontend User display
+ * tier strings. Unknown values fall back to "Hobbyist".
+ */
+export function mapBackendTier(tier: unknown): User['subscriptionTier'] {
+  const raw = typeof tier === 'string' ? tier.trim().toUpperCase() : '';
+  switch (raw) {
+    case 'PRO':
+    case 'PRO_CRAFTER':
+      return 'Pro Crafter';
+    case 'STUDIO':
+    case 'DESIGN_STUDIO':
+      return 'Design Studio';
+    case 'HOBBYIST':
+    default:
+      return 'Hobbyist';
+  }
+}
+
 export interface StitchRequest {
   paths: string;
   format: 'DST' | 'PES' | 'EXP';
@@ -702,11 +722,20 @@ class ApiClient {
   async getUserProfile(): Promise<User> {
     if (this.isLiveBackend) {
       try {
-        const response = await fetch(`${this.apiBaseUrl}/user/profile`, {
+        const response = await fetch(`${this.apiBaseUrl}/me`, {
           headers: this.getHeaders()
         });
         if (!response.ok) throw new Error('Failed to fetch user profile');
-        return await response.json();
+        const profile = await response.json();
+        const tier = mapBackendTier(profile.tier);
+        return {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          role: tier === 'Design Studio' ? 'studio_admin' : 'hobbyist',
+          subscriptionTier: tier,
+          avatarUrl: '🧵'
+        };
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }

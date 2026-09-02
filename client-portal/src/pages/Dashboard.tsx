@@ -17,8 +17,15 @@ export const Dashboard: React.FC = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const profile = await api.getUserProfile();
-        setActiveTier(profile.subscriptionTier);
+        // Profile fetch must never blank the whole Dashboard — a failure here
+        // only falls back to the default Hobbyist tier (owner-approved 09-03).
+        try {
+          const profile = await api.getUserProfile();
+          setActiveTier(profile.subscriptionTier);
+        } catch (profileErr) {
+          console.error('Error fetching user profile:', profileErr);
+          setActiveTier('Hobbyist');
+        }
 
         const projList = await api.getProjects();
         setProjects(projList);
