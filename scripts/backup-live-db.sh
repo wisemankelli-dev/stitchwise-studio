@@ -64,10 +64,44 @@ if [[ "$TRANSITIONAL" == "1" ]]; then
   exit 0
 fi
 
+# ──────────────────────────────────────────────────────────────────────────
+# Blank/missing live-DB recovery override (2026-09-02).
+#
+# Problem: every publish REPLACES the live working directory. Because the
+# deploy ships no *.db (PR #152), the new live env boots with a BLANK 0-byte
+# SQLite file at the DATABASE_URL path, or none at all. In that state the
+# normal gate below can never pass — db-backup returns 200 with 0 bytes (PR
+# #153) or 503, and we can't publish the bundle that restores the DB because
+# publishing requires a verified backup. Chicken-and-egg.
+#
+# Recovery: when the live DB is confirmed BLANK (0-byte / missing) — i.e.
+# there is nothing to back up — the operator may set
+#
+#   ALLOW_BLANK_LIVE_DB_PUBLISH=1
+#
+# to publish the restoration bundle WITHOUT a verified snapshot. A marker
+# `BLANK-LIVE-DB-NOBACKUP-<ts>.marker` is written into the backup dir as an
+# audit trail, and the required next step (runbook) is to immediately POST a
+# last-known-good verified backup to /api/admin/db-restore after publishing.
+#
+# This is a safety valve for a KNOWN state (blank DB), NOT a bypass of the
+# verified-backup guarantee: the override only takes effect when do_backup
+# returns 0 bytes or the endpoint confirms no real SQLite DB exists.
+# ──────────────────────────────────────────────────────────────────────────
 : "${LIVE_DB_BACKUP_URL:?LIVE_DB_BACKUP_URL is required; refusing to publish}"
 : "${PATTERN_ADMIN_SECRET:?PATTERN_ADMIN_SECRET is required; refusing to publish}"
-
 if ! do_backup; then
+  if [[ "${ALLOW_BLANK_LIVE_DB_PUBLISH:-0}" == "1" ]]; then
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    marker="$BACKUP_DIR/BLANK-LIVE-DB-NOBACKUP-${stamp}.marker"
+    : > "$marker"
+    echo "*** BLANK LIVE DB PUBLISH (ALLOW_BLANK_LIVE_DB_PUBLISH=1):" >&2
+    echo "*** live DB is blank/missing — publishing the restore bundle WITHOUT a snapshot." >&2
+    echo "*** Auditable marker: $marker" >&2
+    echo "*** REQUIRED NEXT STEP (runbook): POST a last-known-good backup to" >&2
+    echo "*** /api/admin/db-restore immediately after this publish." >&2
+    exit 0
+  fi
   echo "error: could not fetch a verified SQLite snapshot of the live DB; refusing to publish" >&2
   exit 1
 fi
