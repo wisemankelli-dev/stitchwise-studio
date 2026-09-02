@@ -78,12 +78,14 @@ function flattenGrid(grid: StitchCell[][]): string[][] {
  */
 function buildPatternResponse(pattern: PatternResult, extra: Record<string, unknown> = {}) {
   const flatGrid = flattenGrid(pattern.grid);
+  const gridH = flatGrid.length;
+  const gridW = flatGrid[0]?.length || 0;
   return {
     success: true,
     grid: flatGrid,
     stitchTypes: flatGrid.map(row => row.map(() => "cross")),
-    width: pattern.gridSize,
-    height: pattern.gridSize,
+    width: gridW || pattern.gridSize,
+    height: gridH || pattern.gridSize,
     dmcPalette: pattern.dmcColors.map((c, i) => ({
       code: c.code,
       name: c.name,
@@ -107,6 +109,112 @@ function clampToGridSize(raw: number): number {
     if (diff < minDiff) { minDiff = diff; closest = s; }
   }
   return closest;
+}
+
+/**
+ * Aspect-aware, vibrant prompt enrichment.
+ *
+ * Fixes (owner 09-03): "colorful floral stocking" came out 27% filled / 5
+ * browns, and "sunset beach scene → ornament" came out a blob. Root causes
+ * handled here:
+ *  1. NO color-draining hints — "flat vector art, solid flat colors only, no
+ *     gradients, no shading, white background" gutted vibrant asks. We append
+ *     VIBRANT, color-rich, subject-fills-shape guidance instead.
+ *  2. Product-shape fill — when a stocking/ornament/canvas shape is active,
+ *     we tell the model to fill that silhouette with the subject so coverage
+ *     stays dense (no large blank fabric).
+ *  3. Scene guard — "scene"/"beach"/"landscape"/"sunset" prompts get a
+ *     "landscape scene only, no people, no text" guard so a sunset becomes a
+ *     scene, not a person-blob.
+ */
+export function enrichAIPrompt(
+  prompt: string,
+  shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
+): { prompt: string; sceneGuardApplied: boolean; shapeHintApplied: boolean } {
+  const enriched: string[] = [prompt];
+  const lower = prompt.toLowerCase();
+  let sceneGuardApplied = false;
+  let shapeHintApplied = false;
+
+  // Vibrant / color-rich guidance (replaces the old color-draining hints).
+  enriched.push(
+    "vibrant, saturated, colorful illustration",
+    "bold rich colors in every area, no dull muddy tones",
+  );
+
+  // Product/paper shape fill — the art must cover the shape, not float on white.
+  if (shape === "stocking") {
+    enriched.push("tall vertical stocking shape completely filled with the subject, edge to edge, no blank space");
+    shapeHintApplied = true;
+  } else if (shape === "ornament") {
+    enriched.push("perfectly fill a circular ornament bauble with the subject, edge to edge, no empty corners");
+    shapeHintApplied = true;
+  } else if (shape === "pillow") {
+    enriched.push("perfectly fill a rounded square pillow with the subject, edge to edge, no empty corners");
+    shapeHintApplied = true;
+  } else if (shape === "square" || shape === "rect") {
+    enriched.push("subject fills the whole rectangular frame, edge to edge, no empty margins");
+    shapeHintApplied = true;
+  } else {
+    enriched.push("subject fills most of the frame");
+  }
+
+  // Scene guard — a beach/sunset/landscape is a SCENE, not a person portrait.
+  if (/\b(scene|beach|landscape|sunset|sunrise|seascape|mountain|forest|garden|street|city)\b/.test(lower)) {
+    enriched.push("landscape scene only, no people, no faces, no text, no watermark");
+    sceneGuardApplied = true;
+  }
+
+  return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied };
+}
+
+/** Map canvas dims to the closest Gemini-supported aspect ratio. */
+export function aspectFromCanvas(canvasWidth?: number, canvasHeight?: number): "1:1" | "2:3" | "3:4" | "9:16" | "16:9" {
+  if (!canvasWidth || !canvasHeight) return "1:1";
+  const ratio = canvasWidth / canvasHeight;
+  if (ratio < 0.6) return "9:16";       // very tall (stocking)
+  if (ratio < 0.8) return "2:3";        // tall
+  if (ratio < 1.3) return "1:1";        // roughly square
+  if (ratio < 1.8) return "3:4";        // wide-ish
+  return "16:9";                         // very wide
+}
+
+/**
+ * Quality gate for AI→pattern conversion (owner 09-03: mud/sparse grids were
+ * silently saved). Validates coverage (fill%) and color diversity after
+ * conversion. Returns a warning string when the conversion did NOT come out
+ * clean so the frontend can show it instead of silently saving a blob.
+ */
+export function qualityGate(
+  grid: StitchCell[][],
+  dmcColors: { hex: string; count: number }[],
+  prompt: string,
+): string | null {
+  const total = grid.length * (grid[0]?.length || 0);
+  if (total === 0) return "AI image did not convert to any stitches — try a more specific prompt";
+  // Count filled cells: a cell is "filled" when it has a color that is NOT the
+  // dominant background (light/white fabric reads as blank).
+  const bgHex = [...dmcColors].sort((a, b) => b.count - a.count)[0]?.hex?.toLowerCase() || "";
+  const isBackground = (hex: string) => {
+    const h = (hex || "").toLowerCase();
+    if (!h) return false;
+    if (h === bgHex) return true;
+    // Near-white / near-fabric tones count as background (DMC B5200 / 520 / white).
+    const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+    return r > 245 && g > 245 && b > 245;
+  };
+  let filled = 0;
+  for (const row of grid) for (const cell of row) if (cell?.color && !isBackground(cell.color)) filled++;
+  const fillPct = (filled / total) * 100;
+  const nonBgColors = [...new Set(grid.flat().map(c => c?.color).filter(c => c && !isBackground(c)))].length;
+  const warnings: string[] = [];
+  if (fillPct < 30) {
+    warnings.push(`only ${Math.round(fillPct)}% of the canvas is filled — the AI image did not cover the shape; try a more specific prompt`);
+  }
+  if (nonBgColors < 5) {
+    warnings.push(`only ${nonBgColors} distinct colors came through — the image may have converted muddy; try naming 2–3 key colors`);
+  }
+  return warnings.length ? warnings.join(" · ") : null;
 }
 
 /**
@@ -140,7 +248,7 @@ export function createAIEmbroideryRouter(): Router {
           return;
         }
 
-        const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches, premiumModel } = parsed.data;
+        const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches, premiumModel, canvasWidth, canvasHeight, aspectRatio: aspectRatioOpt, shape } = parsed.data;
         const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
         // Resolve fabric-aware grid size and color limit
@@ -152,6 +260,13 @@ export function createAIEmbroideryRouter(): Router {
           gridSize = clampToGridSize(rawStitches) as typeof rawGridSize;
         }
         const fabricInches = (gridSize || DEFAULT_GRID_SIZE) / fc;
+
+        // Aspect-aware generation: prefer the caller's canvas dims. When the
+        // canvas is tall (stocking 154×238) we generate TALL art instead of a
+        // square that gets framed into a narrow canvas (27% fill bug).
+        const aspect = aspectRatioOpt ?? aspectFromCanvas(canvasWidth, canvasHeight);
+        const genW = canvasWidth ?? gridSize ?? DEFAULT_GRID_SIZE;
+        const genH = canvasHeight ?? gridSize ?? DEFAULT_GRID_SIZE;
 
         // ── Priority 0: Procedural subject pattern (no AI) ──────────────────
         // Only bare known subject names use the procedural fast path. Any
@@ -238,38 +353,49 @@ export function createAIEmbroideryRouter(): Router {
           }
         }
         if (!pattern) {
-          // Slow AI path (DALL-E/gpt-image routinely takes 30-60s). Return
-          // 202 + jobId immediately and run the pipeline in the background so
-          // the platform gateway's ~30s upstream timeout is never hit.
+          // Slow AI path (Gemini routinely takes 30-60s). Return 202 + jobId
+          // immediately and run the pipeline in the background so the platform
+          // gateway's ~30s upstream timeout is never hit.
           const jobId = createAIJob(async () => {
             const userId = (req as any).user?.userId;
-            // The image service applies its own flat-illustration defaults.
-            // Keep the user's description intact so qualifiers reach OpenAI.
+            // Enrich the prompt: vibrant + shape-fill + scene guard, NO
+            // color-draining hints (owner 09-03: "flat colors/no gradients/
+            // white background" gutted colorful asks into 5 browns).
+            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied } = enrichAIPrompt(prompt, shape);
             console.error(JSON.stringify({
               event: "ai_prompt_sent",
               originalPrompt: prompt,
-              finalPrompt: prompt,
+              finalPrompt,
+              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect },
             }));
 
-            // Gemini (sole provider)
-            const dalleResult = await generateImageWithDallE(prompt, undefined, userId, premium);
+            // Gemini (sole provider) — aspect-aware art (tall for stocking).
+            const dalleResult = await generateImageWithDallE(finalPrompt, undefined, userId, premium, aspect);
             if (!dalleResult?.buffer) {
               throw new Error("AI generation returned no image");
             }
             const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-            // Fewer posterize colors for AI art: painterly shading collapses into the
-            // subject's identity colors (blue bird stays blue, branch stays brown)
-            // instead of gray-beige mud (owner: grid not an accurate representation).
-            // Posterize colors scale with fabric count (finer mesh = richer
-            // shading), floored at 12 (14ct) so painterly shading still
-            // collapses into identity colors instead of gray-beige mud.
-            const aiColorCap = Math.max(12, Math.round(maxColors * 0.8));
-            const grid = await imageBufferToStitchGrid(dalleResult.buffer, gridSize, Math.min(maxColors, aiColorCap));
+            // Color cap: floor higher than before so vibrant scenes keep
+            // enough colors (owner: sunset scene collapsed to 4 muddy colors
+            // at cap 6). Raise the floor to 16 so painterly shading collapses
+            // into identity colors instead of gray-beige mud.
+            const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
+            // Convert at the CANVAS aspect/size, not always square 200.
+            const grid = await imageBufferToStitchGrid(
+              dalleResult.buffer,
+              gridSize,
+              Math.min(maxColors, aiColorCap),
+              { width: genW, height: genH },
+            );
+            // Quality gate — warn (don't silently save) when the conversion
+            // came out sparse/muddy.
+            const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt);
             return buildPatternResponse(grid, {
-              promptUsed: prompt,
+              promptUsed: finalPrompt,
               processingTimeMs: 0,
               fabric: { count: fc, inches: +fabricInches.toFixed(2) },
               previewUrl: preview,
+              ...(qualityWarning ? { qualityWarning } : {}),
             });
           });
           res.status(202).json({ jobId });

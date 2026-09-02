@@ -56,24 +56,27 @@ export function pixelsToStitchGrid(
   rawPixels: Uint8Array,
   gridSize: number,
   prompt?: string,
+  height?: number,
 ): PatternResult {
   // Step 1: Quantize colors using the existing frequency-based reducer.
   // This does color clustering with a merge threshold to collapse near-identical
   // colors (photo noise, JPEG artifacts) into distinct embroidery colors.
-  const maxColors = Math.min(24, Math.max(5, Math.floor(gridSize * gridSize / 100)));
+  const widthPx = gridSize;
+  const heightPx = height ?? gridSize;
+  const maxColors = Math.min(24, Math.max(5, Math.floor(widthPx * heightPx / 100)));
   const quantizedColors = quantizePixels(rawPixels as unknown as Uint8ClampedArray, maxColors);
 
   // Step 2: Despeckle — remove isolated single pixels.
   // A pixel is isolated if none of its 4-connected neighbors share its quantized color.
   // Replace isolated pixels with the most frequent neighbor color.
-  const height = gridSize;
-  const width = gridSize;
+  const gridW = widthPx;
+  const gridH = heightPx;
 
   // Pre-compute quantized color index for each pixel for fast neighbor lookups
-  const pixelColorIdx = new Uint8Array(width * height);
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const idx = (row * width + col) * 4;
+  const pixelColorIdx = new Uint8Array(gridW * gridH);
+  for (let row = 0; row < gridH; row++) {
+    for (let col = 0; col < gridW; col++) {
+      const idx = (row * gridW + col) * 4;
       const r = rawPixels[idx];
       const g = rawPixels[idx + 1];
       const b = rawPixels[idx + 2];
@@ -88,22 +91,22 @@ export function pixelsToStitchGrid(
           bestIdx = qi;
         }
       }
-      pixelColorIdx[row * width + col] = bestIdx;
+      pixelColorIdx[row * gridW + col] = bestIdx;
     }
   }
 
   // Despeckle pass
   const cleanedColorIdx = new Uint8Array(pixelColorIdx);
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const curIdx = pixelColorIdx[row * width + col];
+  for (let row = 0; row < gridH; row++) {
+    for (let col = 0; col < gridW; col++) {
+      const curIdx = pixelColorIdx[row * gridW + col];
 
       // Gather 4-connected neighbors
       const neighbors: number[] = [];
-      if (row > 0) neighbors.push(pixelColorIdx[(row - 1) * width + col]);
-      if (row < height - 1) neighbors.push(pixelColorIdx[(row + 1) * width + col]);
-      if (col > 0) neighbors.push(pixelColorIdx[row * width + (col - 1)]);
-      if (col < width - 1) neighbors.push(pixelColorIdx[row * width + (col + 1)]);
+      if (row > 0) neighbors.push(pixelColorIdx[(row - 1) * gridW + col]);
+      if (row < gridH - 1) neighbors.push(pixelColorIdx[(row + 1) * gridW + col]);
+      if (col > 0) neighbors.push(pixelColorIdx[row * gridW + (col - 1)]);
+      if (col < gridW - 1) neighbors.push(pixelColorIdx[row * gridW + (col + 1)]);
 
       // Check if all neighbors are different from this pixel
       const allDifferent = neighbors.every(n => n !== curIdx);
@@ -121,7 +124,7 @@ export function pixelsToStitchGrid(
             bestN = n;
           }
         }
-        cleanedColorIdx[row * width + col] = bestN;
+        cleanedColorIdx[row * gridW + col] = bestN;
       }
     }
   }
@@ -130,10 +133,10 @@ export function pixelsToStitchGrid(
   const grid: StitchGrid = [];
   const dmcCountMap = new Map<string, { code: string; name: string; hex: string; count: number }>();
 
-  for (let row = 0; row < height; row++) {
+  for (let row = 0; row < gridH; row++) {
     const gridRow: StitchCell[] = [];
-    for (let col = 0; col < width; col++) {
-      const qi = cleanedColorIdx[row * width + col];
+    for (let col = 0; col < gridW; col++) {
+      const qi = cleanedColorIdx[row * gridW + col];
       const qc = quantizedColors[qi] ?? quantizedColors[0];
 
       const dmc = closestDmcColor(qc.r, qc.g, qc.b);
@@ -242,7 +245,7 @@ export function pixelsToStitchGrid(
   return {
     grid,
     gridSize,
-    stitchCount: gridSize * gridSize,
+    stitchCount: widthPx * heightPx,
     dmcColors,
     prompt,
   };

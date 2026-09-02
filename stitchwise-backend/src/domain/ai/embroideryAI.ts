@@ -71,6 +71,13 @@ export const TextToPatternSchema = z.object({
   fabricCount: z.number().int().refine((n) => [11, 14, 16, 18, 20].includes(n)).optional(),
   desiredInches: z.number().positive().max(30).optional(),
   premiumModel: z.boolean().optional(),
+  /** Canvas dims for aspect-aware generation (e.g. 154×238 stocking). */
+  canvasWidth: z.number().int().min(8).max(300).optional(),
+  canvasHeight: z.number().int().min(8).max(300).optional(),
+  /** Aspect ratio for the generated art ("1:1"|"2:3"|"3:4"|"9:16"|"16:9"). */
+  aspectRatio: z.enum(["1:1", "2:3", "3:4", "9:16", "16:9"]).optional(),
+  /** Product shape hint for prompt enrichment ("stocking"|"ornament"|"pillow"|"square"). */
+  shape: z.enum(["stocking", "ornament", "pillow", "square", "rect"]).optional(),
 });
 
 export const ImageToPatternSchema = z.object({
