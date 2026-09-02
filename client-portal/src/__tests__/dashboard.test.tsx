@@ -124,4 +124,21 @@ describe('Dashboard — My Patterns lists all project types', () => {
       expect(screen.getByText('0 created')).toBeTruthy();
     });
   });
+
+  it('still lists all project types when the profile fetch fails (non-fatal)', async () => {
+    // Simulate the pre-fix failure mode: the profile endpoint returns HTML
+    // (or any error). The Dashboard must NOT blank because of it.
+    vi.mocked(api.getUserProfile).mockRejectedValue(new Error('profile failed'));
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('My Cross Stitch')).toBeTruthy();
+      expect(screen.getByText('My Rooster Collage')).toBeTruthy();
+      expect(screen.getByText('My Star Quilt')).toBeTruthy();
+    });
+    expect(screen.getByText('3 created')).toBeTruthy();
+  });
 });
