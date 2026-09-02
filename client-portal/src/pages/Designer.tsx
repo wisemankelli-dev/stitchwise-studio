@@ -1498,12 +1498,22 @@ export const Designer: React.FC = () => {
           ? 'Generating with the premium art model — this can take 1–3 minutes…'
           : 'Generating your pattern — this usually takes about a minute…'
       );
+      // Map the preset guide type to the backend's accepted shape enum
+      // ('circle' → 'ornament', 'roundedRect' → 'pillow', 'rect' → 'rect',
+      //  'stocking' → 'stocking'). Sending the raw guide type (e.g. 'circle')
+      // would 400 the schema and fail AI generation (owner test 09-03).
+      const aiShape =
+        activeGuide?.type === 'circle'
+          ? 'ornament'
+          : activeGuide?.type === 'roundedRect'
+            ? 'pillow'
+            : activeGuide?.type; // 'rect' | 'stocking' | undefined
       const data = await api.generatePatternFromText(aiPrompt.trim(), {
         gridSize,
         fabricCount,
         canvasWidth: targetW,
         canvasHeight: targetH,
-        shape: activeGuide?.type,
+        shape: aiShape,
         premiumModel: premiumModel && isStudioTier ? true : undefined,
       });
       // Backend quality gate: if the image didn't convert cleanly, say so
