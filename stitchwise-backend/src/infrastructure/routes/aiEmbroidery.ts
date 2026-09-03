@@ -123,13 +123,30 @@ function clampToGridSize(raw: number): number {
  *  2. Product-shape fill — when a stocking/ornament/canvas shape is active,
  *     we tell the model to fill that silhouette with the subject so coverage
  *     stays dense (no large blank fabric).
- *  3. Scene guard — "scene"/"beach"/"landscape"/"sunset" prompts get a
+ *  3. Padding (owner 09-03 #2): a SQUARE or LANDSCAPE canvas is a FRAME, not
+ *     a cutout — the subject must stay fully inside with margins on every
+ *     side (5–10%), never bleeding to the edge ("teddy bear cut off top and
+ *     bottom"). PORTRAIT/tall canvases and explicit product shapes keep the
+ *     edge-to-edge fill phrase (that's what fixed the 27%-filled stocking).
+ *  4. Scene guard — "scene"/"beach"/"landscape"/"sunset" prompts get a
  *     "landscape scene only, no people, no text" guard so a sunset becomes a
  *     scene, not a person-blob.
  */
+
+/** True when the canvas should be treated as a frame with margins (square or
+ * landscape), as opposed to a product shape / tall canvas that fills. */
+export function isSquareOrLandscape(
+  canvasWidth?: number,
+  canvasHeight?: number,
+): boolean {
+  if (!canvasWidth || !canvasHeight) return true; // default square canvas → frame
+  return canvasWidth >= canvasHeight;               // 1:1 or wider
+}
+
 export function enrichAIPrompt(
   prompt: string,
   shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
+  opts?: { canvasWidth?: number; canvasHeight?: number },
 ): { prompt: string; sceneGuardApplied: boolean; shapeHintApplied: boolean } {
   const enriched: string[] = [prompt];
   const lower = prompt.toLowerCase();
@@ -142,7 +159,15 @@ export function enrichAIPrompt(
     "bold rich colors in every area, no dull muddy tones",
   );
 
-  // Product/paper shape fill — the art must cover the shape, not float on white.
+  // Product-shape fill — the art must cover the shape, not float on white.
+  // Tall/narrow canvases (stocking etc.) also fill edge-to-edge. But a
+  // SQUARE / LANDSCAPE canvas is a picture frame: keep the subject inside
+  // with comfortable margins so nothing gets cropped (owner: teddy bear cut
+  // off at top/bottom).
+  const isExplicitRect = shape === "square" || shape === "rect";
+  const isFrame = (isExplicitRect && isSquareOrLandscape(opts?.canvasWidth, opts?.canvasHeight)) ||
+    (!shape && isSquareOrLandscape(opts?.canvasWidth, opts?.canvasHeight));
+
   if (shape === "stocking") {
     enriched.push("tall vertical stocking shape completely filled with the subject, edge to edge, no blank space");
     shapeHintApplied = true;
@@ -152,7 +177,14 @@ export function enrichAIPrompt(
   } else if (shape === "pillow") {
     enriched.push("perfectly fill a rounded square pillow with the subject, edge to edge, no empty corners");
     shapeHintApplied = true;
+  } else if (isFrame) {
+    // Square/landscape canvas → frame with padding, never crop the subject.
+    enriched.push(
+      "subject fills the frame with comfortable padding and margins on all sides, the entire subject stays fully inside the canvas, nothing touches the edges, leave 5-10% margin around the subject, head not cropped at top, feet and hands not cropped at bottom",
+    );
+    shapeHintApplied = true;
   } else if (shape === "square" || shape === "rect") {
+    // Explicit square/rect shape with a TALL canvas → keep old fill behavior.
     enriched.push("subject fills the whole rectangular frame, edge to edge, no empty margins");
     shapeHintApplied = true;
   } else {
@@ -180,6 +212,44 @@ export function aspectFromCanvas(canvasWidth?: number, canvasHeight?: number): "
 }
 
 /**
+ * True when the subject of a SQUARE/LANDSCAPE (frame) canvas touches any
+ * canvas edge — the classic "cut off on the page" symptom (owner 09-03:
+ * teddy bear had 0px top/bottom margin). Only meaningful for frame canvases:
+ * product shapes (stocking/ornament/pillow) are SUPPOSED to fill edge-to-edge.
+ *
+ * Returns the touched edge(s) or null when the subject has margin everywhere.
+ */
+export function subjectTouchesEdge(
+  grid: StitchCell[][],
+  dmcColors: { hex: string; count: number }[],
+): "top" | "bottom" | "left" | "right" | null {
+  const rows = grid.length;
+  const cols = grid[0]?.length || 0;
+  if (rows < 3 || cols < 3) return null; // too small to judge
+  const bgHex = [...dmcColors].sort((a, b) => b.count - a.count)[0]?.hex?.toLowerCase() || "";
+  const isBackground = (hex: string) => {
+    const h = (hex || "").toLowerCase();
+    if (!h) return false;
+    if (h === bgHex) return true;
+    const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+    return r > 245 && g > 245 && b > 245;
+  };
+  const nonBg = (r: number, c: number) => {
+    const cell = grid[r]?.[c];
+    return !!cell?.color && !isBackground(cell.color);
+  };
+  // Check vertical edges (left/right) first, excluding corners so a fill
+  // that reaches a corner is still classified by its dominant edge.
+  for (let r = 1; r < rows - 1; r++) if (nonBg(r, 0)) return "left";
+  for (let r = 1; r < rows - 1; r++) if (nonBg(r, cols - 1)) return "right";
+  for (let c = 1; c < cols - 1; c++) if (nonBg(0, c)) return "top";
+  for (let c = 1; c < cols - 1; c++) if (nonBg(rows - 1, c)) return "bottom";
+  // Corner-only touches (rare): fall back to any edge.
+  if (nonBg(0, 0) || nonBg(0, cols - 1) || nonBg(rows - 1, 0) || nonBg(rows - 1, cols - 1)) return "top";
+  return null;
+}
+
+/**
  * Quality gate for AI→pattern conversion (owner 09-03: mud/sparse grids were
  * silently saved). Validates coverage (fill%) and color diversity after
  * conversion. Returns a warning string when the conversion did NOT come out
@@ -189,6 +259,7 @@ export function qualityGate(
   grid: StitchCell[][],
   dmcColors: { hex: string; count: number }[],
   prompt: string,
+  opts?: { frame?: boolean; canvasWidth?: number; canvasHeight?: number },
 ): string | null {
   const total = grid.length * (grid[0]?.length || 0);
   if (total === 0) return "AI image did not convert to any stitches — try a more specific prompt";
@@ -213,6 +284,15 @@ export function qualityGate(
   }
   if (nonBgColors < 5) {
     warnings.push(`only ${nonBgColors} distinct colors came through — the image may have converted muddy; try naming 2–3 key colors`);
+  }
+  // Frame-canvas margin check — this is the "cut off on the page" symptom
+  // (owner 09-03: teddy bear at 0px top/bottom). Only when opts.frame is
+  // true so product shapes (stocking/ornament/pillow, meant to fill) don't warn.
+  if (opts?.frame) {
+    const touched = subjectTouchesEdge(grid, dmcColors);
+    if (touched) {
+      warnings.push(`the subject touches the ${touched} edge of the canvas — it may look cut off in the pattern; try including a little margin around the subject`);
+    }
   }
   return warnings.length ? warnings.join(" · ") : null;
 }
@@ -361,12 +441,19 @@ export function createAIEmbroideryRouter(): Router {
             // Enrich the prompt: vibrant + shape-fill + scene guard, NO
             // color-draining hints (owner 09-03: "flat colors/no gradients/
             // white background" gutted colorful asks into 5 browns).
-            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied } = enrichAIPrompt(prompt, shape);
+            // Square/landscape canvases become a PADDED FRAME so the subject
+            // never bleeds to the edge (owner 09-03 #2: teddy bear cut off).
+            const isFrameCanvas = isSquareOrLandscape(genW, genH);
+            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied } = enrichAIPrompt(
+              prompt,
+              shape,
+              { canvasWidth: genW, canvasHeight: genH },
+            );
             console.error(JSON.stringify({
               event: "ai_prompt_sent",
               originalPrompt: prompt,
               finalPrompt,
-              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect },
+              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect, frame: isFrameCanvas },
             }));
 
             // Gemini (sole provider) — aspect-aware art (tall for stocking).
@@ -388,8 +475,13 @@ export function createAIEmbroideryRouter(): Router {
               { width: genW, height: genH },
             );
             // Quality gate — warn (don't silently save) when the conversion
-            // came out sparse/muddy.
-            const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt);
+            // came out sparse/muddy, OR (on frame canvases) the subject
+            // bleeds to an edge.
+            const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt, {
+              frame: isFrameCanvas,
+              canvasWidth: genW,
+              canvasHeight: genH,
+            });
             return buildPatternResponse(grid, {
               promptUsed: finalPrompt,
               processingTimeMs: 0,
