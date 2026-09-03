@@ -18,6 +18,8 @@ import {
   aspectFromCanvas,
   qualityGate,
   shouldUseProceduralPattern,
+  subjectTouchesEdge,
+  isSquareOrLandscape,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import type { StitchCell } from "../domain/stitch/types";
@@ -43,6 +45,72 @@ describe("enrichAIPrompt", () => {
   it("does not over-trigger a scene guard on plain subjects", () => {
     const { sceneGuardApplied } = enrichAIPrompt("a yellow sunflower");
     expect(sceneGuardApplied).toBe(false);
+  });
+
+  it("uses PADDING phrasing on a square canvas (100x100, no shape)", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("teddy bear with a blue sweater", undefined, {
+      canvasWidth: 100,
+      canvasHeight: 100,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("padding and margins on all sides");
+    expect(prompt).toContain("nothing touches the edges");
+    expect(prompt).toContain("head not cropped at top");
+    expect(prompt).toContain("feet and hands not cropped at bottom");
+    // The old edge-to-edge fill phrase must NOT be applied to square frames.
+    expect(prompt).not.toMatch(/edge to edge|edge-to-edge|no empty margins|no blank space/i);
+  });
+
+  it("uses PADDING phrasing on a landscape canvas with an explicit rect shape", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("sunset over the ocean", "rect", {
+      canvasWidth: 160,
+      canvasHeight: 90,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("padding and margins on all sides");
+    expect(prompt).not.toMatch(/edge to edge|edge-to-edge/i);
+  });
+
+  it("keeps FILL phrasing for a tall stocking canvas (154x238, stocking)", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("colorful floral stocking", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("tall vertical stocking shape completely filled");
+    expect(prompt).toContain("edge to edge");
+    expect(prompt).not.toContain("padding and margins");
+  });
+
+  it("keeps FILL phrasing for an explicit square/rect on a TALL canvas", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("mountain scene", "rect", {
+      canvasWidth: 100,
+      canvasHeight: 200,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("subject fills the whole rectangular frame, edge to edge, no empty margins");
+    expect(prompt).not.toContain("padding and margins");
+  });
+
+  it("defaults to PADDING for a square canvas when no dims are given", () => {
+    const { prompt } = enrichAIPrompt("cute cat");
+    expect(prompt).toContain("padding and margins on all sides");
+  });
+});
+
+// ─── isSquareOrLandscape ────────────────────────────────────────────────
+describe("isSquareOrLandscape", () => {
+  it("treats a square canvas as a frame", () => {
+    expect(isSquareOrLandscape(100, 100)).toBe(true);
+  });
+  it("treats a landscape canvas as a frame", () => {
+    expect(isSquareOrLandscape(160, 90)).toBe(true);
+  });
+  it("treats a tall canvas as NOT a frame", () => {
+    expect(isSquareOrLandscape(154, 238)).toBe(false);
+  });
+  it("defaults to frame when dims are absent", () => {
+    expect(isSquareOrLandscape()).toBe(true);
   });
 });
 
@@ -98,6 +166,77 @@ describe("qualityGate", () => {
     // Ensure the dominant color is NOT treated as the majority in a way that empties it.
     const warning = qualityGate(grid, dmc, "test");
     expect(warning).toBeNull();
+  });
+
+  it("warns when a FRAME-canvas subject touches the top edge (cut-off symptom)", () => {
+    const N = 10;
+    const g: StitchCell[][] = Array.from({ length: N }, () =>
+      Array.from({ length: N }, () => ({ color: "#ffffff" })),
+    );
+    // Fill the whole top row => subject touches the top edge.
+    for (let c = 0; c < N; c++) g[0][c].color = "#cc3333";
+    const dmc = [
+      { hex: "#ffffff", count: 90 },
+      { hex: "#cc3333", count: 10 },
+    ];
+    const warning = qualityGate(g, dmc, "teddy bear", { frame: true });
+    expect(warning).toMatch(/touches the top edge/);
+  });
+
+  it("does NOT warn about edges for a product shape (stocking fills edge-to-edge)", () => {
+    const N = 10;
+    const g: StitchCell[][] = Array.from({ length: N }, () =>
+      Array.from({ length: N }, () => ({ color: "#cc3333" })),
+    );
+    // Give it multiple colors so the only possible complaint would be edges.
+    const colors = ["#cc3333", "#3366cc", "#33cc66", "#cc9933", "#9933cc", "#66cccc"];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) g[r][c].color = colors[(r + c) % colors.length];
+    const dmc = colors.map((hex, i) => ({ hex, count: 90 - i * 10 }));
+    const warning = qualityGate(g, dmc, "colorful floral stocking", { frame: false });
+    // Edge check must NOT fire for product shapes; only fill/color warnings may.
+    if (warning) expect(warning).not.toMatch(/touches the .* edge/);
+  });
+});
+
+// ─── subjectTouchesEdge ─────────────────────────────────────────────────
+describe("subjectTouchesEdge", () => {
+  function frame(topFill = false, bottomFill = false, leftFill = false, rightFill = false): { grid: StitchCell[][]; dmc: { hex: string; count: number }[] } {
+    const N = 10;
+    const g: StitchCell[][] = Array.from({ length: N }, () =>
+      Array.from({ length: N }, () => ({ color: "#ffffff" })),
+    );
+    const red = "#cc3333";
+    if (topFill) for (let c = 0; c < N; c++) g[0][c].color = red;
+    if (bottomFill) for (let c = 0; c < N; c++) g[N - 1][c].color = red;
+    if (leftFill) for (let r = 0; r < N; r++) g[r][0].color = red;
+    if (rightFill) for (let r = 0; r < N; r++) g[r][N - 1].color = red;
+    return {
+      grid: g,
+      dmc: [
+        { hex: "#ffffff", count: 90 },
+        { hex: "#cc3333", count: 10 },
+      ],
+    };
+  }
+
+  it("returns null when the subject has margin on all sides", () => {
+    const { grid, dmc } = frame();
+    expect(subjectTouchesEdge(grid, dmc)).toBeNull();
+  });
+  it("detects a top-edge touch", () => {
+    const { grid, dmc } = frame(true);
+    expect(subjectTouchesEdge(grid, dmc)).toBe("top");
+  });
+  it("detects a bottom-edge touch", () => {
+    const { grid, dmc } = frame(false, true);
+    expect(subjectTouchesEdge(grid, dmc)).toBe("bottom");
+  });
+  it("detects a left-edge touch (corner blank so only the left edge fires)", () => {
+    const { grid, dmc } = frame();
+    // Fill column 0 for rows 1..N-1 (leave (0,0) blank).
+    const N = grid.length;
+    for (let r = 1; r < N; r++) grid[r][0].color = "#cc3333";
+    expect(subjectTouchesEdge(grid, dmc)).toBe("left");
   });
 });
 
