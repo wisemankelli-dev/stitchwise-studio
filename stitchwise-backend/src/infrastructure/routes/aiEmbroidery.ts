@@ -142,6 +142,27 @@ export function isSquareOrLandscape(
   if (!canvasWidth || !canvasHeight) return true; // default square canvas → frame
   return canvasWidth >= canvasHeight;               // 1:1 or wider
 }
+/**
+ * True when this request is a PICTURE FRAME (needs margins) rather than a
+ * product shape (stocking/ornament/pillow — meant to fill edge-to-edge).
+ * A canvas is a frame ONLY for the explicit 'rect'/'square' shape on a
+ * square/landscape canvas, or for NO shape on a square/landscape canvas.
+ * Explicit product shapes are NEVER frames even when the canvas is square
+ * (e.g. a 3″×3″ ornament preset is 42×42 → NOT a frame; it fills the bauble).
+ * This is the SINGLE source of truth used by enrichAIPrompt, the converter
+ * margin band, and the quality gate so they cannot drift apart (owner 09-03
+ * #4: ornament was misclassified as a frame → contain margins shrunk the
+ * subject at 42 cells → frontend circle clip → unrecognisable blob).
+ */
+export function isFrameCanvas(
+  shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
+  canvasWidth?: number,
+  canvasHeight?: number,
+): boolean {
+  const isExplicitRect = shape === "square" || shape === "rect";
+  return (isExplicitRect && isSquareOrLandscape(canvasWidth, canvasHeight)) ||
+    (!shape && isSquareOrLandscape(canvasWidth, canvasHeight));
+}
 
 export function enrichAIPrompt(
   prompt: string,
@@ -165,8 +186,7 @@ export function enrichAIPrompt(
   // with comfortable margins so nothing gets cropped (owner: teddy bear cut
   // off at top/bottom).
   const isExplicitRect = shape === "square" || shape === "rect";
-  const isFrame = (isExplicitRect && isSquareOrLandscape(opts?.canvasWidth, opts?.canvasHeight)) ||
-    (!shape && isSquareOrLandscape(opts?.canvasWidth, opts?.canvasHeight));
+  const isFrame = isFrameCanvas(shape, opts?.canvasWidth, opts?.canvasHeight);
 
   if (shape === "stocking") {
     enriched.push("tall vertical stocking shape completely filled with the subject, edge to edge, no blank space");
@@ -443,7 +463,10 @@ export function createAIEmbroideryRouter(): Router {
             // white background" gutted colorful asks into 5 browns).
             // Square/landscape canvases become a PADDED FRAME so the subject
             // never bleeds to the edge (owner 09-03 #2: teddy bear cut off).
-            const isFrameCanvas = isSquareOrLandscape(genW, genH);
+            // Explicit product shapes (shoes/ornament/pillow) are NEVER frames
+            // even on square canvases — they fill edge-to-edge (owner 09-03 #4:
+            // the 42×42 ornament was wrongly framed → blob after circle clip).
+            const isFrameCanvasResult = isFrameCanvas(shape, genW, genH);
             const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied } = enrichAIPrompt(
               prompt,
               shape,
@@ -453,7 +476,7 @@ export function createAIEmbroideryRouter(): Router {
               event: "ai_prompt_sent",
               originalPrompt: prompt,
               finalPrompt,
-              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect, frame: isFrameCanvas },
+              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect, frame: isFrameCanvasResult },
             }));
 
             // Gemini (sole provider) — aspect-aware art (tall for stocking).
@@ -476,13 +499,13 @@ export function createAIEmbroideryRouter(): Router {
               gridSize,
               Math.min(maxColors, aiColorCap),
               { width: genW, height: genH },
-              { margin: isFrameCanvas },
+              { margin: isFrameCanvasResult },
             );
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject
             // bleeds to an edge.
             const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt, {
-              frame: isFrameCanvas,
+              frame: isFrameCanvasResult,
               canvasWidth: genW,
               canvasHeight: genH,
             });

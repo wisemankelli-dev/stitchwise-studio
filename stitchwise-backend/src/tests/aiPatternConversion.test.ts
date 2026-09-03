@@ -20,6 +20,7 @@ import {
   shouldUseProceduralPattern,
   subjectTouchesEdge,
   isSquareOrLandscape,
+  isFrameCanvas,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import type { StitchCell } from "../domain/stitch/types";
@@ -111,6 +112,34 @@ describe("isSquareOrLandscape", () => {
   });
   it("defaults to frame when dims are absent", () => {
     expect(isSquareOrLandscape()).toBe(true);
+  });
+});
+
+// ─── isFrameCanvas (single source of truth: prompt + converter + gate) ──
+describe("isFrameCanvas", () => {
+  it("no shape + square 100×100 → frame (teddy case)", () => {
+    expect(isFrameCanvas(undefined, 100, 100)).toBe(true);
+  });
+  it("no shape + tall 154×238 → NOT frame", () => {
+    expect(isFrameCanvas(undefined, 154, 238)).toBe(false);
+  });
+  it("ornament 42×42 → NOT frame (fills the bauble edge-to-edge; owner 09-03 blob)", () => {
+    expect(isFrameCanvas("ornament", 42, 42)).toBe(false);
+  });
+  it("stocking 154×238 → NOT frame", () => {
+    expect(isFrameCanvas("stocking", 154, 238)).toBe(false);
+  });
+  it("pillow 100×100 → NOT frame", () => {
+    expect(isFrameCanvas("pillow", 100, 100)).toBe(false);
+  });
+  it("explicit rect 100×100 → frame", () => {
+    expect(isFrameCanvas("rect", 100, 100)).toBe(true);
+  });
+  it("explicit square 100×100 → frame", () => {
+    expect(isFrameCanvas("square", 100, 100)).toBe(true);
+  });
+  it("explicit rect on a TALL canvas → NOT frame (edge-fill, backward-compat)", () => {
+    expect(isFrameCanvas("rect", 100, 200)).toBe(false);
   });
 });
 
