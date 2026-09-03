@@ -92,6 +92,7 @@ export async function imageBufferToStitchGrid(
   gridSize: number = DEFAULT_GRID_SIZE,
   maxColors: number = 24,
   target?: { width: number; height: number },
+  opts?: { margin?: boolean },
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
@@ -103,6 +104,20 @@ export async function imageBufferToStitchGrid(
   // narrow canvas leaves most cells outside the fitted bbox).
   const outW = target?.width && target.width >= 8 && target.width <= 300 ? target.width : size;
   const outH = target?.height && target.height >= 8 && target.height <= 300 ? target.height : size;
+  // Deterministic margin band (owner 09-03 #3 — "teddy bear STILL cut off"):
+  // prompting the model for margins is not enough — Gemini draws edge-to-edge
+  // and a full-bleed source has nothing for a trim+contain re-pad to work with.
+  // So when the route asks (frame / square-or-landscape canvas), blank the
+  // outer band AFTER posterization and BEFORE DMC mapping. White-pixel cells
+  // merge into the existing light-fabric entry in pixelsToStitchGrid, so DMC
+  // counts stay consistent and no new color appears. The band is deterministic
+  // — a visible margin regardless of what the model drew.
+  // Product shapes / TALL canvases (stocking/ornament/pillow, meant to fill
+  // edge-to-edge) never get a band.
+  const marginPx =
+    opts?.margin === true && outW >= outH
+      ? Math.max(2, Math.round(0.06 * Math.min(outW, outH)))
+      : 0;
 
   // Step 0: Auto-crop the light background so the subject fills the grid
   // (recognizability fix — a small subject on a huge white field converts to
@@ -151,8 +166,27 @@ export async function imageBufferToStitchGrid(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
+  // Deterministic margin band: blank the outer marginPx cells on all four
+  // sides to pure white (light fabric). Done on RAW RGBA pixels BEFORE the
+  // DMC mapping so the band merges into the existing white/background entry
+  // and stitch counts stay consistent (no phantom new DMC color).
+  const banded = new Uint8Array(data);
+  if (marginPx > 0) {
+    for (let row = 0; row < outH; row++) {
+      for (let col = 0; col < outW; col++) {
+        if (row < marginPx || row >= outH - marginPx || col < marginPx || col >= outW - marginPx) {
+          const idx = (row * outW + col) * 4;
+          banded[idx] = 255;
+          banded[idx + 1] = 255;
+          banded[idx + 2] = 255;
+          banded[idx + 3] = 255;
+        }
+      }
+    }
+  }
+
   // Step 4: Delegate to the model-agnostic pixel→grid pipeline (non-square aware)
-  return pixelsToStitchGrid(new Uint8Array(data), outW, undefined, outH);
+  return pixelsToStitchGrid(banded, outW, undefined, outH);
 }
 
 /**

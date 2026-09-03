@@ -261,4 +261,49 @@ describe("imageBufferToStitchGrid (aspect-aware)", () => {
     expect(result.grid.length).toBe(100);
     expect(result.grid[0].length).toBe(100);
   });
+
+  it("FORCES a blank margin band on frame canvases even when the source is full-bleed (teddy-bear STILL cut off regression)", async () => {
+    // 300×300 SOLID RED — no white margin at all, exactly the "model ignored
+    // the margin prompt" case the lead repro'd (100×100 grid, rows 0–99,
+    // cols 0–99 all non-white, 0px margin). The deterministic band must still
+    // appear: outer ~6 cells (max(2, round(6% of 100)) = 6) become background.
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 100, 24, { width: 100, height: 100 }, { margin: true });
+    const n = result.grid.length;
+    const isWhiteBg = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return r > 245 && g > 245 && b > 245;
+    };
+    // The whole outer band (6 cells on all four sides) must be background.
+    for (let i = 0; i < 6; i++) {
+      for (let c = 0; c < n; c++) {
+        expect(isWhiteBg(result.grid[i][c].color)).toBe(true);        // top rows 0..5
+        expect(isWhiteBg(result.grid[n - 1 - i][c].color)).toBe(true); // bottom rows 93..98
+      }
+      for (let r = 0; r < n; r++) {
+        expect(isWhiteBg(result.grid[r][i].color)).toBe(true);          // left cols 0..5
+        expect(isWhiteBg(result.grid[r][n - 1 - i].color)).toBe(true);  // right cols 93..98
+      }
+    }
+    // The main subject is still present in the interior (not wiped out).
+    const mid = Math.floor(n / 2);
+    expect(isWhiteBg(result.grid[mid][mid].color)).toBe(false);
+  });
+
+  it("does NOT add a margin band to TALL/product canvases (stocking stays edge-to-edge)", async () => {
+    // Tall 154×238 stocking target, solid red source — edge-to-edge fill must
+    // be preserved: outer cells are NOT forced to background when margin:false
+    // (and a tall canvas never gets a band even if margin:true).
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 200, 24, { width: 154, height: 238 }, { margin: true });
+    expect(result.grid.length).toBe(238);
+    expect(result.grid[0].length).toBe(154);
+    // Top-left and bottom-right corners stay colored (red), NOT forced white.
+    const isWhiteBg = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return r > 245 && g > 245 && b > 245;
+    };
+    expect(isWhiteBg(result.grid[0][0].color)).toBe(false);
+    expect(isWhiteBg(result.grid[237][153].color)).toBe(false);
+  });
 });

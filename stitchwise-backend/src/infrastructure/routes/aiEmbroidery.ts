@@ -468,11 +468,15 @@ export function createAIEmbroideryRouter(): Router {
             // into identity colors instead of gray-beige mud.
             const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
             // Convert at the CANVAS aspect/size, not always square 200.
+            // Frame canvases (square/landscape) get the deterministic margin
+            // band so the subject always sits inside a visible border — the
+            // model may ignore the margin prompt, so we enforce it in the grid.
             const grid = await imageBufferToStitchGrid(
               dalleResult.buffer,
               gridSize,
               Math.min(maxColors, aiColorCap),
               { width: genW, height: genH },
+              { margin: isFrameCanvas },
             );
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject
