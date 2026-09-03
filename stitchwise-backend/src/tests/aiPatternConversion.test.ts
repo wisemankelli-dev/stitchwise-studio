@@ -335,4 +335,24 @@ describe("imageBufferToStitchGrid (aspect-aware)", () => {
     expect(isWhiteBg(result.grid[0][0].color)).toBe(false);
     expect(isWhiteBg(result.grid[237][153].color)).toBe(false);
   });
+  it("does NOT add a margin band to 42×42 ornament dims (shape 'ornament', margin:false — the ornament blob path)", async () => {
+    // 42×42 Ornament preset is SQUARE but is NOT a frame (product shape fills
+    // edge-to-edge). The route now sends { margin: isFrameCanvasResult } =
+    // false for the ornament, so the converter must NOT band — corners stay
+    // colored so the subject fills the bauble instead of shrinking into a
+    // tiny box that the frontend circle-clip turns into a blob.
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 100, 24, { width: 42, height: 42 }, { margin: false });
+    expect(result.grid.length).toBe(42);
+    expect(result.grid[0].length).toBe(42);
+    const isWhiteBg = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return r > 245 && g > 245 && b > 245;
+    };
+    // All four corners stay colored (red) — no band, edge-to-edge fill.
+    expect(isWhiteBg(result.grid[0][0].color)).toBe(false);
+    expect(isWhiteBg(result.grid[0][41].color)).toBe(false);
+    expect(isWhiteBg(result.grid[41][0].color)).toBe(false);
+    expect(isWhiteBg(result.grid[41][41].color)).toBe(false);
+  });
 });
