@@ -473,6 +473,7 @@ export function createAIEmbroideryRouter(): Router {
               gridSize,
               Math.min(maxColors, aiColorCap),
               { width: genW, height: genH },
+              { margin: isFrameCanvas },
             );
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject

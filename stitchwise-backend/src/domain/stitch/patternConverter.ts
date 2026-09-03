@@ -92,6 +92,7 @@ export async function imageBufferToStitchGrid(
   gridSize: number = DEFAULT_GRID_SIZE,
   maxColors: number = 24,
   target?: { width: number; height: number },
+  opts?: { margin?: boolean },
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
@@ -104,9 +105,25 @@ export async function imageBufferToStitchGrid(
   const outW = target?.width && target.width >= 8 && target.width <= 300 ? target.width : size;
   const outH = target?.height && target.height >= 8 && target.height <= 300 ? target.height : size;
 
+  // Frame vs product-shape canvas (owner 09-03 #2 + lead add-on 09-03):
+  // - FRAME canvases (square/landscape: 1:1 or outW >= outH, incl. no target)
+  //   must keep the WHOLE subject inside with padding/margins — the teddy-bear
+  //   and snowman-in-the-ornament regressions were both caused by trim+cover
+  //   cropping the subject to its bbox and stretching it edge-to-edge (0px
+  //   margins, mud at 42/70 sizes). So: softer trim (nothing removed when the
+  //   subject already has a natural margin) + fit:"contain" re-padded to the
+  //   full canvas.
+  // - TALL/PRODUCT canvases (portrait, or explicit stocking 154×238 etc.) keep
+  //   the aggressive white trim + fit:"cover" — the stocking fix that made the
+  //   27%-fill pattern dense must stay intact.
+  const frameCanvas = opts?.margin !== false && outW >= outH;
+
   // Step 0: Auto-crop the light background so the subject fills the grid
   // (recognizability fix — a small subject on a huge white field converts to
   // an unreadable pattern). Also boost saturation so colors separate cleanly.
+  // For frame canvases the trim is only kept when the subject fills ~all of
+  // the image (>= 85%): trimming a subject that already has white margins
+  // would re-introduce edge-bleed after the contain resize re-pads it.
   let workingBuffer = imageBuffer;
   try {
     const meta = await sharp(imageBuffer).metadata();
@@ -120,7 +137,8 @@ export async function imageBufferToStitchGrid(
     const th = trimmed.info.height;
     // Keep the trim only if most of the image survives — a genuinely small
     // subject (e.g. a white bird on white) would be eaten by the trim.
-    if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
+    const survival = ow > 0 && oh > 0 ? Math.min(tw / ow, th / oh) : 0;
+    if (frameCanvas ? survival >= 0.85 : survival >= 0.6) {
       workingBuffer = trimmed.data;
     }
   } catch {
@@ -131,6 +149,9 @@ export async function imageBufferToStitchGrid(
   // downscaling — each stitch cell reflects the average of its source region,
   // preserving the subject's shape and hues (nearest-neighbor sampling caused
   // aliased, blocky patterns and dropped colors).
+  // Frame canvases use fit:"contain" so the whole subject fits inside with
+  // margins (white letterbox re-pads the canvas); tall/product canvases keep
+  // fit:"cover" to fill the shape edge-to-edge.
   // Step 2: Posterize to exactly maxColors flat colors via PNG palette quantization.
   //   This eliminates gradient artifacts and shadow-edge pixels that would otherwise
   //   map to random/wrong DMC threads (e.g. violet edge pixels on yellow petals).
@@ -138,7 +159,7 @@ export async function imageBufferToStitchGrid(
   // Step 3: Extract raw pixels from the posterized image for DMC mapping.
   const posterizedPng = await sharp(workingBuffer)
     .resize(outW, outH, {
-      fit: "cover",
+      fit: frameCanvas ? "contain" : "cover",
       position: "centre",
       kernel: sharp.kernel.lanczos3,
     })

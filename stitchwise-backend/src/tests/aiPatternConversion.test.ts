@@ -261,4 +261,33 @@ describe("imageBufferToStitchGrid (aspect-aware)", () => {
     expect(result.grid.length).toBe(100);
     expect(result.grid[0].length).toBe(100);
   });
+
+  it("square canvas uses contain — subject keeps margins, never touches an edge (teddy-bear regression)", async () => {
+    // 300×300 white canvas with a 100×100 red square centered (same fixture as the
+    // stocking test). On a SQUARE frame the old trim+cover cropped the red square
+    // to its bbox and stretched it to all four edges; contain must preserve a margin.
+    const redSquare = Buffer.from(await sharp({ create: { width: 100, height: 100, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer());
+    const png = await sharp({
+      create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    }).composite([{ input: redSquare, left: 100, top: 100 }]).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 100, 24, { width: 100, height: 100 });
+    const n = result.grid.length;
+    const isRed = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      return r > 150 && g < 100;
+    };
+    // No red subject on any edge row/column (margin preserved on all sides)
+    for (let c = 0; c < n; c++) {
+      expect(isRed(result.grid[0][c].color)).toBe(false);
+      expect(isRed(result.grid[n - 1][c].color)).toBe(false);
+    }
+    for (let r = 0; r < n; r++) {
+      expect(isRed(result.grid[r][0].color)).toBe(false);
+      expect(isRed(result.grid[r][n - 1].color)).toBe(false);
+    }
+    // ...and the subject is still present in the middle (not cropped away)
+    const mid = Math.floor(n / 2);
+    expect(isRed(result.grid[mid][mid].color)).toBe(true);
+  });
 });
