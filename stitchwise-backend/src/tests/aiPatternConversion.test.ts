@@ -20,6 +20,7 @@ import {
   shouldUseProceduralPattern,
   subjectTouchesEdge,
   isSquareOrLandscape,
+  isFrameCanvas,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import type { StitchCell } from "../domain/stitch/types";
@@ -111,6 +112,34 @@ describe("isSquareOrLandscape", () => {
   });
   it("defaults to frame when dims are absent", () => {
     expect(isSquareOrLandscape()).toBe(true);
+  });
+});
+
+// ─── isFrameCanvas (single source of truth: prompt + converter + gate) ──
+describe("isFrameCanvas", () => {
+  it("no shape + square 100×100 → frame (teddy case)", () => {
+    expect(isFrameCanvas(undefined, 100, 100)).toBe(true);
+  });
+  it("no shape + tall 154×238 → NOT frame", () => {
+    expect(isFrameCanvas(undefined, 154, 238)).toBe(false);
+  });
+  it("ornament 42×42 → NOT frame (fills the bauble edge-to-edge; owner 09-03 blob)", () => {
+    expect(isFrameCanvas("ornament", 42, 42)).toBe(false);
+  });
+  it("stocking 154×238 → NOT frame", () => {
+    expect(isFrameCanvas("stocking", 154, 238)).toBe(false);
+  });
+  it("pillow 100×100 → NOT frame", () => {
+    expect(isFrameCanvas("pillow", 100, 100)).toBe(false);
+  });
+  it("explicit rect 100×100 → frame", () => {
+    expect(isFrameCanvas("rect", 100, 100)).toBe(true);
+  });
+  it("explicit square 100×100 → frame", () => {
+    expect(isFrameCanvas("square", 100, 100)).toBe(true);
+  });
+  it("explicit rect on a TALL canvas → NOT frame (edge-fill, backward-compat)", () => {
+    expect(isFrameCanvas("rect", 100, 200)).toBe(false);
   });
 });
 
@@ -260,5 +289,50 @@ describe("imageBufferToStitchGrid (aspect-aware)", () => {
     const result = await imageBufferToStitchGrid(png, 100, 24);
     expect(result.grid.length).toBe(100);
     expect(result.grid[0].length).toBe(100);
+  });
+
+  it("FORCES a blank margin band on frame canvases even when the source is full-bleed (teddy-bear STILL cut off regression)", async () => {
+    // 300×300 SOLID RED — no white margin at all, exactly the "model ignored
+    // the margin prompt" case the lead repro'd (100×100 grid, rows 0–99,
+    // cols 0–99 all non-white, 0px margin). The deterministic band must still
+    // appear: outer ~6 cells (max(2, round(6% of 100)) = 6) become background.
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 100, 24, { width: 100, height: 100 }, { margin: true });
+    const n = result.grid.length;
+    const isWhiteBg = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return r > 245 && g > 245 && b > 245;
+    };
+    // The whole outer band (6 cells on all four sides) must be background.
+    for (let i = 0; i < 6; i++) {
+      for (let c = 0; c < n; c++) {
+        expect(isWhiteBg(result.grid[i][c].color)).toBe(true);        // top rows 0..5
+        expect(isWhiteBg(result.grid[n - 1 - i][c].color)).toBe(true); // bottom rows 93..98
+      }
+      for (let r = 0; r < n; r++) {
+        expect(isWhiteBg(result.grid[r][i].color)).toBe(true);          // left cols 0..5
+        expect(isWhiteBg(result.grid[r][n - 1 - i].color)).toBe(true);  // right cols 93..98
+      }
+    }
+    // The main subject is still present in the interior (not wiped out).
+    const mid = Math.floor(n / 2);
+    expect(isWhiteBg(result.grid[mid][mid].color)).toBe(false);
+  });
+
+  it("does NOT add a margin band to TALL/product canvases (stocking stays edge-to-edge)", async () => {
+    // Tall 154×238 stocking target, solid red source — edge-to-edge fill must
+    // be preserved: outer cells are NOT forced to background when margin:false
+    // (and a tall canvas never gets a band even if margin:true).
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 200, 24, { width: 154, height: 238 }, { margin: true });
+    expect(result.grid.length).toBe(238);
+    expect(result.grid[0].length).toBe(154);
+    // Top-left and bottom-right corners stay colored (red), NOT forced white.
+    const isWhiteBg = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return r > 245 && g > 245 && b > 245;
+    };
+    expect(isWhiteBg(result.grid[0][0].color)).toBe(false);
+    expect(isWhiteBg(result.grid[237][153].color)).toBe(false);
   });
 });
