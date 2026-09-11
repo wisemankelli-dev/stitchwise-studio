@@ -10,8 +10,14 @@
  *  4. qualityGate — sparse/muddy grids warn; dense grids pass.
  *  5. imageBufferToStitchGrid non-square target — returns grid at canvas dims
  *     (aspect-aware) so the frontend framing keeps dense coverage.
+ *  6. imageBufferToStitchGrid SUBJECT-AWARE margin band (owner 09-11 "teddy
+ *     bear STILL cut off") — the band must preserve the WHOLE subject (scale +
+ *     recentre about the canvas centre) instead of blindly erasing the outer
+ *     ring (which amputated 16% of the teddy: 7142 → 6025 cells).
  */
 import { describe, it, expect } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import sharp from "sharp";
 import {
   enrichAIPrompt,
@@ -354,5 +360,89 @@ describe("imageBufferToStitchGrid (aspect-aware)", () => {
     expect(isWhiteBg(result.grid[0][41].color)).toBe(false);
     expect(isWhiteBg(result.grid[41][0].color)).toBe(false);
     expect(isWhiteBg(result.grid[41][41].color)).toBe(false);
+  });
+});
+
+// ─── subject-aware margin band (owner 09-11 "teddy STILL cut off") ───────
+describe("imageBufferToStitchGrid (subject-aware margin band)", () => {
+  // Foreground = a cell whose color is NOT the light-fabric/background DMC
+  // entry. The pipeline merges light + low-saturation colors (max>=190 &&
+  // (max-min)/max<=0.2) into DMC White 520 — using a naive "non-white" test
+  // would count the near-white background halo as subject and hide the cut
+  // (exactly what the 09-03 verification missed). Mirror that halo rule here.
+  const isLightFabricHex = (hex: string): boolean => {
+    const h = (hex || "").toLowerCase();
+    if (!h || h.length < 7) return false;
+    const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+    if (r > 245 && g > 245 && b > 245) return true;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    return max >= 190 && (max - min) / max <= 0.2;
+  };
+  const fgBbox = (grid: StitchCell[][]) => {
+    const rows = grid.length, cols = grid[0]?.length || 0;
+    let top = rows, bottom = -1, left = cols, right = -1, count = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = grid[r][c];
+        if (cell?.color && !isLightFabricHex(cell.color)) {
+          count++;
+          if (r < top) top = r;
+          if (r > bottom) bottom = r;
+          if (c < left) left = c;
+          if (c > right) right = c;
+        }
+      }
+    }
+    return {
+      top, bottom, left, right, count,
+      margins: { top, bottom: rows - 1 - bottom, left, right: cols - 1 - right },
+      bbox: { w: right - left + 1, h: bottom - top + 1 },
+    };
+  };
+
+  it("keeps the WHOLE teddy inside the 6-cell band instead of amputating it (owner 09-11 fixture)", async () => {
+    // Real Gemini output behind the owner's "teddy bear with a blue sweater"
+    // save (2026-09-11). It is JPEG bytes despite the .png name — sharp
+    // auto-detects by content. The source genuinely has margins (bbox margins
+    // L11.6/R9.7/T8.1/B5.3% at 1024×1024); the 09-03 blind band erased the
+    // parts that reached the 6-cell ring (subject count 7142 → 6025, -16%).
+    const fixture = readFileSync(join(__dirname, "fixtures", "teddy_source_1024.png"));
+    const result = await imageBufferToStitchGrid(fixture, 100, 24, { width: 100, height: 100 }, { margin: true });
+    expect(result.grid.length).toBe(100);
+    expect(result.grid[0].length).toBe(100);
+    const fg = fgBbox(result.grid);
+    // The subject must sit fully inside the band with >= 6 cells on every
+    // side (marginPx = max(2, round(0.06 * 100)) = 6).
+    expect(fg.margins.top).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.bottom).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.left).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.right).toBeGreaterThanOrEqual(6);
+    // The subject is preserved at its TRUE size (measured 77×84 of 100).
+    // A re-trim regression would zoom the bear full-bleed and cut it to the
+    // 88×88 band (foreground margins exactly 6/6/6/6, bbox 88×88) — this
+    // bbox tolerance is the regression guard that fails on the old behavior.
+    expect(fg.bbox.w).toBeLessThanOrEqual(85);
+    expect(fg.bbox.h).toBeLessThanOrEqual(85);
+    // Nothing of the subject erased: measured 4337 subject cells remain
+    // (>= 95% of the ~4337 pre-band count in this subject-aware pipeline —
+    // the band no longer overlaps any subject pixel), well above the
+    // quality-gate 30% fill floor, and the canvas center is still the bear.
+    expect(fg.count).toBeGreaterThanOrEqual(4000);
+    const mid = Math.floor(result.grid.length / 2);
+    expect(isLightFabricHex(result.grid[mid][mid].color)).toBe(false);
+  });
+
+  it("regression guard: the unbanded trimmed baseline still reaches the canvas edge (a blind band would cut it)", async () => {
+    // Same fixture WITHOUT the margin path: the auto-crop trim zooms the bear
+    // to full-bleed (foreground margins 0 on every side) — which is exactly
+    // why the pre-fix blind band could not be applied without erasing part of
+    // the subject (7142 → 6025, -16%). This asserts the symptom the fix must
+    // keep solving, and it fails (margins < 6) if someone reintroduces trim
+    // on the margin path without the subject-aware scale.
+    const fixture = readFileSync(join(__dirname, "fixtures", "teddy_source_1024.png"));
+    const baseline = await imageBufferToStitchGrid(fixture, 100, 24, { width: 100, height: 100 }, { margin: false });
+    const fg = fgBbox(baseline.grid);
+    const minMargin = Math.min(fg.margins.top, fg.margins.bottom, fg.margins.left, fg.margins.right);
+    expect(minMargin).toBeLessThan(6);
   });
 });

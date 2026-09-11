@@ -104,14 +104,16 @@ export async function imageBufferToStitchGrid(
   // narrow canvas leaves most cells outside the fitted bbox).
   const outW = target?.width && target.width >= 8 && target.width <= 300 ? target.width : size;
   const outH = target?.height && target.height >= 8 && target.height <= 300 ? target.height : size;
-  // Deterministic margin band (owner 09-03 #3 — "teddy bear STILL cut off"):
-  // prompting the model for margins is not enough — Gemini draws edge-to-edge
-  // and a full-bleed source has nothing for a trim+contain re-pad to work with.
-  // So when the route asks (frame / square-or-landscape canvas), blank the
-  // outer band AFTER posterization and BEFORE DMC mapping. White-pixel cells
-  // merge into the existing light-fabric entry in pixelsToStitchGrid, so DMC
-  // counts stay consistent and no new color appears. The band is deterministic
-  // — a visible margin regardless of what the model drew.
+  // Margin band for FRAME canvases (owner 09-03 #3 + 09-11 — "teddy bear
+  // STILL cut off"): prompting the model for margins is not enough — Gemini
+  // draws edge-to-edge bleed. The band is applied AFTER posterization and
+  // BEFORE DMC mapping, and it is SUBJECT-AWARE: it measures the subject's
+  // true bounding box (excluding the light-fabric DMC entry) and, if the
+  // subject reaches the band, scales it down about the canvas center so the
+  // WHOLE subject fits inside the band instead of being amputated. White-pixel
+  // cells merge into the existing light-fabric entry in pixelsToStitchGrid, so
+  // DMC counts stay consistent and no new color appears. The band is
+  // deterministic — a visible margin regardless of what the model drew.
   // Product shapes / TALL canvases (stocking/ornament/pillow, meant to fill
   // edge-to-edge) never get a band.
   const marginPx =
@@ -122,24 +124,44 @@ export async function imageBufferToStitchGrid(
   // Step 0: Auto-crop the light background so the subject fills the grid
   // (recognizability fix — a small subject on a huge white field converts to
   // an unreadable pattern). Also boost saturation so colors separate cleanly.
+  // NOTE (owner 09-11 "teddy bear STILL cut off"): on FRAME canvases we SKIP
+  // this trim. The AI is prompted to leave ~5-10% margins and genuinely does
+  // (fixture source bbox margins L11.6/R9.7/T8.1/B5.3%), but the auto-crop
+  // trims those near-white margins away and the cover-resize then zooms the
+  // subject to full-bleed — the blind band afterwards has nothing to spare and
+  // amputates the subject ("cuts off the actual pattern of the bear"). The
+  // margin path below is subject-aware and enforces the band deterministically,
+  // so the trim is redundant and harmful there.
   let workingBuffer = imageBuffer;
-  try {
-    const meta = await sharp(imageBuffer).metadata();
-    const trimmed = await sharp(imageBuffer)
-      .trim({ background: [255, 255, 255], threshold: 40 })
-      .modulate({ saturation: 1.4 })
-      .toBuffer({ resolveWithObject: true });
-    const ow = meta.width || 0;
-    const oh = meta.height || 0;
-    const tw = trimmed.info.width;
-    const th = trimmed.info.height;
-    // Keep the trim only if most of the image survives — a genuinely small
-    // subject (e.g. a white bird on white) would be eaten by the trim.
-    if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
-      workingBuffer = trimmed.data;
+  if (marginPx === 0) {
+    try {
+      const meta = await sharp(imageBuffer).metadata();
+      const trimmed = await sharp(imageBuffer)
+        .trim({ background: [255, 255, 255], threshold: 40 })
+        .modulate({ saturation: 1.4 })
+        .toBuffer({ resolveWithObject: true });
+      const ow = meta.width || 0;
+      const oh = meta.height || 0;
+      const tw = trimmed.info.width;
+      const th = trimmed.info.height;
+      // Keep the trim only if most of the image survives — a genuinely small
+      // subject (e.g. a white bird on white) would be eaten by the trim.
+      if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
+        workingBuffer = trimmed.data;
+      }
+    } catch {
+      // fall back to the untrimmed image
     }
-  } catch {
-    // fall back to the untrimmed image
+  } else {
+    try {
+      // Non-frame path boosts saturation in the trim step; replicate it here
+      // so frame canvases keep the same color-vibrancy pipeline.
+      workingBuffer = await sharp(imageBuffer)
+        .modulate({ saturation: 1.4 })
+        .toBuffer();
+    } catch {
+      // fall back to the original image
+    }
   }
 
   // Step 1: Resize the image to the target grid size using high-quality lanczos
@@ -166,27 +188,93 @@ export async function imageBufferToStitchGrid(
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Deterministic margin band: blank the outer marginPx cells on all four
-  // sides to pure white (light fabric). Done on RAW RGBA pixels BEFORE the
-  // DMC mapping so the band merges into the existing white/background entry
-  // and stitch counts stay consistent (no phantom new DMC color).
-  const banded = new Uint8Array(data);
+  // Subject-aware margin band (owner 09-11 "teddy bear STILL cut off"): instead
+  // of blindly blanking the outer ring (which ERASES part of a subject that
+  // reaches the band — the old code amputated ~16% of the teddy), measure the
+  // subject's true bounding box (excluding the light-fabric/background DMC
+  // entry) and, when it would cross the band, scale it down about the canvas
+  // center so the WHOLE subject fits inside [marginPx, W-1-marginPx] ×
+  // [marginPx, H-1-marginPx], then repaint onto white. The final ring-blank is
+  // then a pure normalization (it no longer erases any subject pixel; the
+  // band's background cells merge into the existing light-fabric DMC entry, so
+  // no new color appears and stitch counts stay consistent).
+  const subjectAware = new Uint8Array(data);
   if (marginPx > 0) {
+    // Background = the halo rule pixelsToStitchGrid merges into DMC White 520
+    // (light + low-saturation colors) — NOT a naive "non-white" test, which
+    // would count the near-white background halo as subject and hide the cut.
+    const isLightFabric = (r: number, g: number, b: number): boolean => {
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      return max >= 190 && (max - min) / max <= 0.2;
+    };
+    let fgTop = outH, fgBottom = -1, fgLeft = outW, fgRight = -1;
+    for (let row = 0; row < outH; row++) {
+      for (let col = 0; col < outW; col++) {
+        const idx = (row * outW + col) * 4;
+        if (data[idx + 3] === 0) continue; // transparent → background
+        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+        if (isLightFabric(r, g, b)) continue; // background entry
+        if (row < fgTop) fgTop = row;
+        if (row > fgBottom) fgBottom = row;
+        if (col < fgLeft) fgLeft = col;
+        if (col > fgRight) fgRight = col;
+      }
+    }
+    if (fgTop < outH) {
+      const bboxW = fgRight - fgLeft + 1;
+      const bboxH = fgBottom - fgTop + 1;
+      const availW = Math.max(0, outW - 2 * marginPx);
+      const availH = Math.max(0, outH - 2 * marginPx);
+      const crossesBand =
+        fgTop < marginPx ||
+        fgBottom > outH - 1 - marginPx ||
+        fgLeft < marginPx ||
+        fgRight > outW - 1 - marginPx;
+      if (crossesBand && availW > 0 && availH > 0) {
+        // Subject reaches into the band: shrink the WHOLE subject (never
+        // upscale) about the canvas center so it fits inside with a clean
+        // margin on every side, then repaint onto white. Nearest-neighbor
+        // keeps the subject's silhouette (no invented colors); interior
+        // background holes are carried along.
+        const scale = Math.min(1, availW / bboxW, availH / bboxH);
+        const scaledW = Math.min(Math.round(bboxW * scale), availW);
+        const scaledH = Math.min(Math.round(bboxH * scale), availH);
+        const destLeft = Math.round((outW - scaledW) / 2);
+        const destTop = Math.round((outH - scaledH) / 2);
+        subjectAware.fill(255); // white canvas (light fabric)
+        for (let dr = 0; dr < scaledH; dr++) {
+          const srcRow = fgTop + Math.min(Math.floor((dr * bboxH) / scaledH), bboxH - 1);
+          for (let dc = 0; dc < scaledW; dc++) {
+            const srcCol = fgLeft + Math.min(Math.floor((dc * bboxW) / scaledW), bboxW - 1);
+            const sIdx = (srcRow * outW + srcCol) * 4;
+            const dIdx = ((destTop + dr) * outW + (destLeft + dc)) * 4;
+            subjectAware[dIdx] = data[sIdx];
+            subjectAware[dIdx + 1] = data[sIdx + 1];
+            subjectAware[dIdx + 2] = data[sIdx + 2];
+            subjectAware[dIdx + 3] = data[sIdx + 3];
+          }
+        }
+      }
+    }
+    // Final safety: blank the outer marginPx ring. After the subject-aware
+    // step the ring contains no subject pixels, so this only normalizes the
+    // ring itself to pure white (light fabric).
     for (let row = 0; row < outH; row++) {
       for (let col = 0; col < outW; col++) {
         if (row < marginPx || row >= outH - marginPx || col < marginPx || col >= outW - marginPx) {
           const idx = (row * outW + col) * 4;
-          banded[idx] = 255;
-          banded[idx + 1] = 255;
-          banded[idx + 2] = 255;
-          banded[idx + 3] = 255;
+          subjectAware[idx] = 255;
+          subjectAware[idx + 1] = 255;
+          subjectAware[idx + 2] = 255;
+          subjectAware[idx + 3] = 255;
         }
       }
     }
   }
 
   // Step 4: Delegate to the model-agnostic pixel→grid pipeline (non-square aware)
-  return pixelsToStitchGrid(banded, outW, undefined, outH);
+  return pixelsToStitchGrid(subjectAware, outW, undefined, outH);
 }
 
 /**
