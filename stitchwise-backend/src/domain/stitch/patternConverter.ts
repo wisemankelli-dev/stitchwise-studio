@@ -108,6 +108,10 @@ export async function imageBufferToStitchGrid(
   // Small grids can't survive a 1-cell dark outline through lanczos+quantize;
   // used by both the subject-margin and the dark-outline preservation paths.
   const SMALL_OUTLINE_MAX_DIM = 60;
+  // Small AI product grids (outlinePreserve && <= 60 cells): skip the auto-trim
+  // (preserve the model's margins) and later enforce a deterministic rim margin.
+  const skipTrimForSmallAI =
+    opts?.outlinePreserve === true && Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
   // Margin band for FRAME canvases (owner 09-03 #3 + 09-11 — "teddy bear
   // STILL cut off"): prompting the model for margins is not enough — Gemini
   // draws edge-to-edge bleed. The band is applied AFTER posterization and
@@ -150,8 +154,6 @@ export async function imageBufferToStitchGrid(
     // and larger grids keep the recognizability zoom — only the AI small-grid
     // path (which already prompts for margins) is affected. Saturation boost is
     // still applied so colors separate exactly like the trimmed path.
-    const skipTrimForSmallAI =
-      opts?.outlinePreserve === true && Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
     try {
       if (skipTrimForSmallAI) {
         workingBuffer = await sharp(imageBuffer)
@@ -391,6 +393,93 @@ export async function imageBufferToStitchGrid(
           hex: darkHex,
           count: Math.max(0, delta.get(darkDmc.code) ?? 0),
         });
+      }
+      pattern.dmcColors.sort((a, b) => b.count - a.count);
+      pattern.dmcColors.forEach((d, i) => {
+        d.symbol = CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length];
+      });
+    }
+  }
+  // Step 6: Deterministic rim margin for small AI product grids (owner 09-11
+  // 18:05 — "cut off, not recognisable"): even with the trim skipped, a model
+  // that draws edge-to-edge would still land against the ornament circle's top
+  // rim (the circle apex passes through the canvas top at the center columns)
+  // and read as chopped. Guarantee the subject fits inside
+  // [band, W-1-band] x [band, H-1-band] no matter what the model drew. Runs
+  // AFTER the outline pass on the finished grid, so the full-res outline mask's
+  // address space can never disagree with the grid (alignment by construction).
+  // No-op when the subject already has margins (e.g. the owner's orn3 source,
+  // bbox rows 6..38 — byte-identical to the verified output).
+  if (skipTrimForSmallAI && marginPx === 0) {
+    const band = Math.max(2, Math.round(0.08 * Math.min(outW, outH))); // ≈3 at 42
+    const isBgCell = (cell?: StitchCell): boolean => {
+      const h = (cell?.color || "").replace("#", "");
+      if (h.length !== 6) return true;
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      return mx >= 190 && (mx - mn) / mx <= 0.2;
+    };
+    let fgTop = outH, fgBottom = -1, fgLeft = outW, fgRight = -1;
+    for (let r = 0; r < Math.min(outH, pattern.grid.length); r++) {
+      const row = pattern.grid[r];
+      for (let c = 0; c < Math.min(outW, row.length); c++) {
+        if (isBgCell(row[c])) continue;
+        if (r < fgTop) fgTop = r;
+        if (r > fgBottom) fgBottom = r;
+        if (c < fgLeft) fgLeft = c;
+        if (c > fgRight) fgRight = c;
+      }
+    }
+    const availW = Math.max(0, outW - 2 * band);
+    const availH = Math.max(0, outH - 2 * band);
+    const crosses =
+      fgTop < band || fgBottom > outH - 1 - band || fgLeft < band || fgRight > outW - 1 - band;
+    if (fgTop < outH && crosses && availW > 0 && availH > 0) {
+      const bboxW = fgRight - fgLeft + 1;
+      const bboxH = fgBottom - fgTop + 1;
+      // Shrink the WHOLE subject (never upscale) about the canvas center so it
+      // fits inside the band; nearest-neighbor keeps colors/silhouette exact.
+      const scale = Math.min(1, availW / bboxW, availH / bboxH);
+      const scaledW = Math.max(1, Math.min(Math.round(bboxW * scale), availW));
+      const scaledH = Math.max(1, Math.min(Math.round(bboxH * scale), availH));
+      const destLeft = Math.round((outW - scaledW) / 2);
+      const destTop = Math.round((outH - scaledH) / 2);
+      // Background: pad with the grid's current dominant light-fabric color so
+      // the fabric DMC entry stays coherent with the stitched surface.
+      const bgCounts = new Map<string, number>();
+      for (const row of pattern.grid) {
+        for (const cell of row) {
+          if (cell?.color && isBgCell(cell)) {
+            bgCounts.set(cell.color, (bgCounts.get(cell.color) ?? 0) + 1);
+          }
+        }
+      }
+      let bgHex = "#ffffff";
+      for (const [hex, n] of bgCounts) if (n > (bgCounts.get(bgHex) ?? 0)) bgHex = hex;
+      const next: StitchCell[][] = pattern.grid.map((row) =>
+        row.map((cell) => ({ ...cell, color: bgHex })),
+      );
+      for (let dr = 0; dr < scaledH; dr++) {
+        const srcRow = fgTop + Math.min(Math.floor((dr * bboxH) / scaledH), bboxH - 1);
+        for (let dc = 0; dc < scaledW; dc++) {
+          const srcCol = fgLeft + Math.min(Math.floor((dc * bboxW) / scaledW), bboxW - 1);
+          if (srcRow >= 0 && srcRow < outH && srcCol >= 0 && srcCol < outW) {
+            next[destTop + dr][destLeft + dc] = pattern.grid[srcRow][srcCol];
+          }
+        }
+      }
+      pattern.grid = next;
+      // Fix palette counts from the rescaled grid (fabric entry grew).
+      const counts = new Map<string, number>();
+      for (const row of next) {
+        for (const cell of row) {
+          const key = (cell.color || "").toLowerCase();
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+      }
+      for (const d of pattern.dmcColors) {
+        const got = counts.get(d.hex.toLowerCase());
+        if (got !== undefined) d.count = got;
       }
       pattern.dmcColors.sort((a, b) => b.count - a.count);
       pattern.dmcColors.forEach((d, i) => {

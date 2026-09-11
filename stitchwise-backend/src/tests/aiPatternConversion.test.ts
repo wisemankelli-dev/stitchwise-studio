@@ -796,4 +796,69 @@ describe("imageBufferToStitchGrid (small-grid dark-outline preservation)", () =>
     expect(topRowsFreeOfSubject(result.grid, 4)).toBe(false);
     expect(result.grid.length).toBe(70);
   });
+
+  // ─── Deterministic rim margin (owner 09-11 18:05 "cut off, not recognisable") ──
+  // Step 6: small AI product grids must keep the subject INSIDE the ornament
+  // circle with a visible top margin EVEN IF the model draws edge-to-edge
+  // (a full-bleed subject would land against the circle apex at the canvas top).
+  // FULLBLEED_SVG pushes the same bear to the very top edge (ears clipped by the
+  // canvas), so the converted 42×42 grid would otherwise touch row 0.
+  const FULLBLEED_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g stroke="#404040" stroke-width="26" stroke-linejoin="round">
+    <circle cx="380" cy="95" r="95" fill="#c8b090"/>
+    <circle cx="644" cy="95" r="95" fill="#c8b090"/>
+    <ellipse cx="512" cy="250" rx="270" ry="235" fill="#c8b090"/>
+    <ellipse cx="512" cy="690" rx="240" ry="200" fill="#c8b090"/>
+    <ellipse cx="512" cy="330" rx="95" ry="70" fill="#e8dcc8"/>
+    <circle cx="420" cy="255" r="22" fill="#404040"/>
+    <circle cx="604" cy="255" r="22" fill="#404040"/>
+    <ellipse cx="512" cy="320" rx="24" ry="16" fill="#404040"/>
+  </g>
+</svg>`;
+  function subjectTopRow(grid: StitchCell[][]): number {
+    const n = grid.length;
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (isSubjectCell(grid[r]?.[c])) return r;
+      }
+    }
+    return n; // empty
+  }
+  function subjectBottomRow(grid: StitchCell[][]): number {
+    const n = grid.length;
+    for (let r = n - 1; r >= 0; r--) {
+      for (let c = 0; c < n; c++) {
+        if (isSubjectCell(grid[r]?.[c])) return r;
+      }
+    }
+    return -1;
+  }
+  it("full-bleed small product source is inset INSIDE the rim deterministically (Step 6)", async () => {
+    const png = await sharp(Buffer.from(FULLBLEED_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { outlinePreserve: true });
+    // Subject no longer touches the top: deterministic band (≈3 cells at 42).
+    const top = subjectTopRow(result.grid);
+    const bottom = subjectBottomRow(result.grid);
+    expect(top).toBeGreaterThanOrEqual(3);
+    expect(bottom).toBeLessThanOrEqual(42 - 1 - 3);
+    // No dark cells hallucinated above the band.
+    const topDark = darkComponentsInRows(result.grid, 3);
+    expect(topDark.reduce((a, b) => a + b, 0)).toBe(0);
+    // The subject still survives (shrunken, not erased).
+    expect(bottom - top).toBeGreaterThan(8);
+    expect(countDarkCells(result.grid)).toBeGreaterThanOrEqual(10);
+  });
+  it("Step 6 is size-gated: 70x70 full-bleed product source stays edge-to-edge", async () => {
+    const png = await sharp(Buffer.from(FULLBLEED_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 70, 16, { width: 70, height: 70 }, { outlinePreserve: true });
+    expect(subjectTopRow(result.grid)).toBeLessThan(3);
+  });
+  it("step 6 no-ops when the subject already has a margin (orn3 source)", async () => {
+    const png = await sharp(Buffer.from(ORN3_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { outlinePreserve: true });
+    // The margined fixture keeps its natural insertion: top rows blank, no cap.
+    expect(topRowsFreeOfSubject(result.grid, 5)).toBe(true);
+    expect(subjectTopRow(result.grid)).toBeGreaterThanOrEqual(6);
+  });
 });
