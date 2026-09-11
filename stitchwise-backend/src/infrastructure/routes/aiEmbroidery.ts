@@ -219,7 +219,14 @@ export function enrichAIPrompt(
   const isFrame = isFrameCanvas(shape, opts?.canvasWidth, opts?.canvasHeight);
 
   if (shape === "stocking") {
-    enriched.push("tall vertical stocking shape completely filled with the subject, edge to edge, no blank space");
+    // Owner 09-11 ("stocking inside a stocking"): 'stocking shape filled with
+    // the subject' made Gemini draw an actual STOCKING OBJECT with the teddy
+    // inside it — a scene. The subject itself must BE the stocking silhouette:
+    // its own body takes the stocking shape (head at the cuff, body tapering
+    // to the toe), with NO separate stocking drawn around it.
+    enriched.push(
+      "the subject itself must take the exact shape of a tall Christmas stocking: the subject's own body IS the stocking silhouette — head near the top cuff, torso widening then tapering into a pointed toe at the bottom, no separate stocking object wrapped around the subject, no scene inside; the subject fills the whole tall stocking shape edge to edge, no blank space",
+    );
     shapeHintApplied = true;
   } else if (shape === "ornament") {
     enriched.push(
@@ -227,8 +234,11 @@ export function enrichAIPrompt(
     );
     shapeHintApplied = true;
   } else if (shape === "pillow") {
+    // Owner 09-11 (same rule as stocking): the subject must FILL the mask, not
+    // sit inside a drawn pillow. The subject's own body spreads to take the
+    // full rounded-square pillow silhouette; no pillow object is drawn around it.
     enriched.push(
-      "perfectly fill a rounded square pillow: the artwork will be clipped to a ROUNDED SQUARE silhouette, so keep the whole subject inside the rounded shape; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
+      "the artwork will be clipped to a ROUNDED SQUARE silhouette, and the subject itself must fill that silhouette: the subject's own body spreads to take the pillow's shape edge to edge (corners slightly rounded), no separate pillow object drawn around the subject, no scene inside; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
     );
     shapeHintApplied = true;
   } else if (isFrame) {

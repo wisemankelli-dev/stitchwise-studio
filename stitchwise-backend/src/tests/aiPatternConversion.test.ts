@@ -36,7 +36,10 @@ describe("enrichAIPrompt", () => {
   it("adds vibrant guidance and NO color-draining hints", () => {
     const { prompt, shapeHintApplied } = enrichAIPrompt("colorful floral stocking", "stocking");
     expect(prompt).toContain("vibrant, saturated, colorful illustration");
-    expect(prompt).toContain("tall vertical stocking shape completely filled");
+    // Mask-fill phrasing (owner 09-11 "stocking inside a stocking"): the
+    // subject's body IS the stocking silhouette, not a scene in a stocking.
+    expect(prompt).toContain("the subject itself must take the exact shape of a tall Christmas stocking");
+    expect(prompt).toContain("subject's own body IS the stocking silhouette");
     expect(shapeHintApplied).toBe(true);
     // The old color-draining hints must be GONE.
     expect(prompt).not.toMatch(/flat vector art|solid flat colors only|no gradients|no shading|white background/i);
@@ -78,15 +81,22 @@ describe("enrichAIPrompt", () => {
     expect(prompt).not.toMatch(/edge to edge|edge-to-edge/i);
   });
 
-  it("keeps FILL phrasing for a tall stocking canvas (154x238, stocking)", () => {
-    const { prompt, shapeHintApplied } = enrichAIPrompt("colorful floral stocking", "stocking", {
+  it("stocking 154x238: SUBJECT IS the stocking silhouette, no stocking-object scene (owner 09-11 'stocking inside a stocking')", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("teddy + stocking template", "stocking", {
       canvasWidth: 154,
       canvasHeight: 238,
     });
     expect(shapeHintApplied).toBe(true);
-    expect(prompt).toContain("tall vertical stocking shape completely filled");
+    // The subject's own body takes the stocking shape — no separate stocking
+    // object drawn around it, no scene inside it.
+    expect(prompt).toContain("the subject itself must take the exact shape of a tall Christmas stocking");
+    expect(prompt).toContain("subject's own body IS the stocking silhouette");
+    expect(prompt).toContain("no separate stocking object wrapped around the subject");
+    expect(prompt).toContain("no scene inside");
     expect(prompt).toContain("edge to edge");
     expect(prompt).not.toContain("padding and margins");
+    // The old wording is GONE (it produced the nested "stocking inside a stocking").
+    expect(prompt).not.toContain("stocking shape completely filled with the subject");
   });
 
   it("keeps FILL phrasing for an explicit square/rect on a TALL canvas", () => {
@@ -151,19 +161,23 @@ describe("enrichAIPrompt", () => {
     });
     expect(shapeHintApplied).toBe(true);
     expect(smallGrid).toBe(false);
-    expect(prompt).toContain("rounded square pillow");
     expect(prompt).toContain("clipped to a ROUNDED SQUARE silhouette");
+    // Subject FILLS the mask: its own body is the pillow shape, no pillow
+    // object drawn around it (owner 09-11 same rule as stocking).
+    expect(prompt).toContain("the subject itself must fill that silhouette");
+    expect(prompt).toContain("no separate pillow object drawn around the subject");
     expect(prompt).toContain("outer corners of the canvas stay empty");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
 
-  it("stocking 154x238: edge-to-edge fill phrasing unchanged, no tiny-grid style", () => {
+  it("stocking 154x238: mask-fill phrasing + no tiny-grid style", () => {
     const { prompt, smallGrid } = enrichAIPrompt("colorful floral stocking", "stocking", {
       canvasWidth: 154,
       canvasHeight: 238,
     });
     expect(smallGrid).toBe(false);
     expect(prompt).toContain("edge to edge");
+    expect(prompt).toContain("subject's own body IS the stocking silhouette");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
 
