@@ -252,7 +252,13 @@ export function subjectTouchesEdge(
     if (!h) return false;
     if (h === bgHex) return true;
     const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
-    return r > 245 && g > 245 && b > 245;
+    // Near-white / near-fabric tones count as background. Deliberately the SAME
+    // halo rule the converter uses to define foreground (pipeline.ts merges
+    // max>=190 && (max-min)/max<=0.2 into DMC White 520) so the edge gate can
+    // never false-fire on cream/near-white background halo (owner 09-11: the
+    // bbox "overlap" check counted cream as subject and hid the cut).
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    return (r > 245 && g > 245 && b > 245) || (max >= 190 && (max - min) / max <= 0.2);
   };
   const nonBg = (r: number, c: number) => {
     const cell = grid[r]?.[c];
@@ -290,9 +296,12 @@ export function qualityGate(
     const h = (hex || "").toLowerCase();
     if (!h) return false;
     if (h === bgHex) return true;
-    // Near-white / near-fabric tones count as background (DMC B5200 / 520 / white).
+    // Near-white / near-fabric tones count as background (DMC B5200 / 520 /
+    // white). Same halo rule as the converter's foreground definition (owner
+    // 09-11): cream/near-white background must not count as subject.
     const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
-    return r > 245 && g > 245 && b > 245;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    return (r > 245 && g > 245 && b > 245) || (max >= 190 && (max - min) / max <= 0.2);
   };
   let filled = 0;
   for (const row of grid) for (const cell of row) if (cell?.color && !isBackground(cell.color)) filled++;
