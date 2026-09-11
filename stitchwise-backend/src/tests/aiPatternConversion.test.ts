@@ -231,6 +231,25 @@ describe("qualityGate", () => {
     // Edge check must NOT fire for product shapes; only fill/color warnings may.
     if (warning) expect(warning).not.toMatch(/touches the .* edge/);
   });
+
+  it("does NOT fire the edge warning on cream/near-white background at the edge (owner 09-11 foreground definition)", () => {
+    // #f2e8d5 is cream: max 242 >= 190, spread (242-213)/242 ≈ 0.12 <= 0.2 →
+    // background under the halo rule the converter uses (merged into DMC White
+    // 520). A frame whose EDGE cells are cream (not pure white) with a
+    // saturated subject inside must NOT be reported as "subject cut off".
+    const N = 10;
+    const g: StitchCell[][] = Array.from({ length: N }, () =>
+      Array.from({ length: N }, () => ({ color: "#f2e8d5" })),
+    );
+    const colors = ["#cc3333", "#3366cc", "#33cc66", "#cc9933", "#9933cc", "#66cccc"];
+    for (let r = 2; r < N - 2; r++) for (let c = 2; c < N - 2; c++) g[r][c].color = colors[(r + c) % colors.length];
+    const dmc = [
+      { hex: "#f2e8d5", count: 60 },
+      ...colors.map((hex, i) => ({ hex, count: 40 - i * 5 })),
+    ];
+    const warning = qualityGate(g, dmc, "teddy bear", { frame: true });
+    if (warning) expect(warning).not.toMatch(/touches the .* edge/);
+  });
 });
 
 // ─── subjectTouchesEdge ─────────────────────────────────────────────────
@@ -272,6 +291,14 @@ describe("subjectTouchesEdge", () => {
     const N = grid.length;
     for (let r = 1; r < N; r++) grid[r][0].color = "#cc3333";
     expect(subjectTouchesEdge(grid, dmc)).toBe("left");
+  });
+  it("ignores cream/near-white edge cells (halo = background, owner 09-11)", () => {
+    // A frame whose top EDGE is cream (#f2e8d5 — max 242, spread 0.12) instead
+    // of pure white must NOT be classified as a subject touching the edge. The
+    // OLD gate counted any non-pure-white cell as subject -> false "cut off".
+    const { grid, dmc } = frame();
+    for (let c = 0; c < 10; c++) grid[0][c].color = "#f2e8d5";
+    expect(subjectTouchesEdge(grid, dmc)).toBeNull();
   });
 });
 
@@ -444,5 +471,26 @@ describe("imageBufferToStitchGrid (subject-aware margin band)", () => {
     const fg = fgBbox(baseline.grid);
     const minMargin = Math.min(fg.margins.top, fg.margins.bottom, fg.margins.left, fg.margins.right);
     expect(minMargin).toBeLessThan(6);
+  });
+
+  it("square-rect frame (100×100 rect): full-bleed subject is scaled about the centre — margins >= 6, subject retained", async () => {
+    // isFrameCanvas("rect", 100, 100) === true → the route sends margin:true.
+    // A full-bleed subject must be scaled down (nearest-neighbour, about the
+    // canvas centre) so the WHOLE subject fits inside [6,93]² — the band ring
+    // is background, the subject keeps margins >= 6 on every side, and the
+    // centre is still colored (subject not erased to nothing).
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 220, g: 40, b: 40 } } }).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 100, 24, { width: 100, height: 100 }, { margin: true });
+    expect(result.grid.length).toBe(100);
+    expect(result.grid[0].length).toBe(100);
+    const fg = fgBbox(result.grid);
+    expect(fg.margins.top).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.bottom).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.left).toBeGreaterThanOrEqual(6);
+    expect(fg.margins.right).toBeGreaterThanOrEqual(6);
+    // Whole subject present (88×88 interior after the 0.88 scale), centre red.
+    expect(fg.count).toBeGreaterThan(4000);
+    const mid = Math.floor(result.grid.length / 2);
+    expect(isLightFabricHex(result.grid[mid][mid].color)).toBe(false);
   });
 });
