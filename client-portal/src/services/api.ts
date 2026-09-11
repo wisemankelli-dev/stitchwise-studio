@@ -2266,6 +2266,7 @@ class ApiClient {
       updatedAt: now,
       grid,
       palette,
+      ...(provenance || {}),
     };
     this.patternStore.unshift(rec);
     return rec;
@@ -2412,6 +2413,7 @@ export interface SavedPatternSummary {
   stitchCount: number;
   previewUrl?: string | null;
   prompt?: string | null;
+  sourceImage?: string | null;
   createdAt: string;
   updatedAt: string;
 }
