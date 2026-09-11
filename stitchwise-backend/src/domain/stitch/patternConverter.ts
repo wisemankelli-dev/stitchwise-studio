@@ -22,6 +22,7 @@ import axios from "axios";
 import type { StitchCell, StitchGrid, PatternResult } from "./types";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE, CROSS_STITCH_SYMBOLS } from "./types";
 import { pixelsToStitchGrid } from "./pipeline";
+import { closestDmcColor, rgbToHex } from "./dmcColors";
 
 /**
  * Convert an image URL to a stitch grid by:
@@ -92,7 +93,7 @@ export async function imageBufferToStitchGrid(
   gridSize: number = DEFAULT_GRID_SIZE,
   maxColors: number = 24,
   target?: { width: number; height: number },
-  opts?: { margin?: boolean },
+  opts?: { margin?: boolean; outlinePreserve?: boolean },
 ): Promise<PatternResult> {
   // Validate grid size
   const validSizes = AVAILABLE_GRID_SIZES as readonly number[];
@@ -274,7 +275,109 @@ export async function imageBufferToStitchGrid(
   }
 
   // Step 4: Delegate to the model-agnostic pixel→grid pipeline (non-square aware)
-  return pixelsToStitchGrid(subjectAware, outW, undefined, outH);
+  const pattern = await pixelsToStitchGrid(subjectAware, outW, undefined, outH);
+
+  // Step 5: Dark-outline preservation for small grids (owner 09-11 "ornament
+  // collapsed to a solid block"). At ≤60 output cells a 1-cell dark outline /
+  // small features (eyes, nose) are thinned by the lanczos downscale and
+  // quantized into a grey-tan (measured on a synthetic flat teddy at 42×42:
+  // ≈1-cell outline → 0 dark cells; the design reads as one tan block).
+  // Compensate deterministically: re-sample a dark mask from the FULL-RES
+  // working image with per-cell coverage and re-paint any cell whose source
+  // block is majority-dark onto the final DMC grid (nearest dark DMC). Only
+  // for small grids on product/non-margin paths — the margin band's
+  // subject-aware scale would otherwise move the subject relative to the
+  // mask, and large grids keep full detail already.
+  const SMALL_OUTLINE_MAX_DIM = 60;
+  if (
+    opts?.outlinePreserve === true &&
+    marginPx === 0 &&
+    Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM
+  ) {
+    let src: { data: Buffer; info: { width: number; height: number; channels: number } };
+    try {
+      src = await sharp(workingBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    } catch {
+      return pattern; // outline pass is best-effort — never fail the conversion
+    }
+    const srcW = src.info.width;
+    const srcH = src.info.height;
+    const px = src.data;
+    const ch = src.info.channels || 4;
+    // Same geometry as sharp resize(fit: "cover", position: "centre") above.
+    const scale = Math.max(outW / srcW, outH / srcH);
+    const cropW = Math.max(1, Math.round(Math.min(srcW, outW / scale)));
+    const cropH = Math.max(1, Math.round(Math.min(srcH, outH / scale)));
+    const ox = Math.round((srcW - cropW) / 2);
+    const oy = Math.round((srcH - cropH) / 2);
+
+    // Per-output-cell dark coverage fraction (0..255).
+    const darkMask = new Uint8Array(outW * outH);
+    for (let r = 0; r < outH; r++) {
+      const y0 = oy + Math.floor((r * cropH) / outH);
+      const y1 = oy + Math.max(y0 + 1, Math.floor(((r + 1) * cropH) / outH));
+      for (let c = 0; c < outW; c++) {
+        const x0 = ox + Math.floor((c * cropW) / outW);
+        const x1 = ox + Math.max(x0 + 1, Math.floor(((c + 1) * cropW) / outW));
+        let darkPx = 0;
+        let totalPx = 0;
+        for (let sy = y0; sy < y1; sy++) {
+          for (let sx = x0; sx < x1; sx++) {
+            const idx = (sy * srcW + sx) * ch;
+            totalPx++;
+            if (Math.max(px[idx], px[idx + 1], px[idx + 2]) < 110) darkPx++;
+          }
+        }
+        darkMask[r * outW + c] = totalPx > 0 ? Math.round((darkPx * 255) / totalPx) : 0;
+      }
+    }
+
+    // Repaint majority-dark cells to the darkest DMC grey and fix counts.
+    const darkDmc = closestDmcColor(64, 64, 64);
+    const darkHex = rgbToHex(darkDmc.rgb[0], darkDmc.rgb[1], darkDmc.rgb[2]);
+    const codeByHex = new Map<string, string>();
+    for (const d of pattern.dmcColors) codeByHex.set(d.hex.toLowerCase(), d.code);
+    const delta = new Map<string, number>();
+    delta.set(darkDmc.code, 0);
+    let repainted = 0;
+    for (let r = 0; r < outH && r < pattern.grid.length; r++) {
+      const row = pattern.grid[r];
+      for (let c = 0; c < outW && c < row.length; c++) {
+        if (darkMask[r * outW + c] < 128) continue; // >= 50% coverage
+        const cell = row[c];
+        const oldHex = (cell.color || "").toLowerCase();
+        if (oldHex === darkHex.toLowerCase()) continue;
+        const oldCode = codeByHex.get(oldHex);
+        if (oldCode) delta.set(oldCode, (delta.get(oldCode) ?? 0) - 1);
+        delta.set(darkDmc.code, (delta.get(darkDmc.code) ?? 0) + 1);
+        cell.color = darkHex;
+        cell.dmcCode = darkDmc.code;
+        cell.dmcName = darkDmc.name;
+        repainted++;
+      }
+    }
+    if (repainted > 0) {
+      for (const d of pattern.dmcColors) {
+        const dl = delta.get(d.code);
+        if (dl && dl !== 0) d.count = Math.max(0, d.count + dl);
+      }
+      // Make sure the dark entry exists even if it was absent before.
+      if (!pattern.dmcColors.some(d => d.code === darkDmc.code)) {
+        pattern.dmcColors.push({
+          code: darkDmc.code,
+          name: darkDmc.name,
+          hex: darkHex,
+          count: Math.max(0, delta.get(darkDmc.code) ?? 0),
+        });
+      }
+      pattern.dmcColors.sort((a, b) => b.count - a.count);
+      pattern.dmcColors.forEach((d, i) => {
+        d.symbol = CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length];
+      });
+    }
+  }
+
+  return pattern;
 }
 
 /**

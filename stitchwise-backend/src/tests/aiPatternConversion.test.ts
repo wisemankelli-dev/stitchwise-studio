@@ -117,9 +117,13 @@ describe("enrichAIPrompt", () => {
     expect(prompt).toContain("circular ornament bauble");
     expect(prompt).toContain("clipped to a CIRCLE");
     expect(prompt).toContain("four corners of the square stay empty");
-    // Tiny-grid simplified style (bold flat art, NOT photorealistic shading).
+    // Tiny-grid simplified style (bold flat art, NOT photorealistic shading)
+    // plus the feature/outline rebalance (owner 09-11 "collapsed to a block").
     expect(prompt).toContain("bold flat cartoon-sticker style");
     expect(prompt).toContain("minimal shading");
+    expect(prompt).toContain("THICK dark outline");
+    expect(prompt).toContain("simple readable features");
+    expect(prompt).toContain("fill most of the circle");
     // The old "edge to edge, no empty corners" wording is GONE — it made
     // Gemini draw square full-bleed compositions that the circle mask cuts.
     expect(prompt).not.toMatch(/edge to edge, no empty corners/i);
@@ -561,5 +565,145 @@ describe("imageBufferToStitchGrid (subject-aware margin band)", () => {
     expect(fg.count).toBeGreaterThan(4000);
     const mid = Math.floor(result.grid.length / 2);
     expect(isLightFabricHex(result.grid[mid][mid].color)).toBe(false);
+  });
+});
+// ─── qualityGate small-grid outline check (owner 09-11 "solid block") ──────
+describe("qualityGate small-grid outline/features check", () => {
+  // A realistic flat "block": large tan fill (62%) + 4 more colors (so the
+  // pre-existing fill/color warnings stay quiet) and — with withDark=true —
+  // a dark outline ring around the fill. This mirrors the owner's save:
+  // "teddy bear ornament2" = solid tan rect, 6 colors, 3 dark cells (0.7%).
+  function blockGrid(n: number, withDark: boolean): { grid: StitchCell[][]; dmc: { hex: string; count: number }[] } {
+    const g: StitchCell[][] = Array.from({ length: n }, () =>
+      Array.from({ length: n }, () => ({ color: "#ffffff" })),
+    );
+    // 60% of rows fully filled, split into 5 horizontal color bands (keeps the
+    // pre-existing fill/color warnings quiet so only the outline check decides).
+    const r0 = Math.floor(n * 0.2);
+    const r1 = Math.floor(n * 0.8);
+    const bandColors = ["#c8b090", "#a08060", "#d94343", "#f0b0c0", "#c8b090"];
+    const bands = Math.max(1, Math.floor((r1 - r0) / bandColors.length));
+    for (let r = r0; r < r1; r++) {
+      const color = bandColors[Math.min(bandColors.length - 1, Math.floor((r - r0) / bands))];
+      for (let c = 0; c < n; c++) g[r][c].color = color;
+    }
+    // A 5th non-bg accent color so the (pre-existing) <5-colors warning stays
+    // quiet and only the outline check decides the outcome.
+    for (let r = r0; r < r1; r += 5) {
+      for (let c = 1; c <= 3; c++) g[r][c].color = "#d4a373";
+    }
+    if (withDark) {
+      // Outline ring: first+last filled row, first+last col of the fill rows.
+      for (let c = 0; c < n; c++) {
+        g[r0][c].color = "#404040";
+        g[r1 - 1][c].color = "#404040";
+      }
+      for (let r = r0; r < r1; r++) {
+        g[r][0].color = "#404040";
+        g[r][n - 1].color = "#404040";
+      }
+    }
+    return {
+      grid: g,
+      dmc: [
+        { hex: "#ffffff", count: 700 },
+        { hex: "#c8b090", count: 400 },
+        { hex: "#a08060", count: 200 },
+        { hex: "#e8dcc8", count: 150 },
+        { hex: "#f0b0c0", count: 120 },
+        { hex: "#404040", count: withDark ? n * 4 : 0 },
+      ],
+    };
+  }
+
+  it("warns on a featureless flat block (dark < 1% of fill) on a small canvas", () => {
+    const { grid, dmc } = blockGrid(42, false);
+    const warning = qualityGate(grid, dmc, "teddy bear", { canvasWidth: 42, canvasHeight: 42 });
+    expect(warning).toMatch(/no dark outline or features/);
+  });
+
+  it("does NOT raise the outline warning when a dark outline ring is present", () => {
+    const { grid, dmc } = blockGrid(42, true);
+    const warning = qualityGate(grid, dmc, "teddy bear", { canvasWidth: 42, canvasHeight: 42 });
+    expect(warning).toBeNull();
+  });
+
+  it("does not apply the outline check to large canvases", () => {
+    const { grid, dmc } = blockGrid(100, false);
+    const warning = qualityGate(grid, dmc, "teddy bear", { canvasWidth: 100, canvasHeight: 100 });
+    expect(warning).toBeNull();
+  });
+});
+
+// ─── imageBufferToStitchGrid dark-outline preservation (owner 09-11) ───────
+describe("imageBufferToStitchGrid (small-grid dark-outline preservation)", () => {
+  // Flat sticker-style teddy: tan body + ears, cream muzzle, WHITE inner, and
+  // a DARK 1-cell-equivalent outline (26px @1024 → ≈1.07 cells @42). This is
+  // the exact design the #167 flat-style prompt should produce; without the
+  // outline pass the lanczos downsample thins it into a grey-tan and the
+  // design collapses to one tan block (measured: 0 dark cells).
+  const TEDDY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g stroke="#404040" stroke-width="26" stroke-linejoin="round">
+    <circle cx="380" cy="330" r="95" fill="#c8b090"/>
+    <circle cx="644" cy="330" r="95" fill="#c8b090"/>
+    <ellipse cx="512" cy="470" rx="240" ry="210" fill="#c8b090"/>
+    <ellipse cx="512" cy="760" rx="225" ry="205" fill="#c8b090"/>
+    <ellipse cx="512" cy="530" rx="95" ry="70" fill="#e8dcc8"/>
+    <circle cx="380" cy="330" r="45" fill="#ffffff"/>
+    <circle cx="644" cy="330" r="45" fill="#ffffff"/>
+    <circle cx="405" cy="495" r="22" fill="#404040"/>
+    <circle cx="619" cy="495" r="22" fill="#404040"/>
+    <ellipse cx="512" cy="560" rx="26" ry="18" fill="#404040"/>
+  </g>
+</svg>`;
+
+  function countDarkCells(grid: StitchCell[][]): number {
+    let dark = 0;
+    for (const row of grid) {
+      for (const cell of row) {
+        const h = (cell.color || "").replace("#", "");
+        if (h.length !== 6) continue;
+        const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+        if (Math.max(r, g, b) < 110) dark++;
+      }
+    }
+    return dark;
+  }
+
+  it("preserves the dark outline at 42x42 when outlinePreserve is on (was 0)", async () => {
+    const png = await sharp(Buffer.from(TEDDY_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { outlinePreserve: true });
+    const dark = countDarkCells(result.grid);
+    expect(dark).toBeGreaterThanOrEqual(30); // thin ring around ears+head+body survives
+    // The dark DMC entry exists with a nonzero count.
+    const darkEntry = result.dmcColors.find(d => d.hex.toLowerCase() === "#404040" || (d.hex.toLowerCase() !== "#c8b090" && d.hex.toLowerCase() !== "#e8dcc8" && d.hex.toLowerCase() !== "#ffffff" && d.count > 5));
+    expect(darkEntry).toBeDefined();
+    expect(darkEntry!.count).toBeGreaterThan(0);
+    // The dominant tan fill is still present (not overpainted).
+    const tan = result.dmcColors.find(d => d.count > 100);
+    expect(tan).toBeDefined();
+  });
+
+  it("collapses to a solid block WITHOUT outlinePreserve (documents the bug)", async () => {
+    const png = await sharp(Buffer.from(TEDDY_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 });
+    expect(countDarkCells(result.grid)).toBe(0);
+  });
+
+  it("never adds a dark palette entry when the source has no dark pixels", async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#ffffff"/><circle cx="512" cy="512" r="330" fill="#e11d48"/></svg>`;
+    const png = await sharp(Buffer.from(svg)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { outlinePreserve: true });
+    const darkEntry = result.dmcColors.find(d => d.count > 0 && /^#?[0-4][0-9a-f]{2}$/i.test(d.hex.replace("#", "")) && parseInt(d.hex.slice(1, 3), 16) < 80);
+    expect(darkEntry).toBeUndefined();
+    expect(result.dmcColors.some(d => d.count > 0 && d.hex === "#404040")).toBe(false);
+  });
+
+  it("skips the overlay on the margin path (frame) so it cannot misalign", async () => {
+    const png = await sharp(Buffer.from(TEDDY_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { margin: true, outlinePreserve: true });
+    expect(result.grid.length).toBe(42);
+    expect(result.grid[0].length).toBe(42);
   });
 });

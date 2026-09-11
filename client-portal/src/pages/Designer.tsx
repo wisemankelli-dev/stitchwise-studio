@@ -1445,6 +1445,11 @@ export const Designer: React.FC = () => {
         ));
       }
       setPatternName(p.name);
+      // Restore AI provenance so a round-trip load→save keeps the prompt +
+      // source artwork (owner 09-11: "teddy bear ornament2" saved with a NULL
+      // sourceImage — the load path never restored it, so the save lost it).
+      setAiPrompt(p.prompt || '');
+      setAiArtworkUrl(p.sourceImage || null);
       setShowPatternLoad(false);
       setPatternSaveMsg(`Loaded "${p.name}" (${width}×${height}).`);
       setTimeout(() => setPatternSaveMsg(null), 2500);

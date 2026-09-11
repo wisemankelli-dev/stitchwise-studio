@@ -69,6 +69,20 @@ describe('Pattern Designer — Save/Load (F-2)', () => {
     expect(after.some(p => p.id === saved.id)).toBe(false);
   });
 
+  it('round-trips AI provenance (prompt + sourceImage) through save → load', async () => {
+    const grid = [[{ color: '#c8b090' }, { color: '#ffffff' }]];
+    const palette = [{ code: 'MAN-1', name: '#c8b090', hex: '#c8b090', count: 1 }];
+    const source = 'data:image/png;base64,QUlTT1VSQ0U=';
+    const saved = await api.savePattern('Teddy provenance', grid, palette, 42, 2, {
+      prompt: 'teddy bear',
+      sourceImage: source,
+    });
+    const loaded = await api.loadPattern(saved.id);
+    expect(loaded?.prompt).toBe('teddy bear');
+    expect(loaded?.sourceImage).toBe(source);
+    await api.deletePattern(saved.id);
+  });
+
   it('Load dropdown lists saved patterns and loading restores the canvas', async () => {
     // Pre-seed a pattern through the API
     const grid = [[{ color: '#00ff00' }]];

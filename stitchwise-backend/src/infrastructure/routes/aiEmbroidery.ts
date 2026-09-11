@@ -223,7 +223,7 @@ export function enrichAIPrompt(
     shapeHintApplied = true;
   } else if (shape === "ornament") {
     enriched.push(
-      "perfectly fill a circular ornament bauble: the artwork will be clipped to a CIRCLE, so draw the subject centered inside a circle inscribed in the square canvas, filling that circle from top to bottom and side to side; the four corners of the square stay empty; keep the whole subject inside the circle, nothing important touches the circle edge",
+      "perfectly fill a circular ornament bauble: the artwork will be clipped to a CIRCLE, so draw the subject centered inside a circle inscribed in the square canvas, filling that circle from top to bottom and side to side; the four corners of the square stay empty; keep the whole subject inside the circle, nothing important touches the circle edge, and the subject should be LARGE and fill most of the circle",
     );
     shapeHintApplied = true;
   } else if (shape === "pillow") {
@@ -257,9 +257,13 @@ export function enrichAIPrompt(
   // Deliberately keeps the vibrant/color-rich hints above so the result is a
   // clean, colorful design — NOT the dull 5-brown result of the old
   // "flat vector art / solid flat colors only / white background" phrasing.
+  // Follow-up (owner 09-11 "collapsed to a solid block"): the uncluttered
+  // wording swung too far and dropped the bear's features entirely (one tan
+  // blob, 3 dark cells). Rebalance: keep the flat style but REQUIRE a thick
+  // dark outline + simple readable features + a large subject.
   if (smallGrid) {
     enriched.push(
-      "bold flat cartoon-sticker style with big simple shapes and minimal shading, strong clean outlines, no photo texture, no fine fur or fabric detail — the design must stay readable and uncluttered at a very small stitch count",
+      "bold flat cartoon-sticker style with big simple shapes and minimal shading, plus a THICK dark outline around the whole subject and simple readable features (for animals: a face with eyes, a muzzle, round ears, distinct head and body); the subject should fill most of the circle; no photo texture, no fine fur or fabric detail — the outline and features must stay visible at a very small stitch count",
     );
   }
 
@@ -367,6 +371,35 @@ export function qualityGate(
     const touched = subjectTouchesEdge(grid, dmcColors);
     if (touched) {
       warnings.push(`the subject touches the ${touched} edge of the canvas — it may look cut off in the pattern; try including a little margin around the subject`);
+    }
+  }
+  // Small-grid outline/features check (owner 09-11 "collapsed to a solid
+  // block"): at ≤60 cells a design with a solid fill but ZERO dark cells has
+  // no outline or features — it will stitch as a flat shape (e.g. one tan
+  // blob). Warn so the user can add detail to the prompt instead of silently
+  // saving a featureless block. The outline-preservation pass in the
+  // converter repaints dark outline cells, so this fires only when the
+  // MODEL itself drew no dark outline/features at all.
+  const smallGrid =
+    opts?.canvasWidth !== undefined &&
+    opts?.canvasHeight !== undefined &&
+    Math.min(opts.canvasWidth, opts.canvasHeight) <= SMALL_GRID_MAX_DIM;
+  if (smallGrid && fillPct >= 25 && nonBgColors >= 2 && filled > 0) {
+    let darkCells = 0;
+    for (const row of grid) {
+      for (const cell of row) {
+        const h = (cell?.color || "").toLowerCase();
+        if (h.length !== 7) continue;
+        const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+        if (Math.max(r, g, b) < 110) darkCells++;
+      }
+    }
+    // A small flat design whose DARK cells are < 1% of the fill has no real
+    // outline or features (owner's 09-11 block: 3 dark of 456 filled = 0.7%).
+    // The converter's outline-preservation pass repaints dark outline cells,
+    // so this fires mainly when the MODEL itself drew no dark detail at all.
+    if ((darkCells * 100) / filled < 1) {
+      warnings.push(`the design has no dark outline or features — on a small canvas it will stitch as a flat shape; add details to the prompt (e.g. "with a face, eyes and a dark outline")`);
     }
   }
   return warnings.length ? warnings.join(" · ") : null;
@@ -554,7 +587,7 @@ export function createAIEmbroideryRouter(): Router {
               gridSize,
               Math.min(maxColors, aiColorCap),
               { width: genW, height: genH },
-              { margin: isFrameCanvasResult },
+              { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
             );
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject
