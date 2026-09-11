@@ -164,17 +164,38 @@ export function isFrameCanvas(
     (!shape && isSquareOrLandscape(canvasWidth, canvasHeight));
 }
 
+/**
+ * Small-grid threshold. Under it the stitch grid is so coarse (e.g. a 3″
+ * ornament at 14ct = 42×42 cells) that photorealistic shading quantizes into
+ * tiny muddy regions — the "busy design" complaint (owner 09-11, ornament).
+ * When the target grid is this small, we additionally ask the model for bold
+ * flat cartoon/sticker art instead of realistic detail (which can never
+ * survive a ≤60-cell grid).
+ */
+export const SMALL_GRID_MAX_DIM = 60;
+
+/** True when the target canvas is small enough to need the simplified style. */
+export function isSmallGrid(canvasWidth?: number, canvasHeight?: number): boolean {
+  if (!canvasWidth || !canvasHeight) return false;
+  return Math.min(canvasWidth, canvasHeight) <= SMALL_GRID_MAX_DIM;
+}
+
 export function enrichAIPrompt(
   prompt: string,
   shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
   opts?: { canvasWidth?: number; canvasHeight?: number },
-): { prompt: string; sceneGuardApplied: boolean; shapeHintApplied: boolean } {
+): { prompt: string; sceneGuardApplied: boolean; shapeHintApplied: boolean; smallGrid: boolean } {
   const enriched: string[] = [prompt];
   const lower = prompt.toLowerCase();
   let sceneGuardApplied = false;
   let shapeHintApplied = false;
+  const smallGrid = isSmallGrid(opts?.canvasWidth, opts?.canvasHeight);
 
   // Vibrant / color-rich guidance (replaces the old color-draining hints).
+  // NOTE: this deliberately stays in EVERY enriched prompt — including the
+  // small-grid path below — so "flat/simple" never turns into dull/muddy
+  // color (owner 09-03: the old "flat vector art, solid flat colors only"
+  // hints gutted colorful asks into 5 browns).
   enriched.push(
     "vibrant, saturated, colorful illustration",
     "bold rich colors in every area, no dull muddy tones",
@@ -185,6 +206,15 @@ export function enrichAIPrompt(
   // SQUARE / LANDSCAPE canvas is a picture frame: keep the subject inside
   // with comfortable margins so nothing gets cropped (owner: teddy bear cut
   // off at top/bottom).
+  //
+  // CIRCLE-CLIP phrasing (owner 09-11 "ornament is busy / doesn't translate"):
+  // the client clips the final grid to a circle (ornament) or rounded square
+  // (pillow) mask. "Fill edge to edge" makes Gemini draw SQUARE full-bleed
+  // compositions whose corners are then clipped by the mask — the subject
+  // gets cut at the circle boundary and reads as broken mush (saved 42×42
+  // ornament: bbox touches all four square edges, 5 browns + 2 blues in
+  // 1-cell regions). Telling the model the art is CLIPPED to the silhouette
+  // keeps the subject inside the visible shape, corners empty.
   const isExplicitRect = shape === "square" || shape === "rect";
   const isFrame = isFrameCanvas(shape, opts?.canvasWidth, opts?.canvasHeight);
 
@@ -192,10 +222,14 @@ export function enrichAIPrompt(
     enriched.push("tall vertical stocking shape completely filled with the subject, edge to edge, no blank space");
     shapeHintApplied = true;
   } else if (shape === "ornament") {
-    enriched.push("perfectly fill a circular ornament bauble with the subject, edge to edge, no empty corners");
+    enriched.push(
+      "perfectly fill a circular ornament bauble: the artwork will be clipped to a CIRCLE, so draw the subject centered inside a circle inscribed in the square canvas, filling that circle from top to bottom and side to side; the four corners of the square stay empty; keep the whole subject inside the circle, nothing important touches the circle edge",
+    );
     shapeHintApplied = true;
   } else if (shape === "pillow") {
-    enriched.push("perfectly fill a rounded square pillow with the subject, edge to edge, no empty corners");
+    enriched.push(
+      "perfectly fill a rounded square pillow: the artwork will be clipped to a ROUNDED SQUARE silhouette, so keep the whole subject inside the rounded shape; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
+    );
     shapeHintApplied = true;
   } else if (isFrame) {
     // Square/landscape canvas → frame with padding, never crop the subject.
@@ -217,7 +251,19 @@ export function enrichAIPrompt(
     sceneGuardApplied = true;
   }
 
-  return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied };
+  // Small-grid simplification (owner 09-11 "ornament is busy"): at ≤60 cells
+  // photorealistic shading can never survive — it quantizes into scattered
+  // 1-cell regions across 8-10 thread colors. Ask for bold flat art instead.
+  // Deliberately keeps the vibrant/color-rich hints above so the result is a
+  // clean, colorful design — NOT the dull 5-brown result of the old
+  // "flat vector art / solid flat colors only / white background" phrasing.
+  if (smallGrid) {
+    enriched.push(
+      "bold flat cartoon-sticker style with big simple shapes and minimal shading, strong clean outlines, no photo texture, no fine fur or fabric detail — the design must stay readable and uncluttered at a very small stitch count",
+    );
+  }
+
+  return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied, smallGrid };
 }
 
 /** Map canvas dims to the closest Gemini-supported aspect ratio. */
@@ -476,7 +522,7 @@ export function createAIEmbroideryRouter(): Router {
             // even on square canvases — they fill edge-to-edge (owner 09-03 #4:
             // the 42×42 ornament was wrongly framed → blob after circle clip).
             const isFrameCanvasResult = isFrameCanvas(shape, genW, genH);
-            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied } = enrichAIPrompt(
+            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied, smallGrid } = enrichAIPrompt(
               prompt,
               shape,
               { canvasWidth: genW, canvasHeight: genH },
@@ -485,7 +531,7 @@ export function createAIEmbroideryRouter(): Router {
               event: "ai_prompt_sent",
               originalPrompt: prompt,
               finalPrompt,
-              enrichment: { sceneGuardApplied, shapeHintApplied, shape, aspect, frame: isFrameCanvasResult },
+              enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult },
             }));
 
             // Gemini (sole provider) — aspect-aware art (tall for stocking).

@@ -103,6 +103,75 @@ describe("enrichAIPrompt", () => {
     const { prompt } = enrichAIPrompt("cute cat");
     expect(prompt).toContain("padding and margins on all sides");
   });
+
+  // ─── Ornament "busy design" fix (owner 09-11) ────────────────────────────
+  it("ornament on a tiny 42x42 grid: circle-clip phrasing + flat-sticker style, no square full-bleed fill", () => {
+    const { prompt, shapeHintApplied, smallGrid } = enrichAIPrompt("teddy bear with a blue sweater", "ornament", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(smallGrid).toBe(true);
+    // Circle-CLIP geometry: the client masks the grid to a circle, so the art
+    // must live INSIDE the inscribed circle with empty square corners.
+    expect(prompt).toContain("circular ornament bauble");
+    expect(prompt).toContain("clipped to a CIRCLE");
+    expect(prompt).toContain("four corners of the square stay empty");
+    // Tiny-grid simplified style (bold flat art, NOT photorealistic shading).
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+    expect(prompt).toContain("minimal shading");
+    // The old "edge to edge, no empty corners" wording is GONE — it made
+    // Gemini draw square full-bleed compositions that the circle mask cuts.
+    expect(prompt).not.toMatch(/edge to edge, no empty corners/i);
+    // Vibrancy survives the simplification — no old color-draining hints.
+    expect(prompt).toContain("vibrant, saturated, colorful illustration");
+    expect(prompt).not.toMatch(/flat vector art|solid flat colors only|no gradients|no shading|white background/i);
+  });
+
+  it("ornament on a large 70x70 grid: circle-clip phrasing stays, tiny-grid style does NOT apply", () => {
+    const { prompt, shapeHintApplied, smallGrid } = enrichAIPrompt("snowman", "ornament", {
+      canvasWidth: 70,
+      canvasHeight: 70,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(smallGrid).toBe(false);
+    expect(prompt).toContain("clipped to a CIRCLE");
+    expect(prompt).toContain("four corners of the square stay empty");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
+
+  it("pillow 84x84: rounded-silhouette clip phrasing, no tiny-grid style", () => {
+    const { prompt, shapeHintApplied, smallGrid } = enrichAIPrompt("pansy flower", "pillow", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(smallGrid).toBe(false);
+    expect(prompt).toContain("rounded square pillow");
+    expect(prompt).toContain("clipped to a ROUNDED SQUARE silhouette");
+    expect(prompt).toContain("outer corners of the canvas stay empty");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
+
+  it("stocking 154x238: edge-to-edge fill phrasing unchanged, no tiny-grid style", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("colorful floral stocking", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(smallGrid).toBe(false);
+    expect(prompt).toContain("edge to edge");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
+
+  it("tiny bag charm 28x28 (no shape): frame padding PLUS flat-sticker style", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("kitten face", undefined, {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("padding and margins on all sides");
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+  });
 });
 
 // ─── isSquareOrLandscape ────────────────────────────────────────────────
