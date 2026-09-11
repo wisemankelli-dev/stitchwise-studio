@@ -706,4 +706,94 @@ describe("imageBufferToStitchGrid (small-grid dark-outline preservation)", () =>
     expect(result.grid.length).toBe(42);
     expect(result.grid[0].length).toBe(42);
   });
+
+  // ─── Ornament retest 09-11 17:57 ("ears lost + hallucinated dark cap") ─────
+  // The owner's 3″ ornament ("teddy oranament 3") came back with the subject
+  // PINCHED to the top of the circle: the auto-trim (marginPx === 0 path)
+  // shaved the model's intentional top margin, and the outline-preservation
+  // overlay then fused the ear/crown darks into a solid dark cap (repro on the
+  // real Gemini source: 1024² → trim 734×796 → grid r0 becomes a solid
+  // ~10-cell dark dome; subject touches all 4 edges). The source itself has
+  // blank rows 0-5 and TWO separate ear bumps. Fix: small AI product grids
+  // (outlinePreserve + ≤60 cells) skip the auto-trim — margins and ears stay.
+  // ORN3_SVG mirrors that source geometry: ≥300px blank at the top, two
+  // outlined ear circles, outlined head/body, face.
+  const ORN3_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g stroke="#404040" stroke-width="26" stroke-linejoin="round">
+    <circle cx="300" cy="430" r="95" fill="#c8b090"/>
+    <circle cx="724" cy="430" r="95" fill="#c8b090"/>
+    <ellipse cx="512" cy="560" rx="270" ry="235" fill="#c8b090"/>
+    <ellipse cx="512" cy="800" rx="240" ry="190" fill="#c8b090"/>
+    <ellipse cx="512" cy="625" rx="95" ry="70" fill="#e8dcc8"/>
+    <circle cx="420" cy="555" r="22" fill="#404040"/>
+    <circle cx="604" cy="555" r="22" fill="#404040"/>
+    <ellipse cx="512" cy="620" rx="24" ry="16" fill="#404040"/>
+  </g>
+</svg>`;
+  function isDarkCell(cell: StitchCell | undefined): boolean {
+    const h = (cell?.color || "").replace("#", "");
+    if (h.length !== 6) return false;
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return Math.max(r, g, b) < 110;
+  }
+  function isSubjectCell(cell: StitchCell | undefined): boolean {
+    const h = (cell?.color || "").replace("#", "");
+    if (h.length !== 6) return false;
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    // Light-fabric halo rule: near-white + low saturation counts as background.
+    return !(max >= 190 && (max - min) / max <= 0.2);
+  }
+  function darkComponentsInRows(grid: StitchCell[][], rowMax: number): number[] {
+    const n = grid.length;
+    const seen = new Set<string>();
+    const comps: number[] = [];
+    const dfs = (r: number, c: number): number => {
+      if (r < 0 || r >= n || c < 0 || c >= n || seen.has(r + "," + c) || !isDarkCell(grid[r]?.[c])) return 0;
+      seen.add(r + "," + c);
+      let size = 1;
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) size += dfs(r + dr, c + dc);
+      return size;
+    };
+    for (let r = 0; r < Math.min(rowMax, n); r++) {
+      for (let c = 0; c < n; c++) {
+        if (isDarkCell(grid[r]?.[c]) && !seen.has(r + "," + c)) comps.push(dfs(r, c));
+      }
+    }
+    return comps;
+  }
+  function topRowsFreeOfSubject(grid: StitchCell[][], rows: number): boolean {
+    return Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: grid[r].length }, (_, c) => !isSubjectCell(grid[r]?.[c])).every(Boolean)
+    ).every(Boolean);
+  }
+  it("keeps the top margin and two separate ear bumps on small AI grids (orn3 09-11 17:57 regression)", async () => {
+    const png = await sharp(Buffer.from(ORN3_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 }, { outlinePreserve: true });
+    // NO hallucinated top cap: the source's blank top rows stay blank.
+    expect(topRowsFreeOfSubject(result.grid, 5)).toBe(true);
+    // Rows 0..5 must contain NO dark cells (previously a solid fused dome).
+    const topDark = darkComponentsInRows(result.grid, 6);
+    expect(topDark.reduce((a, b) => a + b, 0)).toBe(0);
+    // The ears survive as TWO separate dark components in the top half.
+    const earComps = darkComponentsInRows(result.grid, 22);
+    expect(earComps.filter(s => s >= 2).length).toBeGreaterThanOrEqual(2);
+    // The design still reads as a subject (not a sparse ghost).
+    expect(countDarkCells(result.grid)).toBeGreaterThanOrEqual(30);
+  });
+  it("upload path (no outlinePreserve) keeps the auto-trim zoom for small grids", async () => {
+    const png = await sharp(Buffer.from(ORN3_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 42, 16, { width: 42, height: 42 });
+    // Without the small-AI exemption the trim still shaves the margin, so the
+    // subject reaches the canvas top — recognizability zoom unchanged.
+    expect(topRowsFreeOfSubject(result.grid, 4)).toBe(false);
+  });
+  it("larger product grids (70x70) keep the trim — small-AI exemption is size-gated", async () => {
+    const png = await sharp(Buffer.from(ORN3_SVG)).png().toBuffer();
+    const result = await imageBufferToStitchGrid(png, 70, 16, { width: 70, height: 70 }, { outlinePreserve: true });
+    // 70 > 60 → trim still applies (previous #167/#168 behavior preserved).
+    expect(topRowsFreeOfSubject(result.grid, 4)).toBe(false);
+    expect(result.grid.length).toBe(70);
+  });
 });

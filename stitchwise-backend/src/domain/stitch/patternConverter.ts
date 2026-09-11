@@ -105,6 +105,9 @@ export async function imageBufferToStitchGrid(
   // narrow canvas leaves most cells outside the fitted bbox).
   const outW = target?.width && target.width >= 8 && target.width <= 300 ? target.width : size;
   const outH = target?.height && target.height >= 8 && target.height <= 300 ? target.height : size;
+  // Small grids can't survive a 1-cell dark outline through lanczos+quantize;
+  // used by both the subject-margin and the dark-outline preservation paths.
+  const SMALL_OUTLINE_MAX_DIM = 60;
   // Margin band for FRAME canvases (owner 09-03 #3 + 09-11 — "teddy bear
   // STILL cut off"): prompting the model for margins is not enough — Gemini
   // draws edge-to-edge bleed. The band is applied AFTER posterization and
@@ -135,20 +138,40 @@ export async function imageBufferToStitchGrid(
   // so the trim is redundant and harmful there.
   let workingBuffer = imageBuffer;
   if (marginPx === 0) {
+    // Small AI-generated product grids (ornament/pillow/bag charm ≤ 60 cells,
+    // on the outlinePreserve path) SKIP the auto-trim (owner 09-11 17:57
+    // "ears lost + hallucinated dark cap"): the model is prompted to fill most
+    // of the circle and keeps intentional margins above the subject (e.g. the
+    // ears sit ~6 rows below the top). The trim shaves those margins, pinches
+    // the subject to the canvas top, and the outline-preservation pass then
+    // fuses the ear/crown darks into a solid top cap (repro: orn3 source 1024²
+    // → trim 734×796 → grid r0 becomes a solid 10-cell dark dome; without trim
+    // the same source keeps blank rows 0-5 and two separate ear bumps). Uploads
+    // and larger grids keep the recognizability zoom — only the AI small-grid
+    // path (which already prompts for margins) is affected. Saturation boost is
+    // still applied so colors separate exactly like the trimmed path.
+    const skipTrimForSmallAI =
+      opts?.outlinePreserve === true && Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
     try {
-      const meta = await sharp(imageBuffer).metadata();
-      const trimmed = await sharp(imageBuffer)
-        .trim({ background: [255, 255, 255], threshold: 40 })
-        .modulate({ saturation: 1.4 })
-        .toBuffer({ resolveWithObject: true });
-      const ow = meta.width || 0;
-      const oh = meta.height || 0;
-      const tw = trimmed.info.width;
-      const th = trimmed.info.height;
-      // Keep the trim only if most of the image survives — a genuinely small
-      // subject (e.g. a white bird on white) would be eaten by the trim.
-      if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
-        workingBuffer = trimmed.data;
+      if (skipTrimForSmallAI) {
+        workingBuffer = await sharp(imageBuffer)
+          .modulate({ saturation: 1.4 })
+          .toBuffer();
+      } else {
+        const meta = await sharp(imageBuffer).metadata();
+        const trimmed = await sharp(imageBuffer)
+          .trim({ background: [255, 255, 255], threshold: 40 })
+          .modulate({ saturation: 1.4 })
+          .toBuffer({ resolveWithObject: true });
+        const ow = meta.width || 0;
+        const oh = meta.height || 0;
+        const tw = trimmed.info.width;
+        const th = trimmed.info.height;
+        // Keep the trim only if most of the image survives — a genuinely small
+        // subject (e.g. a white bird on white) would be eaten by the trim.
+        if (ow > 0 && oh > 0 && tw >= ow * 0.6 && th >= oh * 0.6) {
+          workingBuffer = trimmed.data;
+        }
       }
     } catch {
       // fall back to the untrimmed image
@@ -288,7 +311,6 @@ export async function imageBufferToStitchGrid(
   // for small grids on product/non-margin paths — the margin band's
   // subject-aware scale would otherwise move the subject relative to the
   // mask, and large grids keep full detail already.
-  const SMALL_OUTLINE_MAX_DIM = 60;
   if (
     opts?.outlinePreserve === true &&
     marginPx === 0 &&
