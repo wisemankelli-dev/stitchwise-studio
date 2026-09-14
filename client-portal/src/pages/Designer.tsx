@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2, Info
+  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
@@ -2466,7 +2466,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleGenerate(); }}
-                    placeholder="Describe a pattern (e.g., 'a sunflower with green leaves')"
+                    placeholder="Describe your pattern in detail — subject, colors, details (e.g. 'a teddy bear with a brown sweater')..."
                     className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
                     disabled={isGenerating}
                   />
@@ -2484,14 +2484,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   </button>
                 </div>
 
-                <p className="mt-2 text-[10px] text-slate-500 flex items-start gap-1">
-                  <Info className="h-3 w-3 text-purple-400 shrink-0 mt-0.5" />
-                  <span>
-                    <span className="font-semibold text-slate-600">Tip:</span>{' '}
-                    Be descriptive — include the subject, colors, and details so the AI can create
-                    exactly what you want (e.g., 'a brown teddy bear wearing a red sweater and a
-                    wide smile').
-                  </span>
+                <p className="mt-2 text-[10px] text-slate-500">
+                  💡 Tip: descriptive prompts give the best patterns — name the subject and add a few details (colors, texture, pose). Short prompts work too, but specifics come out richer.
                 </p>
 
                 {isStudioTier && (

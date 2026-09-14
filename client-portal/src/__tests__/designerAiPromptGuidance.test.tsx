@@ -28,20 +28,20 @@ describe('Designer AI prompt bar — descriptive-prompt guidance (owner 09-14)',
 
   it('renders the AI prompt input', () => {
     renderDesigner();
-    expect(screen.getByPlaceholderText(/Describe a pattern/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Describe your pattern in detail/)).toBeInTheDocument();
   });
 
   it('shows the descriptive-prompt tip below the input', () => {
     renderDesigner();
     expect(
-      screen.getByText(/Be descriptive — include the subject, colors, and details/i)
+      screen.getByText(/descriptive prompts give the best patterns/i)
     ).toBeInTheDocument();
   });
 
   it('the tip includes a concrete example prompt', () => {
     renderDesigner();
     expect(
-      screen.getByText(/brown teddy bear wearing a red sweater/i)
+      screen.getByPlaceholderText(/teddy bear with a brown sweater/i)
     ).toBeInTheDocument();
   });
 });

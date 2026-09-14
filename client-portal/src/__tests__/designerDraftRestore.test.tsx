@@ -123,7 +123,7 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
     // Give the canvas AI provenance by generating (mocked) on a fresh Bag Charm 28×28.
     const gen = vi.spyOn(api, 'generatePatternFromText').mockResolvedValue(aiResponse(28, 28));
     fireEvent.click(screen.getByRole('button', { name: /^Bag Charm/ }));
-    fireEvent.change(screen.getByPlaceholderText(/Describe a pattern/), { target: { value: 'a bear' } });
+    fireEvent.change(screen.getByPlaceholderText(/Describe your pattern in detail/), { target: { value: 'a bear' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => expect(gen).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText(/Total stitches:/).closest('p')?.textContent).toContain('4'));
@@ -143,7 +143,7 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
 
     // Generate on a Bag Charm fresh canvas (28×28) — target dims match the response.
     fireEvent.click(screen.getByRole('button', { name: /^Bag Charm/ }));
-    fireEvent.change(screen.getByPlaceholderText(/Describe a pattern/), { target: { value: 'a teddy' } });
+    fireEvent.change(screen.getByPlaceholderText(/Describe your pattern in detail/), { target: { value: 'a teddy' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => expect(gen).toHaveBeenCalled());
 
