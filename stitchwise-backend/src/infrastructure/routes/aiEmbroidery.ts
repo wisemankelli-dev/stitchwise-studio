@@ -26,30 +26,16 @@ import {
   imageBufferToStitchGrid,
   resizeStitchGrid,
 } from "../../domain/stitch/patternConverter";
-import { generateShape, listShapes } from "../../domain/ai/shapeLibrary";
+import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
   DEFAULT_FABRIC_COUNT,
   AVAILABLE_FABRIC_COUNTS,
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
-import { generateSubjectPattern } from "../../domain/stitch/subjectPatternGenerator";
 import { aiRateLimit, isPremiumTier } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
-/** Subjects that can be rendered deterministically without an image-generation call. */
-export const PROCEDURAL_SUBJECT_NAMES = new Set([
-  "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
-  "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
-  "peony", "bouquet", "flower bouquet", "pink flower",
-]);
-
-/** Return true only for a bare supported subject, optionally preceded by an article. */
-export function shouldUseProceduralPattern(prompt: string): boolean {
-  const normalized = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-  const withoutArticle = normalized.replace(/^(?:a|an|the)\s+/, "");
-  return PROCEDURAL_SUBJECT_NAMES.has(withoutArticle);
-}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -220,15 +206,131 @@ export const SCENE_KEYWORDS_REGEX = /\b(scene|beach|landscape|sunset|sunrise|sea
  * subject-flexible (works for animals, characters and objects) and safe to
  * concatenate with the comma-joined style directives.
  */
-export const UNDERSPECIFIED_PROMPT_PAD =
-  " with soft warm textures, a cute expressive face with big friendly eyes and round rosy cheeks, a cozy detailed outfit or charming accessories, polished children's-book illustration style, rich in character and charm";
+/**
+ * Descriptive padding for UNDER-SPECIFIED or bare prompts (owner 09-14: a
+ * bare "teddy bear" came back as generic ugly clip art, while "teddy bear
+ * with a brown sweater" drew a rich subject). Two deterministic layers:
+ *  1. SUBJECT_RICH_DESCRIPTORS lexicon — known craft subjects get a vivid
+ *     10-15 word descriptor (texture/colors/expression/details); color+noun
+ *     prompts ("blue bird", "pink cat") merge the user's color into the
+ *     descriptor.
+ *  2. Generic fallback for any other very short prompt (no adjectives).
+ * Everything is appended once (idempotent marker below) so Gemini has
+ * concrete detail to latch onto, and it is safe to concatenate with the
+ * comma-joined style directives at ANY grid size and shape.
+ */
+const PROMPT_COLOR_TOKENS = new Set([
+  "red", "orange", "yellow", "green", "blue", "purple", "pink", "brown",
+  "black", "white", "grey", "gray", "gold", "silver", "teal", "navy",
+  "maroon", "beige", "cream", "coral", "turquoise", "lavender", "magenta",
+  "aqua", "tan", "rust", "amber", "indigo", "violet",
+]);
+/** Colors that appear in lexicon descriptors; the first one found in a
+ * descriptor is replaced with the user's color ("pink bird" → descriptor
+ * recolored to pink). */
+const DEFAULT_DESCRIPTOR_COLORS = [
+  "blue", "red", "green", "yellow", "white", "black", "brown", "orange",
+  "pink", "gold",
+];
+/**
+ * SUBJECT → RICH-DESCRIPTOR LEXICON for common simple craft subjects. Every
+ * descriptor is 10-15 words of texture/color/expression/detail that Gemini
+ * can latch onto. Lookup is exact on the normalized prompt first ("blue
+ * bird"), then on the color-stripped noun with a color merge ("pink bird").
+ */
+export const SUBJECT_RICH_DESCRIPTORS: Record<string, string> = {
+  "teddy bear": "with soft brown fur, round ears, button eyes, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
+  "teddy": "with soft brown fur, round ears, button eyes, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
+  "bear": "a brown fluffy bear with round ears, a sweet muzzle, small dark eyes and a sturdy plump body",
+  "bird": "with soft blue feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
+  "blue bird": "with soft blue feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
+  "red bird": "with vivid red feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
+  "house": "a cozy storybook house with bright warm windows, a cheerful front door, a steep roof and flowers at the base",
+  "fish": "with smooth shiny scales, a flowing tail, a big friendly eye, rounded fins and cheerful bright colors",
+  "cat": "with soft fur, round green eyes, a tiny pink nose, whiskers and a fluffy curled tail",
+  "dog": "with soft floppy ears, a wet black nose, a happy lolling tongue, a wagging tail and warm friendly eyes",
+  "butterfly": "with large colorful wings covered in delicate symmetrical patterns, a slender body and curly antennae",
+  "flower": "with layered colorful petals, a sunny yellow center, a gentle green stem and fresh green leaves",
+  "heart": "a plump rounded heart in warm red with a soft glossy highlight and a cute outline",
+  "star": "a bright golden star with rounded points, a gentle warm glow and a cheerful face",
+  "bunny": "with long soft ears, a fluffy white tail, a round pink nose, gentle eyes and a tiny mouth",
+  "rabbit": "with long soft ears, a fluffy white tail, a round pink nose, gentle eyes and a tiny mouth",
+  "snowman": "a round white snowman with a carrot nose, coal eyes, a striped scarf and a top hat, cheerful and jolly",
+  "tree": "a friendly tree with a sturdy brown trunk, lush round green foliage and a few red apples",
+  "mushroom": "a cute mushroom with a rounded red cap dotted with white spots, a cream stem and soft grass at its base",
+  "sunflower": "a big sunny sunflower with bright yellow petals around a dark brown center, a green stem and leaves",
+  "rose": "a full blooming rose with layered soft red petals, a gentle green stem and one small leaf",
+  "penguin": "a plump penguin with a white belly, a black back, an orange beak and feet, and bright round eyes",
+  "owl": "a wise owl with big round golden eyes, soft brown feathery wings and tiny tufted ears",
+  "frog": "a cheerful green frog with big round eyes, smooth shiny skin and little webbed feet",
+  "duck": "a soft yellow duckling with an orange bill, tiny wings and bright round eyes",
+  "bee": "a fuzzy striped bee with big friendly eyes, delicate translucent wings and a tiny stinger",
+  "ladybug": "a round red ladybug with black spots, a friendly smile and six tiny legs",
+  "turtle": "a gentle turtle with a rounded green shell, a sweet face and sturdy little flippers",
+  "fox": "a fluffy orange fox with a white chest, big pointy ears, a bushy tail and clever bright eyes",
+  "deer": "a graceful fawn with soft brown fur, big gentle eyes, long slender legs and small round ears",
+  "horse": "a friendly horse with a flowing mane, a soft muzzle, kind eyes and sturdy legs",
+  "puppy": "a playful puppy with big floppy ears, a wet nose, floppy paws and a wagging tail",
+  "kitten": "a tiny kitten with soft fur, big round eyes, tiny whiskers and a curled tail",
+  "pig": "a rosy pig with a round snout, floppy ears, a curly tail and a cheerful smile",
+  "cow": "a friendly spotted cow with big gentle eyes, soft ears and a sweet muzzle",
+  "sheep": "a fluffy white sheep with a round woolly body, a black face and legs, and gentle eyes",
+};
+/** Universal rich-detail tail appended to EVERY padded prompt. Its words
+ * serve as the idempotency marker (a padded prompt is never padded twice). */
+export const RICHNESS_TAIL = ", polished children's-book illustration style, rich in character and detail";
+/** Generic fallback for an under-specified prompt that is not in the lexicon. */
+export const GENERIC_RICHNESS_PHRASE = "soft detailed textures, rich colors, clear simple shapes";
+
+/** Lowercase, drop punctuation, collapse whitespace, strip a leading article. */
+function normalizePromptKey(raw: string): string {
+  return raw.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:a|an|the|my)\s+/, "");
+}
+
+/**
+ * Lexicon lookup: exact normalized phrase first ("blue bird"), then the
+ * color-stripped noun with the user's colors ("pink bird" → bird descriptor,
+ * recolored). Null when the prompt is not a known craft subject.
+ */
+function lookupLexiconDescriptor(raw: string): { descriptor: string; colors: string[] } | null {
+  const norm = normalizePromptKey(raw);
+  if (SUBJECT_RICH_DESCRIPTORS[norm]) return { descriptor: SUBJECT_RICH_DESCRIPTORS[norm], colors: [] };
+  const words = norm.split(" ").filter(Boolean);
+  const colors = words.filter((w) => PROMPT_COLOR_TOKENS.has(w));
+  if (colors.length === 0) return null;
+  const bare = words.filter((w) => !PROMPT_COLOR_TOKENS.has(w)).join(" ");
+  if (!SUBJECT_RICH_DESCRIPTORS[bare]) return null;
+  let descriptor = SUBJECT_RICH_DESCRIPTORS[bare];
+  for (const def of DEFAULT_DESCRIPTOR_COLORS) {
+    const re = new RegExp(`\\b${def}\\b`);
+    if (re.test(descriptor)) {
+      descriptor = descriptor.replace(re, colors[0]);
+      break;
+    }
+  }
+  return { descriptor, colors };
+}
+
+/** True when a color+noun phrase (≤5 words) matches the lexicon — these get
+ * the lexicon descriptor even though the color alone would look "specified". */
+export function isColorNounLexiconPrompt(rawPrompt: string): boolean {
+  const words = normalizePromptKey(rawPrompt).split(" ").filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  const colors = words.filter((w) => PROMPT_COLOR_TOKENS.has(w));
+  if (colors.length === 0) return false;
+  const bare = words.filter((w) => !PROMPT_COLOR_TOKENS.has(w)).join(" ");
+  return !!SUBJECT_RICH_DESCRIPTORS[bare];
+}
+
 /**
  * True when the user prompt is too bare to guide image generation: very
  * short (≤5 real words) and carries NO descriptive tokens. Deterministic —
  * no LLM call, no randomness. Excluded by design: scene/landscape prompts
- * (intentional) and anything that already received the padding. NOTE: bare
- * procedural subjects (e.g. "sunflower") ARE under-specified — owner 09-14:
- * no clip art for bare subjects, they must reach AI too.
+ * (intentional) and anything that already received the padding.
  */
 export function isUnderSpecifiedPrompt(rawPrompt: string): boolean {
   const normalized = rawPrompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -239,16 +341,42 @@ export function isUnderSpecifiedPrompt(rawPrompt: string): boolean {
   if (words.some((w) => PROMPT_DESCRIPTOR_TOKENS.has(w))) return false;
   return true;
 }
+
+/** @deprecated Owner 09-14: ALL prompt requests go to the AI image path — this
+ * fast path is no longer wired into the text-to-pattern route. Kept exported
+ * only because existing tests still reference it. Do not use for new code. */
+export const PROCEDURAL_SUBJECT_NAMES = new Set([
+  "sunflower", "bird", "bird on branch", "branch bird", "lunar moth",
+  "luna moth", "butterfly", "rose", "heart", "love", "star", "stars",
+  "peony", "bouquet", "flower bouquet", "pink flower",
+]);
+/** @deprecated — see PROCEDURAL_SUBJECT_NAMES. */
+export function shouldUseProceduralPattern(prompt: string): boolean {
+  const normalized = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const withoutArticle = normalized.replace(/^(?:a|an|the)\s+/, "");
+  return PROCEDURAL_SUBJECT_NAMES.has(withoutArticle);
+}
+
 /**
  * Idempotent prompt normalizer: pads a bare/under-specified prompt with
- * UNDERSPECIFIED_PROMPT_PAD exactly once. Descriptive prompts — and anything
- * already padded — pass through untouched. Applied inside enrichAIPrompt so
- * the client keeps sending prompts unchanged.
+ * either its lexicon descriptor (color-merged when the user gave a color) or
+ * the generic richness phrase — exactly once (marker check below). Detailed
+ * prompts — and anything already padded — pass through untouched. Applied
+ * inside enrichAIPrompt so the client keeps sending prompts unchanged; works
+ * for every shape and grid size.
  */
 export function padUnderSpecifiedPrompt(rawPrompt: string): string {
-  if (rawPrompt.includes(UNDERSPECIFIED_PROMPT_PAD)) return rawPrompt;
-  if (!isUnderSpecifiedPrompt(rawPrompt)) return rawPrompt;
-  return `${rawPrompt.trim()}${UNDERSPECIFIED_PROMPT_PAD}`;
+  if (rawPrompt.includes("polished children's-book illustration style, rich in character and detail")) return rawPrompt;
+  const lexicon = lookupLexiconDescriptor(rawPrompt);
+  if (lexicon) {
+    // For color+noun prompts, the descriptor has already been recolored to
+    // the user's color ("pink bird" → "soft pink feathers …").
+    return `${rawPrompt.trim()}, ${lexicon.descriptor}${RICHNESS_TAIL}`;
+  }
+  if (isUnderSpecifiedPrompt(rawPrompt)) {
+    return `${rawPrompt.trim()}, ${GENERIC_RICHNESS_PHRASE}${RICHNESS_TAIL}`;
+  }
+  return rawPrompt;
 }
 export function enrichAIPrompt(
   prompt: string,
@@ -537,170 +665,77 @@ export function createAIEmbroideryRouter(): Router {
         const genW = canvasWidth ?? gridSize ?? DEFAULT_GRID_SIZE;
         const genH = canvasHeight ?? gridSize ?? DEFAULT_GRID_SIZE;
 
-        // ── Priority 0: Procedural subject pattern (no AI) ──────────────────
-        // Only bare known subject names use the procedural fast path. Any
-        // qualifier (for example, "yellow" in "a yellow sunflower") must
-        // reach OpenAI for an image preview.
+        // Owner 09-14: ALL prompt requests → AI artwork ALWAYS. The procedural
+        // fast path and the Shape Library are no longer usable from this route
+        // (no clip art for bare subjects). The under-specified flag below is
+        // logged for observability only — the prompt padding itself lives in
+        // enrichAIPrompt and applies to every shape and grid size.
         const underSpecified = isUnderSpecifiedPrompt(prompt);
-        // Owner 09-14: ALL prompt requests → AI artwork ALWAYS (no clip art
-        // for bare subjects). Under-specified prompts (e.g. "teddy bear")
-        // bypass BOTH fast paths — the procedural generator and the Shape
-        // Library — so they reach Gemini with the auto-padded descriptor.
-        const proceduralPattern = !underSpecified && shouldUseProceduralPattern(prompt)
-          ? generateSubjectPattern(prompt, gridSize || DEFAULT_GRID_SIZE)
-          : null;
-        if (proceduralPattern) {
+        // Slow AI path (Gemini routinely takes 30-60s). Return 202 + jobId
+        // immediately and run the pipeline in the background so the platform
+        // gateway's ~30s upstream timeout is never hit.
+        const jobId = createAIJob(async () => {
+          const userId = (req as any).user?.userId;
+          // Enrich the prompt: vibrant + shape-fill + scene guard, NO
+          // color-draining hints (owner 09-03: "flat colors/no gradients/
+          // white background" gutted colorful asks into 5 browns).
+          // Square/landscape canvases become a PADDED FRAME so the subject
+          // never bleeds to the edge (owner 09-03 #2: teddy bear cut off).
+          // Explicit product shapes (shoes/ornament/pillow) are NEVER frames
+          // even on square canvases — they fill edge-to-edge (owner 09-03 #4:
+          // the 42×42 ornament was wrongly framed → blob after circle clip).
+          const isFrameCanvasResult = isFrameCanvas(shape, genW, genH);
+          const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied, smallGrid } = enrichAIPrompt(
+            prompt,
+            shape,
+            { canvasWidth: genW, canvasHeight: genH },
+          );
           console.error(JSON.stringify({
-            event: "procedural_pattern_generated",
-            prompt: prompt,
-            gridSize: proceduralPattern.gridSize,
+            event: "ai_prompt_sent",
+            originalPrompt: prompt,
+            finalPrompt,
+            enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult, underSpecified },
           }));
-
-          const flatGrid = flattenGrid(proceduralPattern.grid);
-          res.json({
-            success: true,
-            grid: flatGrid,
-            stitchTypes: flatGrid.map(row => row.map(() => "cross")),
-            width: proceduralPattern.gridSize,
-            height: proceduralPattern.gridSize,
-            dmcPalette: proceduralPattern.dmcColors.map((c, i) => ({
-              code: c.code,
-              name: c.name,
-              hex: c.hex,
-              count: c.count,
-              symbol: CROSS_STITCH_SYMBOLS[i % CROSS_STITCH_SYMBOLS.length],
-            })),
-            totalStitches: proceduralPattern.stitchCount,
-            gridSizes: [...AVAILABLE_GRID_SIZES],
-            promptUsed: prompt,
+          // Gemini (sole provider) — aspect-aware art (tall for stocking).
+          const dalleResult = await generateImageWithDallE(finalPrompt, undefined, userId, premium, aspect);
+          if (!dalleResult?.buffer) {
+            throw new Error("AI generation returned no image");
+          }
+          const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
+          // Color cap: floor higher than before so vibrant scenes keep
+          // enough colors (owner: sunset scene collapsed to 4 muddy colors
+          // at cap 6). Raise the floor to 16 so painterly shading collapses
+          // into identity colors instead of gray-beige mud.
+          const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
+          // Convert at the CANVAS aspect/size, not always square 200.
+          // Frame canvases (square/landscape) get the deterministic margin
+          // band so the subject always sits inside a visible border — the
+          // model may ignore the margin prompt, so we enforce it in the grid.
+          const grid = await imageBufferToStitchGrid(
+            dalleResult.buffer,
+            gridSize,
+            Math.min(maxColors, aiColorCap),
+            { width: genW, height: genH },
+            { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
+          );
+          // Quality gate — warn (don't silently save) when the conversion
+          // came out sparse/muddy, OR (on frame canvases) the subject
+          // bleeds to an edge.
+          const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt, {
+            frame: isFrameCanvasResult,
+            canvasWidth: genW,
+            canvasHeight: genH,
+          });
+          return buildPatternResponse(grid, {
+            promptUsed: finalPrompt,
             processingTimeMs: 0,
             fabric: { count: fc, inches: +fabricInches.toFixed(2) },
-            pipeline: "procedural",
+            previewUrl: preview,
+            ...(qualityWarning ? { qualityWarning } : {}),
           });
-          return;
-        }
-
-        // Check if the prompt matches a known shape — if so, use the Shape Library directly.
-        const shapeKeywords: Record<string, RegExp[]> = {
-          rabbit: [/rabbit/i, /bunny/i, /hare/i],
-          cat: [/cat/i, /kitten/i, /kitty/i],
-          dog: [/dog/i, /puppy/i, /pup/i],
-          bird: [/bird/i, /cardinal/i, /robin/i, /sparrow/i, /bluejay/i, /chick/i, /goose/i, /geese/i, /duck/i, /swan/i, /owl/i, /eagle/i, /hawk/i, /parrot/i, /penguin/i, /flamingo/i, /peacock/i],
-          butterfly: [/butterfly/i, /moth/i],
-          heart: [/heart/i, /love/i, /valentine/i],
-          flower: [/flower/i, /floral/i, /rose/i, /blossom/i, /tulip/i, /daisy/i, /sunflower/i, /bloom/i, /lotus/i, /orchid/i, /lily/i, /lavender/i, /poppy/i, /iris/i],
-          star: [/star/i, /starburst/i, /shining/i, /twinkle/i, /sparkle/i],
-          geometric: [/geometric/i, /mandala/i, /symmetry/i, /pattern/i, /tile/i, /spiral/i, /kaleidoscope/i],
-          fish: [/fish/i, /goldfish/i, /koi/i, /betta/i, /tropical/i, /seahorse/i],
-          boat: [/boat/i, /ship/i, /sailboat/i, /yacht/i, /canoe/i, /kayak/i, /rowboat/i, /schooner/i],
-          house: [/house/i, /home/i, /cottage/i, /cabin/i, /barn/i, /castle/i, /church/i, /tower/i],
-          tree: [/tree/i, /pine/i, /oak/i, /forest/i, /leaf/i, /palm/i, /christmas tree/i, /evergreen/i, /maple/i],
-          dragon: [/dragon/i, /drake/i, /wyvern/i],
-          shell: [/shell/i, /conch/i, /seashell/i, /snail/i, /scallop/i, /nautilus/i],
-          can: [/can/i, /coke/i, /soda/i, /cola/i, /bottle/i, /tin/i, /beer/i, /aluminum/i],
-          car: [/car/i, /truck/i, /auto/i, /vehicle/i, /race/i],
-          bear: [/bear/i, /teddy/i, /teddybear/i, /cub/i, /panda/i, /grizzly/i],
-        };
-
-        let matchedShape: string | null = null;
-        for (const [shape, patterns] of Object.entries(shapeKeywords)) {
-          if (patterns.some(p => p.test(prompt))) {
-            matchedShape = shape;
-            break;
-          }
-        }
-
-        let pattern: PatternResult | null = null;
-
-        let previewUrl: string | undefined;
-        
-
-        if (matchedShape && !underSpecified) {
-          // Only use Shape Library when the prompt is JUST the shape name
-          // (possibly with articles). "monarch butterfly" should go to AI,
-          // because "monarch" is a descriptor, not a shape keyword.
-          const words = prompt.toLowerCase().split(/\s+/).filter(w => !['a','an','the','my'].includes(w));
-          const allWordsAreShapeKeywords = words.every(w => shapeKeywords[matchedShape!]?.some(p => p.test(w)));
-          if (allWordsAreShapeKeywords) {
-            const gs = gridSize || DEFAULT_GRID_SIZE;
-            pattern = generateShape(matchedShape, gs);
-          }
-        }
-        if (!pattern) {
-          // Slow AI path (Gemini routinely takes 30-60s). Return 202 + jobId
-          // immediately and run the pipeline in the background so the platform
-          // gateway's ~30s upstream timeout is never hit.
-          const jobId = createAIJob(async () => {
-            const userId = (req as any).user?.userId;
-            // Enrich the prompt: vibrant + shape-fill + scene guard, NO
-            // color-draining hints (owner 09-03: "flat colors/no gradients/
-            // white background" gutted colorful asks into 5 browns).
-            // Square/landscape canvases become a PADDED FRAME so the subject
-            // never bleeds to the edge (owner 09-03 #2: teddy bear cut off).
-            // Explicit product shapes (shoes/ornament/pillow) are NEVER frames
-            // even on square canvases — they fill edge-to-edge (owner 09-03 #4:
-            // the 42×42 ornament was wrongly framed → blob after circle clip).
-            const isFrameCanvasResult = isFrameCanvas(shape, genW, genH);
-            const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied, smallGrid } = enrichAIPrompt(
-              prompt,
-              shape,
-              { canvasWidth: genW, canvasHeight: genH },
-            );
-            console.error(JSON.stringify({
-              event: "ai_prompt_sent",
-              originalPrompt: prompt,
-              finalPrompt,
-              enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult, underSpecified },
-            }));
-
-            // Gemini (sole provider) — aspect-aware art (tall for stocking).
-            const dalleResult = await generateImageWithDallE(finalPrompt, undefined, userId, premium, aspect);
-            if (!dalleResult?.buffer) {
-              throw new Error("AI generation returned no image");
-            }
-            const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-            // Color cap: floor higher than before so vibrant scenes keep
-            // enough colors (owner: sunset scene collapsed to 4 muddy colors
-            // at cap 6). Raise the floor to 16 so painterly shading collapses
-            // into identity colors instead of gray-beige mud.
-            const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
-            // Convert at the CANVAS aspect/size, not always square 200.
-            // Frame canvases (square/landscape) get the deterministic margin
-            // band so the subject always sits inside a visible border — the
-            // model may ignore the margin prompt, so we enforce it in the grid.
-            const grid = await imageBufferToStitchGrid(
-              dalleResult.buffer,
-              gridSize,
-              Math.min(maxColors, aiColorCap),
-              { width: genW, height: genH },
-              { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
-            );
-            // Quality gate — warn (don't silently save) when the conversion
-            // came out sparse/muddy, OR (on frame canvases) the subject
-            // bleeds to an edge.
-            const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt, {
-              frame: isFrameCanvasResult,
-              canvasWidth: genW,
-              canvasHeight: genH,
-            });
-            return buildPatternResponse(grid, {
-              promptUsed: finalPrompt,
-              processingTimeMs: 0,
-              fabric: { count: fc, inches: +fabricInches.toFixed(2) },
-              previewUrl: preview,
-              ...(qualityWarning ? { qualityWarning } : {}),
-            });
-          });
-          res.status(202).json({ jobId });
-          return;
-        }
-
-        res.json(buildPatternResponse(pattern, {
-          promptUsed: prompt,
-          processingTimeMs: 0,
-          fabric: { count: fc, inches: +fabricInches.toFixed(2) },
-          previewUrl,
-        }));
+        });
+        res.status(202).json({ jobId });
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error({ event: "text_to_pattern_error", error: message });
