@@ -741,6 +741,52 @@ function buildManualGridData(
 }
 
 export const Designer: React.FC = () => {
+
+interface DesignerDraft {
+  grid: Record<string, string>;
+  stitchTypes: Record<string, string>;
+  gridWidth?: number;
+  gridHeight?: number;
+  savedAt?: string;
+  /** True when the draft came from a completed AI generation (has source artwork). */
+  hasAiArtwork?: boolean;
+  aiPrompt?: string;
+}
+
+const DESIGNER_DRAFT_KEY = 'stitchwise_designer_save';
+
+// Old-format drafts stored only a grid map; infer the canvas size from the
+// largest occupied row/col (min 6) so restored drafts keep their proportions.
+function inferDimsFromGrid(grid: Record<string, string>): { w: number; h: number } {
+  let maxR = 0;
+  let maxC = 0;
+  for (const key of Object.keys(grid)) {
+    const [r, c] = key.split(',').map(Number);
+    if (Number.isFinite(r)) maxR = Math.max(maxR, r);
+    if (Number.isFinite(c)) maxC = Math.max(maxC, c);
+  }
+  return { w: Math.max(6, maxC + 1), h: Math.max(6, maxR + 1) };
+}
+
+function parseDesignerDraft(raw: string | null): DesignerDraft | null {
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    if (!p.grid || typeof p.grid !== 'object' || Object.keys(p.grid).length === 0) return null;
+    const dims = p.gridWidth > 0 && p.gridHeight > 0 ? { w: p.gridWidth, h: p.gridHeight } : inferDimsFromGrid(p.grid);
+    return {
+      grid: p.grid,
+      stitchTypes: p.stitchTypes || {},
+      gridWidth: dims.w,
+      gridHeight: dims.h,
+      savedAt: p.savedAt,
+      hasAiArtwork: !!p.hasAiArtwork,
+      aiPrompt: typeof p.aiPrompt === 'string' ? p.aiPrompt : '',
+    };
+  } catch {
+    return null;
+  }
+}
   const [gridWidth, setGridWidth] = useState(100);
   const [gridHeight, setGridHeight] = useState(100);
   const [showResizeWarning, setShowResizeWarning] = useState(false);
@@ -795,6 +841,7 @@ export const Designer: React.FC = () => {
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setRestoredDraft(null); // an upload replaces the canvas -- no pending draft banner
     setIsProcessingImage(true);
     
     const reader = new FileReader();
@@ -844,6 +891,16 @@ export const Designer: React.FC = () => {
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
   const [aiArtworkUrl, setAiArtworkUrl] = useState<string | null>(null);
+  // Restore-draft guard (owner 09-14 "stick figure in every mask"): a saved
+  // localStorage draft is held behind an explicit banner choice instead of
+  // silently populating the canvas on mount (which kept reframing into masks).
+  const [restoredDraft, setRestoredDraft] = useState<DesignerDraft | null>(null);
+  // pendingPreset - ask before a preset click clears stitches off a canvas.
+  const [pendingPreset, setPendingPreset] = useState<{ preset: CanvasPreset; stitchW: number; stitchH: number } | null>(null);
+  // pendingSaveConfirm - one-click confirm before saving a canvas that has no
+  // AI source image (no previewUrl) so a restored-stale-grid save can't happen
+  // silently.
+  const [pendingSaveConfirm, setPendingSaveConfirm] = useState(false);
   const [pollingStatus, setPollingStatus] = useState('');
   // Premium art model toggle (Design Studio only; server enforces the tier gate).
   const [premiumModel, setPremiumModel] = useState(false);
@@ -1358,6 +1415,7 @@ export const Designer: React.FC = () => {
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight, drawStart, setShapeEnd]);
 
   const handleClearGrid = () => {
+    setRestoredDraft(null); // an explicit Clear also dismisses the restore banner
     clearHistory(); // Clear starts a brand-new baseline
     setGrid({});
     setGridStitchTypes({});
@@ -1373,7 +1431,7 @@ export const Designer: React.FC = () => {
     setPollingStatus('');
   };
   // ── Pattern Save / Load (F-2) ──
-  const handleSavePattern = async () => {
+  const doSavePattern = async () => {
     const name = patternName.trim() || `Pattern ${new Date().toLocaleDateString()}`;
     const stitchData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
     const payloadGrid: SavedPatternCell[][] = stitchData.grid.map(row =>
@@ -1405,6 +1463,25 @@ export const Designer: React.FC = () => {
       setIsSavingPattern(false);
     }
   };
+
+  const confirmSaveWithoutSource = () => {
+    setPendingSaveConfirm(false);
+    void doSavePattern();
+  };
+
+  // Save guard: saving a canvas that has NO AI source image means the stored
+  // pixels are exactly what's on canvas right now (a restored stale grid
+  // included) — ask once, never save silently (owner 09-14).
+  const handleSavePattern = async () => {
+    if (!aiArtworkUrl) {
+      const stitchData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
+      if (stitchData.totalStitches > 0) {
+        setPendingSaveConfirm(true);
+        return;
+      }
+    }
+    await doSavePattern();
+  };
   const handleLoadPatterns = async () => {
     try {
       const patterns = await api.listPatterns();
@@ -1415,6 +1492,7 @@ export const Designer: React.FC = () => {
     setShowPatternLoad(prev => !prev);
   };
   const handleLoadPattern = async (id: string) => {
+    setRestoredDraft(null); // an explicit library load wins over any pending draft
     try {
       const p = await api.loadPattern(id);
       if (!p) return;
@@ -1554,6 +1632,8 @@ export const Designer: React.FC = () => {
       const newW = data.grid[0]?.length || 0;
       let finalGrid = newGrid;
       let finalStitchTypes = newStitchTypes;
+      let finalW = targetW;
+      let finalH = targetH;
       if (newW > 0 && newH > 0) {
         // The backend generates the grid at the EXACT requested canvas
         // aspect/size when canvasWidth/canvasHeight are sent (non-square
@@ -1565,6 +1645,8 @@ export const Designer: React.FC = () => {
         if (dimsMatch) {
           finalGrid = newGrid;
           finalStitchTypes = newStitchTypes;
+          finalW = newW;
+          finalH = newH;
         } else {
           // Legacy fallback (old square backend response): keep background
           // cells as stitches — map the detected background to a light fabric
@@ -1607,6 +1689,26 @@ export const Designer: React.FC = () => {
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
       clearHistory(); // AI generation is a fresh baseline — undo must not cross it
+      // A fresh AI result supersedes any pre-AI draft: write the NEW canvas to
+      // the stored draft immediately, so the next session restores this result
+      // -- never the stale grid that was on canvas before generation (owner
+      // 09-14 "stick figure in every mask"). The debounced persist effect
+      // keeps the draft current from here on.
+      setRestoredDraft(null);
+      try {
+        const freshDraft: DesignerDraft = {
+          grid: finalGrid,
+          stitchTypes: finalStitchTypes,
+          gridWidth: finalW,
+          gridHeight: finalH,
+          savedAt: new Date().toISOString(),
+          aiPrompt: aiPrompt.trim(),
+          hasAiArtwork: !!data.previewUrl,
+        };
+        localStorage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(freshDraft));
+      } catch {
+        // Best-effort: localStorage quota etc. must not fail the generation.
+      }
       // When a product template is active, the canvas becomes the preset size —
       // never a stale leftover size.
       if (activePreset && (presetW !== canvasW || presetH !== canvasH)) {
@@ -1662,6 +1764,34 @@ export const Designer: React.FC = () => {
     return false;
   };
 
+  // A preset click starts a FRESH canvas at the preset's physical stitch dims:
+  // blank grid, no reframing of whatever was on canvas, auto-fit zoom. This is
+  // the only place a preset is applied to the canvas.
+  const startFreshPresetCanvas = (preset: CanvasPreset, stitchW: number, stitchH: number) => {
+    setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+    setPendingPreset(null);
+    clearHistory(); // a fresh preset canvas is a new baseline
+    // Selecting a product template starts a fresh canvas at that product's
+    // size — clear any prior content so a larger leftover canvas can never
+    // persist (owner: ornament kept coming out 17x17).
+    setGrid({});
+    setGridStitchTypes({});
+    setCellFractions({});
+    setGridWidth(stitchW);
+    setGridHeight(stitchH);
+    // Auto-fit zoom so the whole canvas (e.g. the stocking toe) is visible in
+    // the panel after a preset click.
+    const el = canvasRef.current;
+    if (el) {
+      setZoom(fitZoomFor(
+        stitchW,
+        stitchH,
+        Math.max(120, el.clientWidth - 48),
+        Math.max(120, el.clientHeight - 48),
+      ));
+    }
+  };
+
   const applyResize = (newW: number, newH: number) => {
     clearHistory(); // a canvas resize changes dimensions — treat as a new baseline
     // Clip any stitches outside the new bounds
@@ -1700,20 +1830,58 @@ export const Designer: React.FC = () => {
     [grid, gridStitchTypes, gridWidth, gridHeight],
   );
 
+  // Persist a working draft (debounced) so a hard refresh can offer to restore
+  // it. Draft v2 carries dims + AI provenance; empty canvases delete the draft
+  // instead of storing {}. A fresh AI result (handleGenerate) writes the draft
+  // immediately; this effect keeps it current during later edits.
   useEffect(() => {
     const timeout = setTimeout(() => {
-      localStorage.setItem('stitchwise_designer_save', JSON.stringify({ grid, stitchTypes: gridStitchTypes }));
+      if (!grid || Object.keys(grid).length === 0) {
+        localStorage.removeItem(DESIGNER_DRAFT_KEY);
+        lastSaved.current = grid;
+        return;
+      }
+      const draft: DesignerDraft = {
+        grid,
+        stitchTypes: gridStitchTypes,
+        gridWidth,
+        gridHeight,
+        savedAt: new Date().toISOString(),
+        hasAiArtwork: !!aiArtworkUrl,
+        aiPrompt: aiPrompt.trim(),
+      };
+      localStorage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(draft));
       lastSaved.current = grid;
     }, 2000);
     return () => clearTimeout(timeout);
-  }, [grid, gridStitchTypes]);
+  }, [grid, gridStitchTypes, gridWidth, gridHeight, aiPrompt, aiArtworkUrl]);
 
+  // Mount: NEVER silently setGrid() from localStorage (owner 09-14). The draft
+  // is surfaced behind a banner; the user decides Keep or Clear + start blank.
   useEffect(() => {
-    const saved = localStorage.getItem('stitchwise_designer_save');
-    if (saved) {
-      try { const p = JSON.parse(saved); if (p.grid) setGrid(p.grid); if (p.stitchTypes) setGridStitchTypes(p.stitchTypes); } catch {}
-    }
+    const draft = parseDesignerDraft(localStorage.getItem(DESIGNER_DRAFT_KEY));
+    if (draft) setRestoredDraft(draft);
   }, []);
+  const handleKeepDraft = () => {
+    if (!restoredDraft) return;
+    const d = restoredDraft;
+    setRestoredDraft(null); // persist effect may re-write the draft below
+    setGrid(d.grid);
+    setGridStitchTypes(d.stitchTypes);
+    if (d.gridWidth !== undefined && d.gridWidth >= 6) setGridWidth(d.gridWidth);
+    if (d.gridHeight !== undefined && d.gridHeight >= 6) setGridHeight(d.gridHeight);
+    if (d.aiPrompt) setAiPrompt(d.aiPrompt);
+    clearHistory(); // a restored draft starts a fresh undo baseline
+  };
+
+  const handleClearDraft = () => {
+    setRestoredDraft(null);
+    localStorage.removeItem(DESIGNER_DRAFT_KEY);
+    setGrid({});
+    setGridStitchTypes({});
+    setCellFractions({});
+    clearHistory();
+  };
 
   // Escape key to exit fullscreen
   useEffect(() => {
@@ -1765,6 +1933,43 @@ export const Designer: React.FC = () => {
           </h1>
           <p className="mt-4 text-lg text-slate-600 max-w-3xl mx-auto">Design perfect patterns stitch by stitch.</p>
         </div>
+
+        {/* Restored-draft banner: a saved draft is NEVER applied silently
+            (owner 09-14 "stick figure in every mask" -- the old grid kept
+            popping back into every product mask). The canvas starts blank and
+            the user explicitly decides Keep vs Clear + start blank. */}
+        {restoredDraft && (
+          <div className="mb-6 w-full rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm" data-testid="restored-draft-banner">
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-900">Restored draft from your last session</p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  {Object.keys(restoredDraft.grid).filter(k => restoredDraft.grid[k]).length} stitches
+                  {` · ${restoredDraft.gridWidth}×${restoredDraft.gridHeight} canvas`}
+                  {restoredDraft.hasAiArtwork ? ' · from a previous AI generation' : ' · a saved draft, not a fresh AI result'}
+                  . This draft is never re-shaped to fit a product mask.
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={handleKeepDraft}
+                  className="rounded-lg bg-blush-600 hover:bg-blush-700 text-white text-xs font-bold px-4 py-2 transition-all"
+                  type="button"
+                >
+                  Keep
+                </button>
+                <button
+                  onClick={handleClearDraft}
+                  className="rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-bold px-4 py-2 hover:bg-amber-100 transition-all"
+                  type="button"
+                >
+                  Clear + start blank
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
 
         {/* ==================== EXISTING GRID EDITOR ==================== */}
@@ -1868,28 +2073,18 @@ export const Designer: React.FC = () => {
                       <button
                         key={preset.name}
                         onClick={() => {
-                          setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
-                          clearHistory(); // a fresh preset canvas is a new baseline
-                          // Selecting a product template starts a fresh canvas at
-                          // that product's size — clear any prior content so a
-                          // larger leftover canvas can never persist (owner:
-                          // ornament kept coming out 17x17).
-                          setGrid({});
-                          setGridStitchTypes({});
-                          setCellFractions({});
-                          setGridWidth(stitchW);
-                          setGridHeight(stitchH);
-                          // Auto-fit zoom so the whole canvas (e.g. the stocking
-                          // toe) is visible in the panel after a preset click.
-                          const el = canvasRef.current;
-                          if (el) {
-                            setZoom(fitZoomFor(
-                              stitchW,
-                              stitchH,
-                              Math.max(120, el.clientWidth - 48),
-                              Math.max(120, el.clientHeight - 48),
-                            ));
+                          // A preset click means "start a fresh canvas at this
+                          // product size". NEVER silently reframe the current
+                          // grid into the new shape (owner 09-14: a stale draft
+                          // was popping into every mask) and never wipe a real
+                          // design without asking. With stitches on canvas we
+                          // ask first; on an empty canvas we just start fresh.
+                          const hasStitches = Object.keys(grid).some(k => grid[k]);
+                          if (hasStitches) {
+                            setPendingPreset({ preset, stitchW, stitchH });
+                            return;
                           }
+                          startFreshPresetCanvas(preset, stitchW, stitchH);
                         }}
                         className={`px-2.5 py-2 rounded-lg text-left border transition-all ${
                           isActive
@@ -1905,6 +2100,38 @@ export const Designer: React.FC = () => {
                     );
                   })}
                 </div>
+                {pendingPreset && (
+                  <div className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-bold text-amber-800">
+                          Start a fresh {pendingPreset.preset.name} canvas?
+                        </p>
+                        <p className="text-[10px] text-amber-700">
+                          Your current stitches will be cleared — a product preset always starts blank
+                          ({pendingPreset.stitchW}×{pendingPreset.stitchH} st).
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startFreshPresetCanvas(pendingPreset.preset, pendingPreset.stitchW, pendingPreset.stitchH)}
+                        className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold py-1.5 transition-all"
+                        type="button"
+                      >
+                        Start fresh
+                      </button>
+                      <button
+                        onClick={() => setPendingPreset(null)}
+                        className="flex-1 rounded-lg bg-white border border-amber-200 text-amber-700 text-[10px] font-bold py-1.5 hover:bg-amber-50 transition-all"
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Manual size inputs */}
@@ -2202,6 +2429,32 @@ export const Designer: React.FC = () => {
                 <p className={`w-full mb-4 text-[11px] px-2 py-1 rounded ${patternSaveMsg.startsWith('Save failed') || patternSaveMsg.startsWith('Load failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
                   {patternSaveMsg}
                 </p>
+              )}
+              {pendingSaveConfirm && (
+                <div className="w-full mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] font-bold text-amber-800">
+                      This pattern has no AI source image — it's your current canvas as-is. Save anyway?
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={confirmSaveWithoutSource}
+                      className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold py-1.5 transition-all"
+                      type="button"
+                    >
+                      Save anyway
+                    </button>
+                    <button
+                      onClick={() => setPendingSaveConfirm(false)}
+                      className="flex-1 rounded-lg bg-white border border-amber-200 text-amber-700 text-[10px] font-bold py-1.5 hover:bg-amber-50 transition-all"
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
 
               {/* AI Prompt Bar */}
