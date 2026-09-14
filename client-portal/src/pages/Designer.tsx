@@ -6,7 +6,7 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2
+  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2, Info
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
@@ -2483,6 +2483,16 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     {isGenerating ? (pollingStatus || 'Generating…') : 'Generate'}
                   </button>
                 </div>
+
+                <p className="mt-2 text-[10px] text-slate-500 flex items-start gap-1">
+                  <Info className="h-3 w-3 text-purple-400 shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-semibold text-slate-600">Tip:</span>{' '}
+                    Be descriptive — include the subject, colors, and details so the AI can create
+                    exactly what you want (e.g., 'a brown teddy bear wearing a red sweater and a
+                    wide smile').
+                  </span>
+                </p>
 
                 {isStudioTier && (
                   <div className="mt-2 flex items-center gap-2">
