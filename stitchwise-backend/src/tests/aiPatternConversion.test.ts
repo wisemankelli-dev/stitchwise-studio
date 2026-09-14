@@ -27,6 +27,8 @@ import {
   subjectTouchesEdge,
   isSquareOrLandscape,
   isFrameCanvas,
+  padUnderSpecifiedPrompt,
+  isUnderSpecifiedPrompt,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import type { StitchCell } from "../domain/stitch/types";
@@ -112,6 +114,71 @@ describe("enrichAIPrompt", () => {
   it("defaults to PADDING for a square canvas when no dims are given", () => {
     const { prompt } = enrichAIPrompt("cute cat");
     expect(prompt).toContain("padding and margins on all sides");
+  });
+  // ─── Short / under-specified prompt padding (owner 09-14) ────────────────
+  it("pads a BARE 'teddy bear' prompt so Gemini has detail to draw (owner 09-14 'ugly clip art')", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", "ornament", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    // The auto-pad gives the model concrete subject detail to work from.
+    expect(prompt).toContain("big friendly eyes");
+    expect(prompt).toContain("polished children's-book illustration style");
+    // ...WITHOUT dropping any of the shape/style directives (padding is
+    // prepended to the same comma-joined enriched prompt).
+    expect(prompt).toContain("circular ornament bauble");
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+    expect(prompt).toContain("vibrant, saturated, colorful illustration");
+  });
+  it("leaves descriptive prompts VERBATIM (no padding, no degradation)", () => {
+    const { prompt } = enrichAIPrompt("teddy bear with a brown sweater", "ornament", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(prompt.startsWith("teddy bear with a brown sweater")).toBe(true);
+    expect(prompt).not.toContain("polished children's-book illustration style");
+  });
+  it("pads short prompts on ANY size grid, not just small grids", () => {
+    const big = enrichAIPrompt("teddy bear", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(big.smallGrid).toBe(false);
+    expect(big.prompt).toContain("polished children's-book illustration style");
+  });
+  it("does NOT pad scene prompts and never double-pads (idempotent)", () => {
+    const scene = enrichAIPrompt("sunset beach scene", "ornament");
+    expect(scene.prompt).not.toContain("polished children's-book illustration style");
+    const first = enrichAIPrompt("teddy bear", "ornament", { canvasWidth: 42, canvasHeight: 42 }).prompt;
+    const second = enrichAIPrompt(first, "ornament", { canvasWidth: 42, canvasHeight: 42 }).prompt;
+    // Exactly ONE pad, even when the enriched (already-padded) prompt is fed back in.
+    expect(second.split("polished children's-book illustration style").length - 1).toBe(1);
+  });
+  it("heuristic: bare subjects are under-specified; described/scene ones are not", () => {
+    expect(isUnderSpecifiedPrompt("teddy bear")).toBe(true);
+    expect(isUnderSpecifiedPrompt("a teddy bear")).toBe(true); // article-stripped
+    expect(isUnderSpecifiedPrompt("teddy bear with a brown sweater")).toBe(false); // ≥6 words + color
+    expect(isUnderSpecifiedPrompt("red truck")).toBe(false); // color token
+    expect(isUnderSpecifiedPrompt("cute cat")).toBe(false); // style token
+    expect(isUnderSpecifiedPrompt("sunset beach scene")).toBe(false); // scene
+    expect(isUnderSpecifiedPrompt("a yellow sunflower")).toBe(false); // descriptor present
+  });
+  it("padUnderSpecifiedPrompt is idempotent at the helper level", () => {
+    const once = padUnderSpecifiedPrompt("teddy bear");
+    const twice = padUnderSpecifiedPrompt(once);
+    expect(twice).toBe(once);
+    expect(padUnderSpecifiedPrompt("teddy bear with a brown sweater")).toBe("teddy bear with a brown sweater");
+  });
+  it("owner decision 09-14: bare subjects (incl. procedural 'sunflower') count as under-specified → routed to AI, not clip art", () => {
+    // The route gate sends a prompt to the fast (clip-art) paths ONLY when it
+    // is NOT under-specified; bare names are therefore always AI + auto-pad.
+    expect(isUnderSpecifiedPrompt("sunflower")).toBe(true); // procedural name → AI now
+    expect(isUnderSpecifiedPrompt("teddy bear")).toBe(true); // shape-library name → AI now
+    expect(isUnderSpecifiedPrompt("rose")).toBe(true);
+    // Described prompts never take the fast paths either (&& short-circuits).
+    expect(!isUnderSpecifiedPrompt("a yellow sunflower") && shouldUseProceduralPattern("a yellow sunflower")).toBe(false);
+    expect(!isUnderSpecifiedPrompt("cute cat") && shouldUseProceduralPattern("cute cat")).toBe(false);
   });
 
   // ─── Ornament "busy design" fix (owner 09-11) ────────────────────────────

@@ -180,12 +180,83 @@ export function isSmallGrid(canvasWidth?: number, canvasHeight?: number): boolea
   return Math.min(canvasWidth, canvasHeight) <= SMALL_GRID_MAX_DIM;
 }
 
+/**
+ * Tokens that mark a prompt as ALREADY descriptive. If the user prompt
+ * contains any of these (colors, materials/textures, styles, sizes, outfit
+ * hints), it is treated as "specified enough" and left verbatim. Bare prompts
+ * like "teddy bear" get none of these → they are auto-padded below.
+ */
+const PROMPT_DESCRIPTOR_TOKENS = new Set([
+  // colors
+  "red", "orange", "yellow", "green", "blue", "purple", "pink", "brown",
+  "black", "white", "grey", "gray", "gold", "silver", "teal", "navy",
+  "maroon", "beige", "cream", "coral", "turquoise", "lavender", "magenta",
+  "aqua", "tan", "rust", "amber", "indigo", "violet", "rainbow",
+  // materials / textures / styles
+  "soft", "fluffy", "fuzzy", "furry", "plush", "cuddly", "cute", "adorable",
+  "charming", "cozy", "knitted", "knit", "crocheted", "wool", "woolen",
+  "fleece", "velvet", "satin", "denim", "plaid", "striped", "spotted",
+  "polka", "gingham", "checked", "patchwork", "quilted", "embroidered",
+  "beaded", "glitter", "sparkly", "shiny", "glossy", "matte", "pastel",
+  "bright", "dark", "pale", "bold", "vibrant", "colorful", "sweet", "dainty",
+  "elegant", "rustic", "modern", "vintage", "retro", "cartoon", "realistic",
+  // sizes / attributes / poses
+  "big", "small", "large", "tiny", "little", "huge", "giant", "tall",
+  "short", "fat", "slim", "skinny", "chubby", "round", "square", "oval",
+  "long", "sleeping", "sitting", "standing", "flying", "smiling", "wearing",
+  "holding", "carrying",
+  // nouns that imply a fuller description
+  "sweater", "scarf", "hat", "bow", "dress", "jacket", "boots", "flowers",
+  "daisy", "roses", "butterfly", "heart", "star", "face", "eyes", "fur",
+]);
+/** Scene keywords — an intentional landscape/scene prompt must NOT be padded
+ * (auto-adding character detail would distort a sunset/seascape ask). */
+export const SCENE_KEYWORDS_REGEX = /\b(scene|beach|landscape|sunset|sunrise|seascape|mountain|forest|garden|street|city)\b/;
+/**
+ * Descriptive padding for UNDER-SPECIFIED prompts (owner 09-14: a bare
+ * "teddy bear" came back as generic ugly clip art, while "teddy bear with
+ * a brown sweater" drew a rich subject). Appended once (idempotent via the
+ * marker check below) so Gemini has concrete detail to latch onto. Deliberately
+ * subject-flexible (works for animals, characters and objects) and safe to
+ * concatenate with the comma-joined style directives.
+ */
+export const UNDERSPECIFIED_PROMPT_PAD =
+  " with soft warm textures, a cute expressive face with big friendly eyes and round rosy cheeks, a cozy detailed outfit or charming accessories, polished children's-book illustration style, rich in character and charm";
+/**
+ * True when the user prompt is too bare to guide image generation: very
+ * short (≤5 real words) and carries NO descriptive tokens. Deterministic —
+ * no LLM call, no randomness. Excluded by design: scene/landscape prompts
+ * (intentional) and anything that already received the padding. NOTE: bare
+ * procedural subjects (e.g. "sunflower") ARE under-specified — owner 09-14:
+ * no clip art for bare subjects, they must reach AI too.
+ */
+export function isUnderSpecifiedPrompt(rawPrompt: string): boolean {
+  const normalized = rawPrompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const withoutArticle = normalized.replace(/^(?:a|an|the)\s+/, "");
+  const words = withoutArticle.split(" ").filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  if (SCENE_KEYWORDS_REGEX.test(normalized)) return false;
+  if (words.some((w) => PROMPT_DESCRIPTOR_TOKENS.has(w))) return false;
+  return true;
+}
+/**
+ * Idempotent prompt normalizer: pads a bare/under-specified prompt with
+ * UNDERSPECIFIED_PROMPT_PAD exactly once. Descriptive prompts — and anything
+ * already padded — pass through untouched. Applied inside enrichAIPrompt so
+ * the client keeps sending prompts unchanged.
+ */
+export function padUnderSpecifiedPrompt(rawPrompt: string): string {
+  if (rawPrompt.includes(UNDERSPECIFIED_PROMPT_PAD)) return rawPrompt;
+  if (!isUnderSpecifiedPrompt(rawPrompt)) return rawPrompt;
+  return `${rawPrompt.trim()}${UNDERSPECIFIED_PROMPT_PAD}`;
+}
 export function enrichAIPrompt(
   prompt: string,
   shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
   opts?: { canvasWidth?: number; canvasHeight?: number },
 ): { prompt: string; sceneGuardApplied: boolean; shapeHintApplied: boolean; smallGrid: boolean } {
-  const enriched: string[] = [prompt];
+  const subjectPrompt = padUnderSpecifiedPrompt(prompt);
+  const enriched: string[] = [subjectPrompt];
   const lower = prompt.toLowerCase();
   let sceneGuardApplied = false;
   let shapeHintApplied = false;
@@ -256,7 +327,7 @@ export function enrichAIPrompt(
   }
 
   // Scene guard — a beach/sunset/landscape is a SCENE, not a person portrait.
-  if (/\b(scene|beach|landscape|sunset|sunrise|seascape|mountain|forest|garden|street|city)\b/.test(lower)) {
+  if (SCENE_KEYWORDS_REGEX.test(lower)) {
     enriched.push("landscape scene only, no people, no faces, no text, no watermark");
     sceneGuardApplied = true;
   }
@@ -470,7 +541,12 @@ export function createAIEmbroideryRouter(): Router {
         // Only bare known subject names use the procedural fast path. Any
         // qualifier (for example, "yellow" in "a yellow sunflower") must
         // reach OpenAI for an image preview.
-        const proceduralPattern = shouldUseProceduralPattern(prompt)
+        const underSpecified = isUnderSpecifiedPrompt(prompt);
+        // Owner 09-14: ALL prompt requests → AI artwork ALWAYS (no clip art
+        // for bare subjects). Under-specified prompts (e.g. "teddy bear")
+        // bypass BOTH fast paths — the procedural generator and the Shape
+        // Library — so they reach Gemini with the auto-padded descriptor.
+        const proceduralPattern = !underSpecified && shouldUseProceduralPattern(prompt)
           ? generateSubjectPattern(prompt, gridSize || DEFAULT_GRID_SIZE)
           : null;
         if (proceduralPattern) {
@@ -539,7 +615,7 @@ export function createAIEmbroideryRouter(): Router {
         let previewUrl: string | undefined;
         
 
-        if (matchedShape) {
+        if (matchedShape && !underSpecified) {
           // Only use Shape Library when the prompt is JUST the shape name
           // (possibly with articles). "monarch butterfly" should go to AI,
           // because "monarch" is a descriptor, not a shape keyword.
@@ -574,7 +650,7 @@ export function createAIEmbroideryRouter(): Router {
               event: "ai_prompt_sent",
               originalPrompt: prompt,
               finalPrompt,
-              enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult },
+              enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult, underSpecified },
             }));
 
             // Gemini (sole provider) — aspect-aware art (tall for stocking).
