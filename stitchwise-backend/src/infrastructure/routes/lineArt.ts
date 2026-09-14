@@ -9,6 +9,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { isUnderSpecifiedPrompt } from "./aiEmbroidery";
 import multer from "multer";
 import axios from "axios";
 import { z } from "zod";
@@ -347,7 +348,10 @@ if (!imageBuffer) {
         }));
 
         // ── Procedural fast path: known subjects skip image conversion ──────
-        if (prompt && isBareProceduralSubject(prompt)) {
+        // Owner 09-14: no procedural clip art anywhere — an under-specified
+        // prompt (e.g. "sunflower") must not substitute a canned grid; convert
+        // the user's actual image instead.
+        if (prompt && isBareProceduralSubject(prompt) && !isUnderSpecifiedPrompt(prompt)) {
           const procedural = generateSubjectPattern(prompt, targetSize);
           if (procedural) {
             const dmcColorsWithSymbols = procedural.dmcColors.map((c, i) => ({

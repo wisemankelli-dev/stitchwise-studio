@@ -123,7 +123,7 @@ describe("enrichAIPrompt", () => {
     });
     expect(smallGrid).toBe(true);
     // The auto-pad gives the model concrete subject detail to work from.
-    expect(prompt).toContain("big friendly eyes");
+    expect(prompt).toContain("soft brown fur");
     expect(prompt).toContain("polished children's-book illustration style");
     // ...WITHOUT dropping any of the shape/style directives (padding is
     // prepended to the same comma-joined enriched prompt).
@@ -941,5 +941,43 @@ describe("imageBufferToStitchGrid (small-grid dark-outline preservation)", () =>
     // The margined fixture keeps its natural insertion: top rows blank, no cap.
     expect(topRowsFreeOfSubject(result.grid, 5)).toBe(true);
     expect(subjectTopRow(result.grid)).toBeGreaterThanOrEqual(6);
+  });
+});
+
+// ─── Subject→descriptor lexicon (owner 09-14 expansion: blue bird, house, fish, …) ───
+describe("padUnderSpecifiedPrompt lexicon", () => {
+  it("lexicon: bare/named craft subjects get their rich descriptor", () => {
+    const cases: Array<[string, string]> = [
+      ["teddy bear", "soft brown fur"], ["bird", "bright orange beak"],
+      ["blue bird", "soft blue feathers"], ["red bird", "vivid red feathers"],
+      ["house", "cozy storybook house"], ["fish", "smooth shiny scales"],
+      ["cat", "round green eyes"], ["dog", "floppy ears"],
+      ["butterfly", "delicate symmetrical patterns"], ["flower", "layered colorful petals"],
+      ["heart", "plump rounded heart"], ["star", "bright golden star"],
+      ["bunny", "long soft ears"], ["rabbit", "long soft ears"],
+      ["snowman", "carrot nose"], ["tree", "round green foliage"],
+      ["mushroom", "rounded red cap"], ["penguin", "white belly"],
+      ["owl", "round golden eyes"], ["frog", "webbed feet"],
+      ["duck", "orange bill"], ["bee", "fuzzy striped bee"],
+      ["ladybug", "black spots"], ["fox", "bushy tail"], ["horse", "flowing mane"],
+    ];
+    for (const [prompt, marker] of cases) {
+      const padded = padUnderSpecifiedPrompt(prompt);
+      expect(padded.startsWith(prompt)).toBe(true);
+      expect(padded).toContain(marker);
+      expect(padded).toContain("polished children's-book illustration style");
+    }
+  });
+  it("lexicon: wrong-case + color+noun merge; unknown short prompts get generic fallback; descriptive stays verbatim", () => {
+    expect(padUnderSpecifiedPrompt("Blue Bird")).toContain("soft blue feathers");
+    expect(padUnderSpecifiedPrompt("BLUE BIRD")).toContain("soft blue feathers");
+    expect(padUnderSpecifiedPrompt("pink bird")).toContain("soft pink feathers");
+    expect(padUnderSpecifiedPrompt("purple cat")).toContain("round purple eyes");
+    expect(padUnderSpecifiedPrompt("a yellow sunflower")).toContain("bright yellow petals");
+    expect(padUnderSpecifiedPrompt("kangaroo")).toContain("soft detailed textures, rich colors, clear simple shapes");
+    expect(padUnderSpecifiedPrompt("teddy bear with a brown sweater")).toBe("teddy bear with a brown sweater");
+    expect(padUnderSpecifiedPrompt("cute cat")).toBe("cute cat");
+    expect(padUnderSpecifiedPrompt("red truck")).toBe("red truck");
+    expect(padUnderSpecifiedPrompt("sunset beach scene")).toBe("sunset beach scene");
   });
 });
