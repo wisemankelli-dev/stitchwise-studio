@@ -29,6 +29,7 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
+import { applyFaceFeatureGuard, countDarkCells } from "../../domain/stitch/faceFeatureGuard";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -242,9 +243,9 @@ const DEFAULT_DESCRIPTOR_COLORS = [
  * bird"), then on the color-stripped noun with a color merge ("pink bird").
  */
 export const SUBJECT_RICH_DESCRIPTORS: Record<string, string> = {
-  "teddy bear": "with soft brown fur, round ears, button eyes, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
-  "teddy": "with soft brown fur, round ears, button eyes, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
-  "bear": "a brown fluffy bear with round ears, a sweet muzzle, small dark eyes and a sturdy plump body",
+  "teddy bear": "with soft brown fur, round ears, LARGE dark button eyes and a dark nose, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
+  "teddy": "with soft brown fur, round ears, LARGE dark button eyes and a dark nose, a sweet muzzle, a cozy knitted sweater, a plump cuddly body",
+  "bear": "a brown fluffy bear with round ears, LARGE dark button eyes and a dark nose, a sweet muzzle and a sturdy plump body",
   "bird": "with soft blue feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
   "blue bird": "with soft blue feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
   "red bird": "with vivid red feathers, a bright orange beak, a round dark eye, a smooth rounded body and tiny feet",
@@ -475,7 +476,7 @@ export function enrichAIPrompt(
   // dark outline + simple readable features + a large subject.
   if (smallGrid) {
     enriched.push(
-      "bold flat cartoon-sticker style with big simple shapes and minimal shading, plus a THICK dark outline around the whole subject and simple readable features (for animals: a face with eyes, a muzzle, round ears, distinct head and body); the subject should fill most of the circle; no photo texture, no fine fur or fabric detail — the outline and features must stay visible at a very small stitch count",
+      "bold flat cartoon-sticker style with big simple shapes and minimal shading, plus a THICK dark outline around the whole subject and simple readable features with LARGE clearly-visible dark eyes and a dark nose (for animals: a face with large dark button eyes, a dark nose, a muzzle, round ears, distinct head and body); the subject should fill most of the circle; no photo texture, no fine fur or fabric detail — the outline and features must stay visible at a very small stitch count",
     );
   }
 
@@ -597,15 +598,7 @@ export function qualityGate(
     opts?.canvasHeight !== undefined &&
     Math.min(opts.canvasWidth, opts.canvasHeight) <= SMALL_GRID_MAX_DIM;
   if (smallGrid && fillPct >= 25 && nonBgColors >= 2 && filled > 0) {
-    let darkCells = 0;
-    for (const row of grid) {
-      for (const cell of row) {
-        const h = (cell?.color || "").toLowerCase();
-        if (h.length !== 7) continue;
-        const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
-        if (Math.max(r, g, b) < 110) darkCells++;
-      }
-    }
+    const darkCells = countDarkCells(grid);
     // A small flat design whose DARK cells are < 1% of the fill has no real
     // outline or features (owner's 09-11 block: 3 dark of 456 filled = 0.7%).
     // The converter's outline-preservation pass repaints dark outline cells,
@@ -746,15 +739,26 @@ export function createAIEmbroideryRouter(): Router {
             shape === "stocking" || shape === "ornament" || shape === "pillow"
               ? applyProductShapeMask(recentered, shape, genW, genH)
               : recentered;
+          // Deterministic face-feature guard (owner 09-15, 3rd report: bag
+          // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
+          // cells). The prompt can't guarantee the model draws features and
+          // the converter can only repaint dark pixels the source contained —
+          // so on the small-grid path (≤60 cells, outlinePreserve already on)
+          // rescue the subject geometrically: dark silhouette outline for ANY
+          // subject, plus eyes+nose for animal/face prompts. Runs AFTER the
+          // shape mask, so synthesized eyes land inside the silhouette.
+          const guarded = isSmallGrid(genW, genH)
+            ? applyFaceFeatureGuard(masked, grid.dmcColors, prompt)
+            : { grid: masked, dmcColors: grid.dmcColors };
           // Quality gate — warn (don't silently save) when the conversion
           // came out sparse/muddy, OR (on frame canvases) the subject
           // bleeds to an edge.
-          const qualityWarning = qualityGate(masked, grid.dmcColors, prompt, {
+          const qualityWarning = qualityGate(guarded.grid, guarded.dmcColors, prompt, {
             frame: isFrameCanvasResult,
             canvasWidth: genW,
             canvasHeight: genH,
           });
-          return buildPatternResponse({ ...grid, grid: masked }, {
+          return buildPatternResponse({ ...grid, grid: guarded.grid, dmcColors: guarded.dmcColors }, {
             promptUsed: finalPrompt,
             processingTimeMs: 0,
             fabric: { count: fc, inches: +fabricInches.toFixed(2) },
