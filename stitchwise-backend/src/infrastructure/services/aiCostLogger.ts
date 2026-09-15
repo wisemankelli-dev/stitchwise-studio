@@ -16,7 +16,7 @@ import * as path from "path";
 
 export interface AICallLog {
   timestamp: string;
-  provider: "openai";
+  provider: "openai" | "gemini";
   model: string;
   status: "success" | "error" | "credit_error" | "rate_limited" | "no_key";
   estimatedCost: number; // in USD
