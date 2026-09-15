@@ -25,7 +25,9 @@ import {
   imageUrlToStitchGrid,
   imageBufferToStitchGrid,
   resizeStitchGrid,
+  frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
+import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -718,15 +720,29 @@ export function createAIEmbroideryRouter(): Router {
             { width: genW, height: genH },
             { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
           );
+          // Deterministic content recenter (owner 09-15 — snowflake ornament "is
+          // not centered and left white edge"): Gemini can draw the subject
+          // off-center in the canvas, and the pixel→grid conversion carries the
+          // offset through (white band on one side). Shift the whole grid so the
+          // content bbox centers on the canvas. FRAME canvases keep the subject
+          // inside the deterministic margin band (the band is sacred — the
+          // recenter must never push content into it); product shapes get pure
+          // centering. Already-centered content is returned unchanged, so
+          // existing symmetric margins are preserved. Fix applies to NEW
+          // generations only — saved patterns keep their baked grids.
+          const recentered = recenterGrid(
+            grid.grid,
+            isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
+          );
           // Quality gate — warn (don't silently save) when the conversion
           // came out sparse/muddy, OR (on frame canvases) the subject
           // bleeds to an edge.
-          const qualityWarning = qualityGate(grid.grid, grid.dmcColors, prompt, {
+          const qualityWarning = qualityGate(recentered, grid.dmcColors, prompt, {
             frame: isFrameCanvasResult,
             canvasWidth: genW,
             canvasHeight: genH,
           });
-          return buildPatternResponse(grid, {
+          return buildPatternResponse({ ...grid, grid: recentered }, {
             promptUsed: finalPrompt,
             processingTimeMs: 0,
             fabric: { count: fc, inches: +fabricInches.toFixed(2) },
