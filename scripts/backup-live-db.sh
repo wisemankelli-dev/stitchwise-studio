@@ -27,14 +27,31 @@ mkdir -p "$BACKUP_DIR"
 # ──────────────────────────────────────────────────────────────────────────
 TRANSITIONAL="${ALLOW_TRANSITIONAL_PUBLISH:-0}"
 
+# ── Canonical endpoint override (2026-09-15) ──────────────────────────────
+# The platform build runner can inject a DIFFERENT (internal/other-env)
+# LIVE_DB_BACKUP_URL + PATTERN_ADMIN_SECRET, and publish.sh's .env loader
+# deliberately never clobbers runner-provided vars — so the gate would hit
+# the wrong environment and fail 503. The project .env ships the canonical
+# values; when they differ, prefer the .env ones so the gate ALWAYS talks to
+# the real live app.
+SITE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$SITE_ROOT/.env" ]; then
+  _env_url="$(grep -E '^LIVE_DB_BACKUP_URL=' "$SITE_ROOT/.env" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+  _env_key="$(grep -E '^PATTERN_ADMIN_SECRET=' "$SITE_ROOT/.env" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+  [ -n "$_env_url" ] && LIVE_DB_BACKUP_URL="$_env_url"
+  [ -n "$_env_key" ] && PATTERN_ADMIN_SECRET="$_env_key"
+fi
+
 do_backup() {
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   final="$BACKUP_DIR/live-dev-${stamp}.db"
-  tmp="$BACKUP_DIR/.live-dev-${stamp}.tmp-$$"
+  tmp="$BACKUP_DIR/.live-dev-${stamp}.tmp-$"
   trap 'rm -f -- "$tmp"' EXIT
-  curl --fail --silent --show-error --location --retry 3 --connect-timeout 10 \
+  dbg="$(curl --fail --silent --show-error --location --retry 3 --connect-timeout 10 \
     --header "x-admin-key: $PATTERN_ADMIN_SECRET" \
-    --output "$tmp" "$LIVE_DB_BACKUP_URL" || return 1
+    --output "$tmp" \
+    --write-out "url=$LIVE_DB_BACKUP_URL code=%{http_code} size=%{size_download}" \
+    "$LIVE_DB_BACKUP_URL")" || { echo "GATE-DIAG: $dbg" >&2; [ -s "$tmp" ] && { echo "GATE-DIAG-BODY: $(head -c 220 "$tmp")" >&2; }; return 1; }
   test -s "$tmp" || return 1
   header="$(od -An -tx1 -N16 "$tmp" | tr -d ' \n')"
   if [[ "$header" != "53514c69746520666f726d6174203300" ]]; then
