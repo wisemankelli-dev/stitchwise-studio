@@ -28,6 +28,7 @@ import {
   frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
+import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -734,15 +735,26 @@ export function createAIEmbroideryRouter(): Router {
             grid.grid,
             isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
           );
+          // Geometric shape-mask enforcement (owner 09-15 pillow repro "over
+          // filled mask, cut off heart"): the silhouette is enforced at the
+          // grid level so nothing bleeds past the stocking/ornament/pillow
+          // boundary — the prompt alone can't guarantee Gemini respects the
+          // shape outline. Clears cells outside the silhouette and fills
+          // enclosed background holes with the nearest subject color for a
+          // coherent solid subject with true cut-out edges.
+          const masked =
+            shape === "stocking" || shape === "ornament" || shape === "pillow"
+              ? applyProductShapeMask(recentered, shape, genW, genH)
+              : recentered;
           // Quality gate — warn (don't silently save) when the conversion
           // came out sparse/muddy, OR (on frame canvases) the subject
           // bleeds to an edge.
-          const qualityWarning = qualityGate(recentered, grid.dmcColors, prompt, {
+          const qualityWarning = qualityGate(masked, grid.dmcColors, prompt, {
             frame: isFrameCanvasResult,
             canvasWidth: genW,
             canvasHeight: genH,
           });
-          return buildPatternResponse({ ...grid, grid: recentered }, {
+          return buildPatternResponse({ ...grid, grid: masked }, {
             promptUsed: finalPrompt,
             processingTimeMs: 0,
             fabric: { count: fc, inches: +fabricInches.toFixed(2) },
