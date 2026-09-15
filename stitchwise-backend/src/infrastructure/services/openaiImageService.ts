@@ -35,6 +35,16 @@ import { logAICall, getEstimatedCost } from "./aiCostLogger";
 const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-image";
 const GEMINI_PREMIUM_MODEL = "gemini-3-pro-image";
 const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || GEMINI_DEFAULT_MODEL;
+/** Minimal Gemini generateContent response shape — only the fields this service reads. */
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        inlineData?: { mimeType: string; data: string };
+      }>;
+    };
+  }>;
+}
 export async function generateImageWithGemini(
   prompt: string,
   styleHints?: string,
@@ -88,7 +98,7 @@ export async function generateImageWithGemini(
         console.error(JSON.stringify({ event: "gemini_model_error", model, attempt, error: lastError }));
         continue;
       }
-      const data = await res.json();
+      const data = (await res.json()) as GeminiGenerateContentResponse;
       const parts = data?.candidates?.[0]?.content?.parts || [];
       const inline = parts.find((p: any) => p?.inlineData?.data);
       if (!inline?.inlineData) {
