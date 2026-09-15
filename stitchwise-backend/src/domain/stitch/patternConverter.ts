@@ -23,6 +23,19 @@ import type { StitchCell, StitchGrid, PatternResult } from "./types";
 import { AVAILABLE_GRID_SIZES, DEFAULT_GRID_SIZE, CROSS_STITCH_SYMBOLS } from "./types";
 import { pixelsToStitchGrid } from "./pipeline";
 import { closestDmcColor, rgbToHex } from "./dmcColors";
+/**
+ * Deterministic frame margin band (in cells) for FRAME canvases.
+ *
+ * Square/landscape canvases get a visible margin so the subject always sits
+ * inside a border (owner 09-03 #3 + 09-11 "teddy bear STILL cut off"); TALL
+ * canvases / product shapes (stocking/ornament/pillow, meant to fill
+ * edge-to-edge) get no band. Shared by the converter (applies the band to the
+ * grid) and the AI route (recenters the content within the band) so the two
+ * can never drift apart.
+ */
+export function frameMarginCellCount(width: number, height: number): number {
+  return width >= height ? Math.max(2, Math.round(0.06 * Math.min(width, height))) : 0;
+}
 
 /**
  * Convert an image URL to a stitch grid by:
@@ -124,10 +137,7 @@ export async function imageBufferToStitchGrid(
   // deterministic — a visible margin regardless of what the model drew.
   // Product shapes / TALL canvases (stocking/ornament/pillow, meant to fill
   // edge-to-edge) never get a band.
-  const marginPx =
-    opts?.margin === true && outW >= outH
-      ? Math.max(2, Math.round(0.06 * Math.min(outW, outH)))
-      : 0;
+  const marginPx = opts?.margin === true ? frameMarginCellCount(outW, outH) : 0;
 
   // Step 0: Auto-crop the light background so the subject fills the grid
   // (recognizability fix — a small subject on a huge white field converts to
