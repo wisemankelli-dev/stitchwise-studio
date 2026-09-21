@@ -490,6 +490,17 @@ export function enrichAIPrompt(
       enriched.push(
         "perfectly symmetric head with a perfectly round crown centered on the canvas: mirror-image left and right sides of the head, two identical round ears sticking up at the top corners of the head, front-facing, no tilted or lopsided head",
       );
+      // Small-grid color coherence (owner 09-21 "bag charm update 4", 28×28):
+      // round head + symmetric ears are confirmed (gap #38), but the model
+      // painted the body gray-green (#526055) with a salmon-pink muzzle
+      // (#d2785a) while the head came out warm brown — the flat-sticker
+      // wording constrains geometry/outline/face but never the fur color, so
+      // arbitrary shading survives downsample + quantization. Demand ONE solid
+      // flat body color with only a small muzzle/belly accent. Animal/face
+      // prompts only — non-animal small-grid prompts stay byte-identical.
+      enriched.push(
+        "the ENTIRE animal is one solid flat color: head, ears, body, arms and legs all the same exact base color (e.g. warm brown for a teddy bear, naturally colored for the animal); a small lighter cream or tan muzzle and belly patch only; NO green, gray, blue, pink or salmon tones anywhere in the fur, no clothing, zero shading, no color gradients on the body",
+      );
     }
   }
 

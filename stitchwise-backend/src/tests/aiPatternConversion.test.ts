@@ -322,6 +322,64 @@ describe("enrichAIPrompt", () => {
     expect(prompt).not.toContain("perfectly symmetric head");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
+  // ─── Color coherence (owner 09-21 "bag charm update 4", 28×28) ──────────
+  it("small-grid ANIMAL prompt demands one solid flat body color (owner 09-21 gray-green body / salmon muzzle)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", undefined, {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).toContain("all the same exact base color");
+    expect(prompt).toContain("small lighter cream or tan muzzle and belly patch only");
+    expect(prompt).toContain("NO green, gray, blue, pink or salmon tones");
+    expect(prompt).toContain("no color gradients on the body");
+    // ...while keeping the round-head + flat-sticker + outline directives.
+    expect(prompt).toContain("perfectly symmetric head");
+    expect(prompt).toContain("two identical round ears sticking up at the top corners");
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+    expect(prompt).toContain("THICK dark outline");
+    expect(prompt).toContain("padding and margins on all sides");
+  });
+  it("small-grid ANIMAL on a 42x42 ornament also gets the color directive", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("kitten", "ornament", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).toContain("perfectly symmetric head");
+    expect(prompt).toContain("clipped to a CIRCLE");
+  });
+  it("small-grid NON-ANIMAL prompt does NOT get the color directive (byte-identical)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("pansy flower", "pillow", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).not.toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).not.toContain("NO green, gray, blue, pink or salmon tones");
+    expect(prompt).not.toContain("no color gradients on the body");
+  });
+  it("small-grid NON-ANIMAL 42x42 snowflake gets no color directive either", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("white snowflake", undefined, {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).not.toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).not.toContain("no color gradients on the body");
+  });
+  it("LARGE-grid animal prompt (70x70) does NOT get the color directive (no small-grid directives at all)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", undefined, {
+      canvasWidth: 70,
+      canvasHeight: 70,
+    });
+    expect(smallGrid).toBe(false);
+    expect(prompt).not.toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).not.toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
 });
 
 // ─── isSquareOrLandscape ────────────────────────────────────────────────
