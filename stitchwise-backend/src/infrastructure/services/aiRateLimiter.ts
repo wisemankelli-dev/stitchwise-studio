@@ -1,14 +1,18 @@
 /**
  * AI Rate Limiter — per-user daily limits on AI image generation.
  *
+ * @deprecated Superseded by src/infrastructure/middleware/aiRateLimit.ts
+ * (persistent daily + monthly caps, wired into the AI routes). Kept only so
+ * nothing breaks if a stale import exists; limits below match the middleware.
+ *
  * Limits are enforced by subscription tier:
- *   - Hobbyist: 10 AI generations per day
- *   - Pro Crafter: 50 AI generations per day
- *   - Design Studio: unlimited
+ *   - Hobbyist: 2 AI generations per day (10/month)
+ *   - Pro Crafter: 15 AI generations per day (100/month)
+ *   - Design Studio: 30 AI generations per day (200/month)
  *   - Unauthenticated: 3 per day (shared IP-based)
  *
  * In-memory counters with daily reset at midnight UTC.
- * For production, replace with Redis-backed counters.
+ * For production, replace with Redis-backed counters (see middleware).
  *
  * Usage:
  *   import { checkAIRateLimit } from "./aiRateLimiter";
@@ -29,9 +33,9 @@ interface UserCounter {
 }
 
 const DAILY_LIMITS: Record<string, number> = {
-  "Hobbyist": 10,
-  "Pro Crafter": 50,
-  "Design Studio": Infinity,
+  "Hobbyist": 2,
+  "Pro Crafter": 15,
+  "Design Studio": 30,
   "anonymous": 3,
 };
 
