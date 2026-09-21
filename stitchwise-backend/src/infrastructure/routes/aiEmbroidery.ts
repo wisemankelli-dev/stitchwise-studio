@@ -29,7 +29,7 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
-import { applyFaceFeatureGuard, countDarkCells } from "../../domain/stitch/faceFeatureGuard";
+import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -478,6 +478,19 @@ export function enrichAIPrompt(
     enriched.push(
       "bold flat cartoon-sticker style with big simple shapes and minimal shading, plus a THICK dark outline around the whole subject and simple readable features with LARGE clearly-visible dark eyes and a dark nose (for animals: a face with large dark button eyes, a dark nose, a muzzle, round ears, distinct head and body); the subject should fill most of the circle; no photo texture, no fine fur or fabric detail — the outline and features must stay visible at a very small stitch count",
     );
+    // Small-grid head roundness (owner 09-21 "bag charm update 2", 28×28):
+    // Gemini draw variance produced a lopsided head — a single off-center ear
+    // nub at row 2, flat banded top, asymmetric left/right sides — even though
+    // the face-absence guard added the eyes/nose/outline. The subject shape is
+    // untouched by the guard (it only repaints border cells + adds face
+    // feature cells), so the fix must demand a SYMMETRIC round head from the
+    // model at the source. Only for animal/face prompts — non-animal subjects
+    // (snowflake/heart/flower) must stay exactly as-is.
+    if (isAnimalFacePrompt(prompt)) {
+      enriched.push(
+        "perfectly symmetric head with a perfectly round crown centered on the canvas: mirror-image left and right sides of the head, two identical round ears sticking up at the top corners of the head, front-facing, no tilted or lopsided head",
+      );
+    }
   }
 
   return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied, smallGrid };

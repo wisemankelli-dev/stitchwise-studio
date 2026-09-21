@@ -257,6 +257,71 @@ describe("enrichAIPrompt", () => {
     expect(prompt).toContain("padding and margins on all sides");
     expect(prompt).toContain("bold flat cartoon-sticker style");
   });
+
+  // ─── Round-head symmetry (owner 09-21 "bag charm update 2", 28×28) ──────
+  it("small-grid ANIMAL prompt demands a perfectly symmetric round head (owner 09-21 lopsided head)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", undefined, {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("perfectly symmetric head");
+    expect(prompt).toContain("perfectly round crown centered on the canvas");
+    expect(prompt).toContain("mirror-image left and right sides");
+    expect(prompt).toContain("two identical round ears sticking up at the top corners");
+    expect(prompt).toContain("no tilted or lopsided head");
+    // ...while keeping every pre-existing directive (flat style, outline,
+    // face-cue list, padding, features).
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+    expect(prompt).toContain("THICK dark outline");
+    expect(prompt).toContain("large dark button eyes, a dark nose, a muzzle, round ears, distinct head and body");
+    expect(prompt).toContain("padding and margins on all sides");
+  });
+  it("small-grid ANIMAL on a 42x42 ornament also gets the round-head directive", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("kitten", "ornament", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("perfectly symmetric head");
+    expect(prompt).toContain("mirror-image left and right sides");
+    expect(prompt).toContain("clipped to a CIRCLE");
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+  });
+  it("small-grid NON-ANIMAL prompt does NOT get the round-head directive (flowers/snowflakes stay as-is)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("pansy flower", "pillow", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).not.toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("mirror-image left and right sides");
+    expect(prompt).not.toContain("two identical round ears");
+    expect(prompt).not.toContain("lopsided head");
+    // Pillow clip + flat style still arrive (shape + small-grid guidance are
+    // orthogonal to the animal-only roundness directive).
+    expect(prompt).toContain("clipped to a ROUNDED SQUARE silhouette");
+    expect(prompt).toContain("bold flat cartoon-sticker style");
+  });
+  it("small-grid NON-ANIMAL 42x42 snowflake gets flat style but no head wording", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("white snowflake", undefined, {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).not.toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("two identical round ears");
+    expect(prompt).not.toContain("lopsided head");
+  });
+  it("LARGE-grid animal prompt (70x70) does NOT get the small-grid round-head directive", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", undefined, {
+      canvasWidth: 70,
+      canvasHeight: 70,
+    });
+    expect(smallGrid).toBe(false);
+    expect(prompt).not.toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
 });
 
 // ─── isSquareOrLandscape ────────────────────────────────────────────────
