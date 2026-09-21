@@ -1,21 +1,28 @@
 /**
  * Face-feature guard tests (owner 09-15, 3rd report: bag charm 4 "teddy bear"
- * 28×28 → featureless orange blob, 0 dark cells).
+ * 28×28 → featureless orange blob, 0 dark cells; owner 09-21, 4th report:
+ * bag charm retest still showed NO readable face — the grid had 10.8% dark
+ * cells (brown body/clothing) but no symmetric eye-pair + nose, and the old
+ * global dark-% trigger skipped it as "already detailed").
  *
  * Covers the deterministic rescue:
  *  (a) featureless ANIMAL small grid gains a dark outline + eyes + nose;
- *  (b) non-animal small grid gets the outline ONLY (or nothing when there is
+ *  (b) animal grid with HIGH dark-% but NO genuine face → guard MUST still
+ *      fire (owner 09-21 repro: trigger is face-ABSENCE, not a dark ratio);
+ *  (c) animal grid with a REAL symmetric eye-pair + nose → byte-identical
+ *      no-op (same references returned);
+ *  (d) non-animal small grid gets the outline ONLY (or nothing when there is
  *      no silhouette — same references back);
- *  (c) already-detailed small grid (dark ≥ 2%) is a byte-identical no-op
- *      (same references returned);
- *  (d) head-too-narrow subject does NOT get synthesized eyes;
- *  (+ regex gate, DMC count consistency, shape-mask composition: eyes land
- *     inside the silhouette because the guard runs after the mask).
+ *  (e) head-too-narrow subject does NOT get synthesized eyes;
+ *  (+ hasGenuineFaceFeatures unit tests, regex gate, DMC count consistency,
+ *     shape-mask composition: eyes land inside the silhouette because the
+ *     guard runs after the mask).
  */
 import { describe, it, expect } from "@jest/globals";
 import {
   applyFaceFeatureGuard,
   countDarkCells,
+  hasGenuineFaceFeatures,
   isAnimalFacePrompt,
   ANIMAL_FACE_KEYWORDS_REGEX,
 } from "../domain/stitch/faceFeatureGuard";
@@ -172,11 +179,13 @@ describe("applyFaceFeatureGuard — non-animal subject", () => {
   });
 });
 
-// ─── (c) Already-detailed small grid is a byte-identical no-op ─────────────
-describe("applyFaceFeatureGuard — already detailed (dark ≥ 2%)", () => {
-  it("returns the SAME grid/dmcColors references (no mutation) when dark ≥ 2%", () => {
-    // 42×42 tan rectangle (rows 8..32, cols 8..32) already carrying a full
-    // dark outline ring: 96 dark cells / 625 filled = 15.4% ≥ 2% → no-op.
+// ─── (b) High dark-% but NO genuine face → guard MUST fire (owner 09-21) ──
+describe("applyFaceFeatureGuard — high dark-% but NO face (owner 09-21 repro)", () => {
+  it("fires on a 42×42 rect with a 15.4% dark outline ring but no eyes/nose", () => {
+    // 42×42 tan rectangle (rows 8..32, cols 8..32) carrying a full dark
+    // outline ring: 96 dark cells / 625 filled = 15.4% dark. The OLD trigger
+    // (global dark-% ≥ 2% = "already detailed") skipped it; the new trigger
+    // checks for a real symmetric eye-pair + nose, finds none → MUST fire.
     const grid = rectGrid(42, 8, 32, 8, 32, "#c8b090");
     for (let c = 8; c <= 32; c++) {
       grid[8][c].color = "#3c3c3c";
@@ -189,7 +198,76 @@ describe("applyFaceFeatureGuard — already detailed (dark ≥ 2%)", () => {
     const dmc = dmcFromGrid(grid);
     const fill = 25 * 25;
     const darkPct = (countDarkCells(grid) * 100) / fill;
-    expect(darkPct).toBeGreaterThanOrEqual(2);
+    expect(darkPct).toBeGreaterThanOrEqual(2); // high dark-% precondition
+    expect(hasGenuineFaceFeatures(grid)).toBe(false); // ...but NO face
+    const res = applyFaceFeatureGuard(grid, dmc, "teddy bear");
+    expect(res.grid).not.toBe(grid); // guard FIRED → new grid
+    expect(countDarkCells(res.grid)).toBeGreaterThan(countDarkCells(grid)); // eyes+nose added
+    expect(countInteriorDark(res.grid)).toBeGreaterThanOrEqual(3); // 2 eyes + 1 nose
+  });
+
+  it("fires on Kelli's actual bag-charm-update geometry (dot pair + wide bar, no nose)", () => {
+    // Mirrors live pattern "bagcharm update" (28×28, teddy bear): tan blob with
+    // two 2-wide dots at row 13 and a 10-wide bar at row 16 — 10.8% dark but
+    // NO readable eye-pair + nose. Old trigger: skipped. New trigger: fires.
+    const grid = rectGrid(28, 2, 25, 4, 23, "#bf5816"); // subject rows 2..25, cols 4..23
+    const dark = (r: number, c: number) => { grid[r][c].color = "#584436"; };
+    // row 13: symmetric 2-wide dot pair (cols 10-11 and 16-17)
+    dark(13, 10); dark(13, 11); dark(13, 16); dark(13, 17);
+    // rows 14-15: side flecks (not near center)
+    dark(14, 8); dark(14, 19);
+    dark(15, 8); dark(15, 9); dark(15, 18); dark(15, 19);
+    // row 16: 10-wide bar across the face (NOT a small nose)
+    for (let c = 9; c <= 18; c++) dark(16, c);
+    // rows 17-19: side clusters (not near center)
+    for (const c of [5, 6, 7, 8, 9]) dark(17, c);
+    for (const c of [18, 19, 20, 21, 22]) dark(17, c);
+    for (const c of [7, 8, 9]) dark(18, c);
+    for (const c of [18, 19, 20]) dark(18, c);
+    dark(19, 8); dark(19, 9); dark(19, 18); dark(19, 19);
+    const dmc = dmcFromGrid(grid);
+    expect(countDarkCells(grid)).toBe(40); // 10.8% of 372 filled
+    expect(hasGenuineFaceFeatures(grid)).toBe(false); // no genuine face
+    const res = applyFaceFeatureGuard(grid, dmc, "teddy bear");
+    expect(res.grid).not.toBe(grid); // guard fired
+    // The three synthesized face cells are exactly the deterministic head
+    // placement: symmetric eyes (7,10)+(7,18) and nose (9,14) — computed from
+    // box top=2, headH=9, headW=20, centerX=13.5 (same math as the blob case).
+    for (const [r, c] of [[7, 10], [7, 18], [9, 14]] as Array<readonly [number, number]>) {
+      expect(res.grid[r][c].color).toBe("#3c3c3c");
+      expect(res.grid[r][c].dmcCode).toBe("DMC 3799");
+    }
+    // Any interior dark cells ADDED by the rescue sit in the upper head — the
+    // rescue must never paint below the existing face-area mud (row 13+), only
+    // the outline + a clearly readable face on the forehead region.
+    const originalInterior = new Set<string>();
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        if (isDark(grid[r][c]) && !isBorder(grid, r, c)) originalInterior.add(`${r},${c}`);
+      }
+    }
+    for (let r = 0; r < res.grid.length; r++) {
+      for (let c = 0; c < res.grid[r].length; c++) {
+        if (!isDark(res.grid[r][c]) || isBorder(res.grid, r, c)) continue;
+        if (originalInterior.has(`${r},${c}`)) continue; // pre-existing dot/bar
+        expect(r).toBeLessThan(13); // newly painted face cells are above the mud
+      }
+    }
+  });
+});
+
+// ─── (c) Real symmetric eye-pair + nose → byte-identical no-op ────────────
+describe("applyFaceFeatureGuard — real symmetric face is a no-op", () => {
+  it("returns the SAME grid/dmcColors references when a genuine face exists", () => {
+    // 42×42 tan rectangle with a REAL face: symmetric eyes at (12,14)/(12,26)
+    // and a nose at (16,20). Even though dark% is tiny (< 2%), the guard must
+    // NOT double-draw — a genuine face → byte-identical no-op.
+    const grid = rectGrid(42, 8, 32, 8, 32, "#c8b090");
+    grid[12][14].color = "#3c3c3c";
+    grid[12][26].color = "#3c3c3c";
+    grid[16][20].color = "#3c3c3c";
+    const dmc = dmcFromGrid(grid);
+    expect(hasGenuineFaceFeatures(grid)).toBe(true);
     const res = applyFaceFeatureGuard(grid, dmc, "teddy bear");
     expect(res.grid).toBe(grid); // byte-identical: same reference
     expect(res.dmcColors).toBe(dmc);
