@@ -42,7 +42,7 @@ async function ensurePrice(tier: string): Promise<string> {
     product = await stripe.products.create({
       name: `StitchWise ${tier}`,
       description: tier === "PRO"
-        ? "Unlimited AI generations, machine embroidery exports"
+        ? "15 AI pattern generations per day (100/month), machine embroidery exports"
         : "Commercial licenses, multi-user accounts, bulk processing",
       tax_code: "txcd_10000000", // General - electronically supplied services
     });

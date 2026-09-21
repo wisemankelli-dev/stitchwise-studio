@@ -347,7 +347,7 @@ export const Dashboard: React.FC = () => {
                       Unlock AI Pattern Digitizer
                     </h4>
                     <p className="text-[10px] text-rose-700 leading-relaxed mt-1">
-                      Upgrade to **Pro Crafter** to access unlimited AI generations, thread usage estimation, and machine files (.DST, .PES, .EXP) export!
+                      Upgrade to **Pro Crafter** for 15 AI pattern generations per day (100/month), thread usage estimation, and machine files (.DST, .PES, .EXP) export!
                     </p>
                   </div>
                   <button
@@ -368,7 +368,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Premium Features Active**: You have unlimited AI pattern generations, domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and solo designer workspaces!
+                    ✓ **Premium Features Active**: You have 15 AI pattern generations per day (100/month), domestic and commercial machine exports (.PES, .DST, .EXP), thread usage estimators, and solo designer workspaces!
                   </p>
                   <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100/50 flex items-center gap-3">
                     <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
