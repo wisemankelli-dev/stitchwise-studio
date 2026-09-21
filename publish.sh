@@ -24,6 +24,11 @@ if [ -f "$SITE_DIR/.env" ]; then
   done < "$SITE_DIR/.env"
 fi
 
+# ── DISK GUARD (task 8130adea, 09-21): fail closed when /home is nearly
+# full, restore node_modules symlinks (a /tmp wipe turns the next install
+# into a REAL node_modules dir on /home — the #1 disk killer), and compact
+# old DB backups (compress-only; newest DB_BACKUP_KEEP stay uncompressed). ──
+bash "$SITE_DIR/scripts/diskguard.sh"
 # Safety gate: snapshot the RUNNING live DB before touching publish output.
 # LIVE_DB_BACKUP_URL must point at /api/admin/db-backup on the live app.
 if [[ ! -x "$SITE_DIR/scripts/backup-live-db.sh" ]]; then
@@ -138,6 +143,9 @@ if [ -d "$SITE_DIR/client-portal" ] && [ -f "$SITE_DIR/client-portal/package.jso
   fi
   rm -rf "$SITE_DIR/client-portal/node_modules" 2>/dev/null || true
 fi
+# Restore the client-portal node_modules symlink removed above (self-heal:
+# a missing link makes the NEXT publish silently build the stale bundle).
+bash "$SITE_DIR/scripts/fix-nm-symlinks.sh" || true
 # Vite base is /app/ — restructure so /app/assets/* resolves from dist/client/
 if [ -f "$SITE_DIR/dist/client/index.html" ] && [ ! -d "$SITE_DIR/dist/client/app" ]; then
   mkdir -p "$SITE_DIR/dist/client/app"
