@@ -123,10 +123,14 @@ if ! do_backup; then
   exit 1
 fi
 
-# Keep a bounded history so backups cannot consume the constrained shared disk.
-if [[ "$RETENTION" =~ ^[0-9]+$ ]] && (( RETENTION > 0 )); then
-  mapfile -t old_backups < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'live-dev-*.db' -printf '%T@ %p\n' | sort -nr | tail -n +$((RETENTION + 1)) | cut -d' ' -f2-)
-  for old in "${old_backups[@]}"; do
-    rm -f -- "$old" "$old.sha256"
-  done
+# Compress-only retention (disk-guard task 8130adea, 09-21): NEVER delete a
+# backup. db-backup-retention.sh keeps the newest DB_BACKUP_KEEP (default 8)
+# *.db uncompressed and gzips the rest (content preserved, restorable after
+# gunzip). Replaces the old rm-based pruning — backups below the plan's
+# restore floor (≤ 09-15) are kept, just compacted.
+_RET_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/db-backup-retention.sh"
+if [ -x "$_RET_SCRIPT" ]; then
+  DB_BACKUP_KEEP="${DB_BACKUP_KEEP:-${RETENTION:-8}}" DB_BACKUP_DIR="$BACKUP_DIR" bash "$_RET_SCRIPT"
+else
+  echo "warning: db-backup-retention.sh missing — skipping retention" >&2
 fi
