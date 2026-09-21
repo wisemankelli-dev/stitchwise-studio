@@ -29,6 +29,7 @@ import {
   isFrameCanvas,
   padUnderSpecifiedPrompt,
   isUnderSpecifiedPrompt,
+  extractNamedPromptColors,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
 import type { StitchCell } from "../domain/stitch/types";
@@ -39,9 +40,12 @@ describe("enrichAIPrompt", () => {
     const { prompt, shapeHintApplied } = enrichAIPrompt("colorful floral stocking", "stocking");
     expect(prompt).toContain("vibrant, saturated, colorful illustration");
     // Mask-fill phrasing (owner 09-11 "stocking inside a stocking"): the
-    // subject's body IS the stocking silhouette, not a scene in a stocking.
+    // subject itself IS the stocking silhouette, not a scene in a stocking.
+    // NON-animal subjects get the de-anthropomorphized version (gap #41: no
+    // "head near the top cuff / torso widening" anatomy for flowers).
     expect(prompt).toContain("the subject itself must take the exact shape of a tall Christmas stocking");
-    expect(prompt).toContain("subject's own body IS the stocking silhouette");
+    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).toContain("Draw ONLY the subject named");
     expect(shapeHintApplied).toBe(true);
     // The old color-draining hints must be GONE.
     expect(prompt).not.toMatch(/flat vector art|solid flat colors only|no gradients|no shading|white background/i);
@@ -244,7 +248,12 @@ describe("enrichAIPrompt", () => {
     });
     expect(smallGrid).toBe(false);
     expect(prompt).toContain("edge to edge");
-    expect(prompt).toContain("subject's own body IS the stocking silhouette");
+    // NON-animal stocking: de-anthropomorphized silhouette (gap #41) — the
+    // old "own body IS the stocking silhouette — head near the top cuff,
+    // torso widening" wording invited a human-like figure for snowflakes.
+    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).not.toContain("head near the top cuff");
+    expect(prompt).not.toContain("own body IS the stocking silhouette");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
 
@@ -379,6 +388,121 @@ describe("enrichAIPrompt", () => {
     expect(prompt).not.toContain("the ENTIRE animal is one solid flat color");
     expect(prompt).not.toContain("perfectly symmetric head");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
+  });
+  // ─── Subject drift + palette bloom for NON-animal prompts (owner 09-21
+  // gap #41: "snowflakes with a blue background" on a stocking drew a
+  // human-like FIGURE in 9 colors) ──────────────────────────────────────────
+  it("OWNER REPRO: snowflakes + blue on a stocking get the subject guard, de-anthropomorphized silhouette AND color fidelity", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("snowflakes with a blue background", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(smallGrid).toBe(false);
+    // (a) universal NON-animal subject guard — no people/figures/extra objects.
+    expect(prompt).toContain("Draw ONLY the subject named");
+    expect(prompt).toContain("no people, no faces, no figures, no body parts");
+    expect(prompt).toContain("no letters, no text, no logos, no extra objects or scenery");
+    // (b) de-anthropomorphized stocking silhouette — NO head/torso/toe anatomy.
+    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).not.toContain("head near the top cuff");
+    expect(prompt).not.toContain("torso widening");
+    expect(prompt).not.toContain("own body IS the stocking silhouette");
+    // (c) color fidelity — only the named color (blue) + natural snowflake white.
+    expect(prompt).toContain("use only the colors mentioned in the prompt (blue)");
+    expect(prompt).toContain("plus the subject's natural colors");
+    // The #159 anti-color-drain phrasings must NOT leak in ("zero shading" is
+    // the safe wording; "no gradients" literally must not appear).
+    expect(prompt).not.toMatch(/flat vector art|solid flat colors only|no gradients|no shading|white background/i);
+  });
+  it("NON-animal stocking WITHOUT named colors gets guard + de-anthrop silhouette but NO color directive", () => {
+    const { prompt } = enrichAIPrompt("snowflakes", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(prompt).toContain("Draw ONLY the subject named");
+    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+    expect(prompt).not.toContain("head near the top cuff");
+  });
+  it("NON-animal pillow drops the 'own body' anatomy wording but keeps the rounded-silhouette clip", () => {
+    const { prompt } = enrichAIPrompt("pansy flower", "pillow", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(prompt).toContain("clipped to a ROUNDED SQUARE silhouette");
+    expect(prompt).toContain("the subject spreads and stretches to cover the pillow's shape edge to edge");
+    expect(prompt).not.toContain("own body spreads to take the pillow's shape");
+    expect(prompt).toContain("Draw ONLY the subject named");
+    expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+  });
+  it("ANIMAL stocking prompt keeps the anthropomorphic silhouette BYTE-IDENTICAL and gets NO subject guard or color directive", () => {
+    const { prompt } = enrichAIPrompt("teddy bear in a stocking", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    // Byte-identical to pre-gap-#41: the animal wording is untouched.
+    expect(prompt).toContain("own body IS the stocking silhouette — head near the top cuff");
+    expect(prompt).toContain("torso widening then tapering into a pointed toe");
+    expect(prompt).toContain("no separate stocking object wrapped around the subject");
+    expect(prompt).not.toContain("Draw ONLY the subject named");
+    expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+    expect(prompt).not.toContain("fills the entire stocking silhouette from the top cuff");
+  });
+  it("small-grid ANIMAL prompt gets NO subject guard or generic color fidelity (bag-charm path byte-identical)", () => {
+    const { prompt } = enrichAIPrompt("kitten face", undefined, {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(prompt).toContain("the ENTIRE animal is one solid flat color");
+    expect(prompt).toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("Draw ONLY the subject named");
+    expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+  });
+  it("70x70 descriptive prompt: no small-grid directives, frame padding intact; only the universal guard + color fidelity are added", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("a yellow sunflower", undefined, {
+      canvasWidth: 70,
+      canvasHeight: 70,
+    });
+    expect(smallGrid).toBe(false);
+    // Pre-existing 70×70 behavior UNCHANGED: descriptive subject verbatim,
+    // frame padding, no small-grid flat-sticker / round-head / color-coherence.
+    expect(prompt).toContain("a yellow sunflower");
+    expect(prompt).toContain("padding and margins on all sides");
+    expect(prompt).not.toContain("bold flat cartoon-sticker style");
+    expect(prompt).not.toContain("perfectly symmetric head");
+    expect(prompt).not.toContain("the ENTIRE animal is one solid flat color");
+    // The universal guard is the ONLY new layer at 70×70, plus color fidelity
+    // because the prompt names "yellow".
+    expect(prompt).toContain("Draw ONLY the subject named");
+    expect(prompt).toContain("use only the colors mentioned in the prompt (yellow)");
+  });
+});
+
+// ─── extractNamedPromptColors (gap #41 color fidelity) ──────────────────
+describe("extractNamedPromptColors", () => {
+  it("finds the named color in the owner-repro prompt", () => {
+    expect(extractNamedPromptColors("snowflakes with a blue background")).toEqual(["blue"]);
+  });
+  it("finds white in 'white snowflake'", () => {
+    expect(extractNamedPromptColors("white snowflake")).toEqual(["white"]);
+  });
+  it("finds yellow in 'a yellow sunflower'", () => {
+    expect(extractNamedPromptColors("a yellow sunflower")).toEqual(["yellow"]);
+  });
+  it("dedupes repeated colors preserving first-appearance order", () => {
+    expect(extractNamedPromptColors("blue sky and a blue sea")).toEqual(["blue"]);
+  });
+  it("returns [] for prompts with no named colors", () => {
+    expect(extractNamedPromptColors("fluffy teddy bear")).toEqual([]);
+    expect(extractNamedPromptColors("pansy flower")).toEqual([]);
+  });
+  it("does not false-positive on substrings (beard/mountain/strawberry)", () => {
+    expect(extractNamedPromptColors("a long beard")).toEqual([]);
+    expect(extractNamedPromptColors("mountain trail")).toEqual([]);
+    expect(extractNamedPromptColors("a strawberry top")).toEqual([]);
+  });
+  it("finds red in 'red bird'", () => {
+    expect(extractNamedPromptColors("red bird")).toEqual(["red"]);
   });
 });
 

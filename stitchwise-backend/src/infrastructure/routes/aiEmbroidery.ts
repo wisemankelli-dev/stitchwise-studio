@@ -229,6 +229,26 @@ const PROMPT_COLOR_TOKENS = new Set([
   "maroon", "beige", "cream", "coral", "turquoise", "lavender", "magenta",
   "aqua", "tan", "rust", "amber", "indigo", "violet",
 ]);
+/**
+ * Named colors present in a (lowercased) prompt, word-boundary matched against
+ * PROMPT_COLOR_TOKENS. Used by the NON-animal color-fidelity directive (owner
+ * 09-21 gap #41: "snowflakes with a blue background" bloomed into 9 colors —
+ * demand the named palette plus the subject's natural colors). Returns colors
+ * deduped in first-appearance order so the enriched prompt text is
+ * deterministic. Word boundaries prevent false hits ("beard" → no "red",
+ * "mountain" → no "tan").
+ */
+export function extractNamedPromptColors(lowerPrompt: string): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const token of PROMPT_COLOR_TOKENS) {
+    if (new RegExp(`\\b${token}\\b`).test(lowerPrompt) && !seen.has(token)) {
+      seen.add(token);
+      found.push(token);
+    }
+  }
+  return found;
+}
 /** Colors that appear in lexicon descriptors; the first one found in a
  * descriptor is replaced with the user's color ("pink bird" → descriptor
  * recolored to pink). */
@@ -393,6 +413,14 @@ export function enrichAIPrompt(
   let sceneGuardApplied = false;
   let shapeHintApplied = false;
   const smallGrid = isSmallGrid(opts?.canvasWidth, opts?.canvasHeight);
+  // Animal/face gate (owner 09-21 gap #41 root cause): the shape-context
+  // sentence below anthropomorphizes the subject ("head near the top cuff,
+  // torso widening then tapering into a pointed toe") — great for a teddy
+  // bear, but it invites a HEADED FIGURE for ANY subject, so "snowflakes
+  // with a blue background" on a stocking drew a human-like body in 9 colors
+  // (skin tan/red/green/orange/gold). Non-animal subjects get the same
+  // fill-the-silhouette constraint WITHOUT any head/body/torso anatomy.
+  const isAnimal = isAnimalFacePrompt(prompt);
 
   // Vibrant / color-rich guidance (replaces the old color-draining hints).
   // NOTE: this deliberately stays in EVERY enriched prompt — including the
@@ -427,9 +455,20 @@ export function enrichAIPrompt(
     // inside it — a scene. The subject itself must BE the stocking silhouette:
     // its own body takes the stocking shape (head at the cuff, body tapering
     // to the toe), with NO separate stocking drawn around it.
-    enriched.push(
-      "the subject itself must take the exact shape of a tall Christmas stocking: the subject's own body IS the stocking silhouette — head near the top cuff, torso widening then tapering into a pointed toe at the bottom, no separate stocking object wrapped around the subject, no scene inside; the subject fills the whole tall stocking shape edge to edge, no blank space",
-    );
+    if (isAnimal) {
+      enriched.push(
+        "the subject itself must take the exact shape of a tall Christmas stocking: the subject's own body IS the stocking silhouette — head near the top cuff, torso widening then tapering into a pointed toe at the bottom, no separate stocking object wrapped around the subject, no scene inside; the subject fills the whole tall stocking shape edge to edge, no blank space",
+      );
+    } else {
+      // NON-animal subject (owner 09-21 gap #41 — "snowflakes with a blue
+      // background" drew a human-like FIGURE in 9 colors): the animal wording
+      // above names head/torso/toe — pure body anatomy that invites a headed
+      // being for ANY subject. Keep the fill-the-silhouette rule but express
+      // the shape geometrically with zero anatomy.
+      enriched.push(
+        "the subject itself must take the exact shape of a tall Christmas stocking: the subject fills the entire stocking silhouette from the top cuff all the way down to the pointed toe, spreading and stretching edge to edge to match the tall narrow stocking shape, no separate stocking object wrapped around the subject, no scene inside, no blank space",
+      );
+    }
     shapeHintApplied = true;
   } else if (shape === "ornament") {
     enriched.push(
@@ -440,9 +479,17 @@ export function enrichAIPrompt(
     // Owner 09-11 (same rule as stocking): the subject must FILL the mask, not
     // sit inside a drawn pillow. The subject's own body spreads to take the
     // full rounded-square pillow silhouette; no pillow object is drawn around it.
-    enriched.push(
-      "the artwork will be clipped to a ROUNDED SQUARE silhouette, and the subject itself must fill that silhouette: the subject's own body spreads to take the pillow's shape edge to edge (corners slightly rounded), no separate pillow object drawn around the subject, no scene inside; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
-    );
+    if (isAnimal) {
+      enriched.push(
+        "the artwork will be clipped to a ROUNDED SQUARE silhouette, and the subject itself must fill that silhouette: the subject's own body spreads to take the pillow's shape edge to edge (corners slightly rounded), no separate pillow object drawn around the subject, no scene inside; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
+      );
+    } else {
+      // NON-animal subject (gap #41 — same de-anthropomorphization as
+      // stocking): "own body" is anatomy wording; say "the subject" instead.
+      enriched.push(
+        "the artwork will be clipped to a ROUNDED SQUARE silhouette, and the subject itself must fill that silhouette: the subject spreads and stretches to cover the pillow's shape edge to edge (corners slightly rounded), no separate pillow object drawn around the subject, no scene inside; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
+      );
+    }
     shapeHintApplied = true;
   } else if (isFrame) {
     // Square/landscape canvas → frame with padding, never crop the subject.
@@ -462,6 +509,33 @@ export function enrichAIPrompt(
   if (SCENE_KEYWORDS_REGEX.test(lower)) {
     enriched.push("landscape scene only, no people, no faces, no text, no watermark");
     sceneGuardApplied = true;
+  }
+
+  // Universal NON-animal subject guard (owner 09-21 gap #41): Gemini keeps
+  // inventing extra subjects — "snowflakes with a blue background" on a
+  // stocking drew a human-like FIGURE (skin tan + red/green/orange/gold
+  // clothing, 9 colors) because nothing told the model the subject is ONLY
+  // the one named. Animal/face prompts must stay byte-identical (the bag
+  // charm #182–#184 fixes depend on it), so this guard fires for every
+  // NON-animal prompt regardless of grid size or shape.
+  if (!isAnimal) {
+    enriched.push(
+      "Draw ONLY the subject named: no people, no faces, no figures, no body parts, no animals, no letters, no text, no logos, no extra objects or scenery",
+    );
+    // Color fidelity (non-animal): when the prompt NAMES colors, keep the
+    // palette to those colors + the subject's natural colors. Without this,
+    // "snowflakes with a blue background" bloomed into 9 colors. Wording
+    // deliberately uses "zero shading" (never "no shading") so the #159
+    // anti-color-drain regex guard is not tripped; "no color gradients"
+    // avoids the literal "no gradients" substring for the same reason.
+    // "plus the subject's natural colors" prevents a NEW color drain — e.g.
+    // "a yellow sunflower" must keep its brown center + green stem.
+    const namedColors = extractNamedPromptColors(lower);
+    if (namedColors.length > 0) {
+      enriched.push(
+        `use only the colors mentioned in the prompt (${namedColors.join(", ")}) plus the subject's natural colors, zero shading, no extra colors, no color gradients`,
+      );
+    }
   }
 
   // Small-grid simplification (owner 09-11 "ornament is busy"): at ≤60 cells
@@ -486,7 +560,7 @@ export function enrichAIPrompt(
     // feature cells), so the fix must demand a SYMMETRIC round head from the
     // model at the source. Only for animal/face prompts — non-animal subjects
     // (snowflake/heart/flower) must stay exactly as-is.
-    if (isAnimalFacePrompt(prompt)) {
+    if (isAnimal) {
       enriched.push(
         "perfectly symmetric head with a perfectly round crown centered on the canvas: mirror-image left and right sides of the head, two identical round ears sticking up at the top corners of the head, front-facing, no tilted or lopsided head",
       );
