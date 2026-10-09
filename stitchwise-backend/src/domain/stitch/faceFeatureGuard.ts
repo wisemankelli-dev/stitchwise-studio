@@ -144,6 +144,13 @@ function isBorderCell(grid: StitchGrid, r: number, c: number): boolean {
 
 /** Eye search zone = top 55% of the subject rows (eyes live high on the head). */
 const EYE_ZONE_TOP_FRACTION = 0.55;
+/** Eye markers must sit at least this deep from the top of the subject
+ *  bbox (fraction of subject height). Marks in the top ~12% are ear tips,
+ *  outline tufts or contour noise — owner 10-09 charm "bag charm update"
+ *  had a 1-cell symmetric dot pair at depth 2/22 (9%) + a nose mark that the
+ *  detector called "genuine", so the rescue skipped and the charm kept a
+ *  faint, unreadable face. Real eyes sit deeper in the head. */
+const EYE_MARKER_MIN_DEPTH_FRACTION = 0.12;
 /** Eye candidates must sit near the same row (± 2 cells). */
 const EYE_MAX_ROW_DELTA = 2;
 /** Minimum horizontal separation between the two eyes (distinct dots). */
@@ -245,10 +252,13 @@ export function hasGenuineFaceFeatures(grid: StitchGrid): boolean {
 
   const eyeMaxW = Math.max(3, Math.round(EYE_MAX_WIDTH_FRACTION * subjectW));
   const eyeMaxH = Math.max(2, Math.round(EYE_MAX_HEIGHT_FRACTION * subjectH));
+  const eyeMinDepth = box.top + Math.round(EYE_MARKER_MIN_DEPTH_FRACTION * subjectH);
 
-  // 1. Eye candidates: small dark dots in the upper zone.
+  // 1. Eye candidates: small dark dots in the upper zone, BELOW the top
+  //    ear/outline band (min-depth rule - owner 10-09 charm).
   const eyeCandidates = components.filter((c) => {
     if (c.rowCenter > eyeZoneBottom) return false;
+    if (c.minRow < eyeMinDepth) return false;
     if (c.maxCol - c.minCol + 1 > eyeMaxW) return false;
     if (c.maxRow - c.minRow + 1 > eyeMaxH) return false;
     if (c.cells.length > FEATURE_MAX_CELLS) return false;

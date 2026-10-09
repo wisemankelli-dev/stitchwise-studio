@@ -4,7 +4,7 @@
  * model must be forced to the subject's canonical natural colors).
  */
 import { describe, it, expect } from "@jest/globals";
-import { naturalColorDirective, promptNamesAnyColor } from "../domain/stitch/naturalColorDirective";
+import { naturalColorDirective, naturalColorDirectives, promptNamesAnyColor } from "../domain/stitch/naturalColorDirective";
 
 describe("naturalColorDirective", () => {
   it("OWNER 10-09 charm: 'teddy bear' (no color) → brown and tan, no red/orange/pink", () => {
@@ -27,6 +27,32 @@ describe("naturalColorDirective", () => {
     expect(naturalColorDirective("a brown bear")).toBeNull();
     expect(naturalColorDirective("blue teddy bear")).toBeNull();
     expect(naturalColorDirective("white snowman")).toBeNull();
+  });
+  it("OWNER 10-09 charm: 'teddybear with blue sweater' — color on ANOTHER noun must not silence the bear's directive", () => {
+    // Whole-prompt color detection silenced the directive; Gemini painted the
+    // bear ORANGE. The sweater's blue stays, but the bear must be forced
+    // brown/tan (per-noun scoping).
+    const m = naturalColorDirective("teddybear with blue sweater");
+    expect(m).not.toBeNull();
+    expect(m?.subject).toBe("a teddy bear");
+    expect(m?.directive).toContain("brown");
+    expect(m?.directive).toContain("no red");
+    expect(m?.directive).toContain("no orange");
+    expect(m?.directive).toContain("no pink");
+    expect(naturalColorDirective("teddy bear with a blue sweater")?.subject).toBe("a teddy bear");
+    expect(naturalColorDirective("Teddy bear with a blue sweater")?.subject).toBe("a teddy bear");
+    expect(naturalColorDirective("teddybear in a blue sweater")?.subject).toBe("a teddy bear");
+  });
+  it("no-space 'teddybear' still matches the subject table (owner's actual prompt form)", () => {
+    expect(naturalColorDirective("teddybear")?.subject).toBe("a teddy bear");
+    expect(naturalColorDirective("teddybear with blue sweater")).not.toBeNull();
+  });
+  it("multiple subjects: every uncolored known subject gets its own directive", () => {
+    const all = naturalColorDirectives("a snowman holding a rose");
+    expect(all.length).toBeGreaterThanOrEqual(2);
+    const subs = all.map((m) => m.subject);
+    expect(subs).toContain("a snowman");
+    expect(subs).toContain("a rose");
   });
 
   it("does not fire for words that merely CONTAIN a color word", () => {
