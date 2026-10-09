@@ -419,3 +419,62 @@ describe("countDarkCells (shared with qualityGate)", () => {
     expect(countDarkCells(grid)).toBe(3);
   });
 });
+// ─── (f) Owner 10-09 charm "bag charm update" geometry ──────────────────────
+describe("applyFaceFeatureGuard — ear-tip tufts must not count as a face", () => {
+  it("shallow eye-pair at depth 2/22 of the head + nose → NOT genuine → rescue fires BELOW the ear band", () => {
+    // Mirrors owner's live charm (28×28, bbox rows 3..24 cols 5..22): a 1-cell
+    // symmetric dot pair at rows 4-5 (depth 1-2 = the ear/outline band) plus a
+    // nose at row 11. OLD detector: "genuine" → rescue skipped → faint tufty
+    // face kept. NEW: the top-band marks are excluded (EYE_MARKER_MIN_DEPTH),
+    // so the rescue synthesizes a clear face deeper in the head.
+    const grid = rectGrid(28, 3, 24, 5, 22, "#c8b090"); // subject rows 3..24 cols 5..22
+    const dark = (r: number, c: number) => { grid[r][c].color = "#3c3c3c"; };
+    dark(4, 10); dark(4, 17); // shallow dot pair (ear-tip band)
+    dark(5, 9);  dark(5, 18);
+    dark(11, 13); dark(11, 14); // nose mark
+    const dmc = dmcFromGrid(grid);
+    expect(hasGenuineFaceFeatures(grid)).toBe(false); // top-band only → NOT genuine (regression)
+    const originalInterior = new Set<string>();
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        if (isDark(grid[r][c]) && !isBorder(grid, r, c)) originalInterior.add(`${r},${c}`);
+      }
+    }
+    const res = applyFaceFeatureGuard(grid, dmc, "teddy bear");
+    expect(res.grid).not.toBe(grid); // rescue fired
+    // Synthesized eyes land deeper in the head: bbox top 3, headH =
+    // round(0.375*22)=8, head rows 3..10; eyes ~60% down the head (row 8).
+    const added: Array<[number, number]> = [];
+    for (let r = 0; r < res.grid.length; r++) {
+      for (let c = 0; c < res.grid[r].length; c++) {
+        if (!isDark(res.grid[r][c]) || isBorder(res.grid, r, c)) continue;
+        if (originalInterior.has(`${r},${c}`)) continue; // pre-existing top-band dots
+        added.push([r, c]);
+      }
+    }
+    expect(added.length).toBeGreaterThanOrEqual(3); // 2 eyes + 1 nose
+    const eyeRow = Math.min(...added.map(([r]) => r));
+    expect(eyeRow).toBeGreaterThanOrEqual(6); // below the ear band (rows 4-5)
+    // Re-check: the rescued grid now HAS a genuine face (stable fixpoint).
+    expect(hasGenuineFaceFeatures(res.grid)).toBe(true);
+  });
+  it("owner's REAL saved charm grid passes the deterministic face assertion (eyes at rows 9-11 + nose)", () => {
+    // Exact dark-cell geometry of live save "bag charm update" (28×28,
+    // 'teddybear with blue sweater', bbox rows 3..24 cols 5..22): outline side
+    // flecks rows 7-8, eye-pair ring row 9, nose row 11. The face IS present,
+    // so the guard must no-op and leave it byte-identical.
+    const grid = rectGrid(28, 3, 24, 5, 22, "#c8b090");
+    const dark = (r: number, c: number) => { grid[r][c].color = "#3c3c3c"; };
+    dark(4, 10); dark(4, 17);
+    dark(5, 9);  dark(5, 18);
+    for (const c of [6, 7, 20, 21]) dark(7, c);
+    dark(8, 7); dark(8, 20);
+    for (const c of [10, 11, 16, 17]) dark(9, c);
+    dark(11, 13); dark(11, 14);
+    const dmc = dmcFromGrid(grid);
+    expect(hasGenuineFaceFeatures(grid)).toBe(true); // face readable → no-op
+    const res = applyFaceFeatureGuard(grid, dmc, "teddy bear");
+    expect(res.grid).toBe(grid);
+    expect(res.dmcColors).toBe(dmc);
+  });
+});

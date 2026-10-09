@@ -41,7 +41,7 @@ interface NaturalColorEntry {
 
 const NATURAL_COLOR_SUBJECTS: { re: RegExp; entry: NaturalColorEntry }[] = [
   {
-    re: /\bteddy bears?\b|\bbears?\b/i,
+    re: /\bteddy ?bears?\b|\bbears?\b/i,
     entry: {
       label: "a teddy bear",
       palette: "brown and tan",
@@ -133,26 +133,61 @@ const UNAMBIGUOUS_COLOR_WORDS = [
 ];
 
 /** True when the prompt names at least one unambiguous color word. */
+const COLOR_WORD_SET = new Set(UNAMBIGUOUS_COLOR_WORDS);
+/** True when the prompt names at least one unambiguous color word ANYWHERE. */
 export function promptNamesAnyColor(prompt: string): boolean {
   if (!prompt) return false;
   const lower = prompt.toLowerCase();
   return UNAMBIGUOUS_COLOR_WORDS.some((word) => new RegExp(`\\b${word}\\b`, "i").test(lower));
 }
-
 /**
- * For a KNOWN subject with no user-named color, return its canonical
- * natural-color directive; otherwise null. Non-table subjects and any prompt
- * that names a color both stay silent so the user's own wording wins.
+ * True when a color word is glued to the SUBJECT's own noun phrase (the last
+ * two tokens before the phrase or the token immediately after it). A prompt
+ * like "teddybear with blue sweater" does NOT attach "blue" to the bear - the
+ * sweater is its own noun - so the bear still needs its natural-color
+ * directive. "blue teddy bear" / "white snowman" DO attach and win.
+ */
+function subjectHasAttachedColor(lower: string, matchIndex: number, matchText: string): boolean {
+  const beforeTokens = lower
+    .slice(Math.max(0, matchIndex - 24), matchIndex)
+    .split(/[^a-z]+/)
+    .filter(Boolean)
+    .slice(-2);
+  const afterToken = lower
+    .slice(matchIndex + matchText.length, matchIndex + matchText.length + 24)
+    .split(/[^a-z]+/)
+    .filter(Boolean)[0];
+  for (const t of [...beforeTokens, afterToken]) {
+    if (t && COLOR_WORD_SET.has(t)) return true;
+  }
+  return false;
+}
+/**
+ * For EVERY known subject whose noun phrase has NO attached user color,
+ * return its canonical natural-color directive. A color word attached to a
+ * DIFFERENT noun (e.g. "teddybear with blue sweater") no longer silences the
+ * subject's own directive - the bear must be brown/tan while the sweater
+ * keeps its blue (owner 10-09 charm verdict: whole-prompt color detection
+ * silenced the directive and Gemini painted the bear ORANGE). Deterministic;
+ * subject phrases with an attached color stay silent so the user wins.
+ */
+export function naturalColorDirectives(prompt: string): NaturalColorMatch[] {
+  if (!prompt) return [];
+  const lower = prompt.toLowerCase();
+  const out: NaturalColorMatch[] = [];
+  for (const { re, entry } of NATURAL_COLOR_SUBJECTS) {
+    const m = re.exec(lower);
+    if (!m) continue;
+    if (subjectHasAttachedColor(lower, m.index, m[0])) continue;
+    const directive = `Natural colors: ${entry.label} is ${entry.palette} — use only ${entry.palette} tones, ${entry.forbidden}.`;
+    out.push({ subject: entry.label, directive });
+  }
+  return out;
+}
+/**
+ * First matching subject's natural-color directive, or null (a backwards
+ * compatible single-match view of naturalColorDirectives).
  */
 export function naturalColorDirective(prompt: string): NaturalColorMatch | null {
-  if (!prompt) return null;
-  if (promptNamesAnyColor(prompt)) return null;
-  const lower = prompt.toLowerCase();
-  for (const { re, entry } of NATURAL_COLOR_SUBJECTS) {
-    if (re.test(lower)) {
-      const directive = `Natural colors: ${entry.label} is ${entry.palette} — use only ${entry.palette} tones, ${entry.forbidden}.`;
-      return { subject: entry.label, directive };
-    }
-  }
-  return null;
+  return naturalColorDirectives(prompt)[0] ?? null;
 }
