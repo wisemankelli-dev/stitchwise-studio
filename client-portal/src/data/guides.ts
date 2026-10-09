@@ -21,7 +21,7 @@ export interface ProductGuide {
 /**
  * The owner's recovered Blank Stocking silhouette (final-blank-stocking.json,
  * 112×112 grid; non-white cells bbox = rows 8–103 × cols 22–88 → 96 rows × 67
- * cols, aspect 67:96 ≈ 1:1.43). 49-point contour, toe at bottom-right.
+ * cols, aspect 67:96 ≈ 1:1.43). 63-point contour, toe at bottom-right.
  *
  * The points are normalized PER AXIS over the shape's own bbox: x was divided
  * by the bbox WIDTH (67 cols) and y by the bbox HEIGHT (96 rows). Because the

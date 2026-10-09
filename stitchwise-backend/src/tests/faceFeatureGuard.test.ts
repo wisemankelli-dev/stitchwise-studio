@@ -306,6 +306,64 @@ describe("applyFaceFeatureGuard — runs after applyProductShapeMask", () => {
   });
 });
 
+// ─── Task 16e05580: 28×28 bag-charm ornament — empty corners + face ─────────
+describe("task 16e05580 — 28×28 bag-charm ornament (mask → guard)", () => {
+  it("ornament mask empties the corners; the face guard adds a readable symmetric face on a charm-like fixture", () => {
+    // Charm-like fixture: full-bleed tan square at 28×28 (what the SQUARE path
+    // used to ship for Bag Charm). Runs the exact server chain for
+    // shape=ornament: recenter (no-op on full fill) → applyProductShapeMask →
+    // applyFaceFeatureGuard (isSmallGrid(28,28) === true, so the guard runs).
+    const fullTan = rectGrid(28, 0, 27, 0, 27, "#c8b090");
+    const masked = applyProductShapeMask(fullTan, "ornament", 28, 28);
+
+    // (1) EMPTY CORNERS — the circle mask at 28×28 (rim inset 1, radius 13)
+    // clears the four absolute corners to background.
+    for (const [r, c] of [[0, 0], [0, 27], [27, 0], [27, 27]] as Array<readonly [number, number]>) {
+      expect(isBg(masked[r][c])).toBe(true);
+    }
+    // Center stays filled — the circle, not a hollow ring.
+    expect(isBg(masked[13][13])).toBe(false);
+
+    // (2) FACE PRESENT — the guard fires (no genuine face on the blank charm)
+    // and synthesizes a dark outline + symmetric eyes + nose.
+    const res = applyFaceFeatureGuard(masked, dmcFromGrid(masked), "teddy bear");
+    expect(res.grid).not.toBe(masked); // guard fired
+
+    const interiors: Array<[number, number]> = [];
+    for (let r = 0; r < res.grid.length; r++) {
+      for (let c = 0; c < (res.grid[r]?.length ?? 0); c++) {
+        if (isDark(res.grid[r]?.[c]) && !isBorder(res.grid, r, c)) interiors.push([r, c]);
+      }
+    }
+    expect(interiors.length).toBeGreaterThanOrEqual(3); // 2 eyes + 1 nose
+
+    // Eyes sit on the same row, symmetric about the circle center (13.5).
+    const byRow = new Map<number, number[]>();
+    for (const [r, c] of interiors) {
+      const cols = byRow.get(r) ?? [];
+      cols.push(c);
+      byRow.set(r, cols);
+    }
+    const eyeRow = [...byRow.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+    expect(eyeRow[1].length).toBeGreaterThanOrEqual(2);
+    const leftEye = Math.min(...eyeRow[1]);
+    const rightEye = Math.max(...eyeRow[1]);
+    expect(Math.abs((leftEye + rightEye) / 2 - 13.5)).toBeLessThanOrEqual(1);
+    expect(rightEye - leftEye).toBeGreaterThanOrEqual(2);
+
+    // (3) ALL dark cells (outline + face) land INSIDE the 28×28 circle.
+    const cx = 13.5, cy = 13.5, radius = 13;
+    for (let row = 0; row < res.grid.length; row++) {
+      for (let col = 0; col < res.grid[row].length; col++) {
+        if (isDark(res.grid[row][col])) {
+          const dx = col + 0.5 - cx, dy = row + 0.5 - cy;
+          expect(dx * dx + dy * dy).toBeLessThanOrEqual(radius * radius + 1e-6);
+        }
+      }
+    }
+  });
+});
+
 // ─── Keyword gate ──────────────────────────────────────────────────────────
 describe("isAnimalFacePrompt keyword gate", () => {
   it("matches animal/face prompts with word boundaries", () => {

@@ -653,8 +653,25 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
  *  `guide` (optional) names the product shape shown as a dashed overlay on the
  *  canvas so customers can design within it. */
 interface CanvasPreset { name: string; inchW: number; inchH: number; guide?: ProductGuideType; }
+
+/** Map the active product-guide type to the backend's accepted shape enum
+ *  ('circle' → 'ornament', 'roundedRect' → 'pillow', else passthrough).
+ *  Sending the raw guide type (e.g. 'circle') would 400 the schema and fail AI
+ *  generation (owner test 09-03). Extracted from the inline mapping so the
+ *  preset→shape contract is unit-testable (Bag Charm → 'ornament', task 16e05580). */
+export function aiShapeForGuide(
+  guide?: ProductGuideType,
+): 'ornament' | 'pillow' | 'rect' | 'stocking' | undefined {
+  if (guide === 'circle') return 'ornament';
+  if (guide === 'roundedRect') return 'pillow';
+  return guide; // 'rect' | 'stocking' | undefined
+}
 export const CANVAS_PRESETS: CanvasPreset[] = [
-  { name: 'Bag Charm', inchW: 2, inchH: 2 },
+  // Bag Charm is a 2″ circle — owner P0 (10-08): it generated a SQUARE with
+  // no detail because the preset had no `guide`. Wiring 'circle' gives the dashed
+  // overlay, the client-side maskGridToGuide circle clip, and the backend
+  // shape=ornament (circle mask + small-grid face-feature guard at 28×28).
+  { name: 'Bag Charm', inchW: 2, inchH: 2, guide: 'circle' },
   { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle' },
   { name: 'Large Ornament', inchW: 5, inchH: 5, guide: 'circle' },
   { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect' },
@@ -1582,15 +1599,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           : 'Generating your pattern — this usually takes about a minute…'
       );
       // Map the preset guide type to the backend's accepted shape enum
-      // ('circle' → 'ornament', 'roundedRect' → 'pillow', 'rect' → 'rect',
-      //  'stocking' → 'stocking'). Sending the raw guide type (e.g. 'circle')
-      // would 400 the schema and fail AI generation (owner test 09-03).
-      const aiShape =
-        activeGuide?.type === 'circle'
-          ? 'ornament'
-          : activeGuide?.type === 'roundedRect'
-            ? 'pillow'
-            : activeGuide?.type; // 'rect' | 'stocking' | undefined
+      // (see aiShapeForGuide). Sending the raw guide type (e.g. 'circle') would
+      // 400 the schema and fail AI generation (owner test 09-03).
+      const aiShape = aiShapeForGuide(activeGuide?.type);
       const data = await api.generatePatternFromText(aiPrompt.trim(), {
         gridSize,
         fabricCount,
