@@ -33,7 +33,8 @@ import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
-import { naturalColorDirective, stockingBodyDirective } from "../../domain/stitch/naturalColorDirective";
+import { naturalColorDirective, stockingBodyDirective, otherNounColorPairs, COLOR_HUE_HINT } from "../../domain/stitch/naturalColorDirective";
+import { applyBearColorRescue, missingNamedOtherColor, hardenedColorClause } from "../../domain/stitch/bearColorRescue";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -633,9 +634,25 @@ export function enrichAIPrompt(
       // arbitrary shading survives downsample + quantization. Demand ONE solid
       // flat body color with only a small muzzle/belly accent. Animal/face
       // prompts only — non-animal small-grid prompts stay byte-identical.
-      enriched.push(
-        "the ENTIRE animal is one solid flat color: head, ears, body, arms and legs all the same exact base color (e.g. warm brown for a teddy bear, naturally colored for the animal); a small lighter cream or tan muzzle and belly patch only; NO green, gray, blue, pink or salmon tones anywhere in the fur, no clothing, zero shading, no color gradients on the body",
-      );
+      // OTHER-NOUN COLORS (owner 10-09 17:40Z charm verdict #2): when the
+      // prompt names a garment color ("teddy bear with blue sweater"), the
+      // flat-sticker color line must NOT absorb the sweater into the animal —
+      // "the ENTIRE animal is one solid flat color ... no clothing" would
+      // paint the sweater the same fur brown and contradict the named blue.
+      // Scope the one-color rule to the FUR and carry the garment through.
+      const charmedOtherColors = otherNounColorPairs(prompt);
+      if (charmedOtherColors.length > 0) {
+        const carried = charmedOtherColors
+          .map(({ color, noun }) => `the ${color} ${noun} is a separate solid ${color} (${COLOR_HUE_HINT[color] ?? color})`)
+          .join(", ");
+        enriched.push(
+          `the ENTIRE animal's FUR is one solid flat color: head, ears, body, arms and legs all the same exact base color (e.g. warm brown for a teddy bear, naturally colored for the animal); a small lighter cream or tan muzzle and belly patch only; NO other tones anywhere in the fur, zero shading, no color gradients on the body; ${carried} — the ${charmedOtherColors[0]!.noun} is clothing, not fur`,
+        );
+      } else {
+        enriched.push(
+          "the ENTIRE animal is one solid flat color: head, ears, body, arms and legs all the same exact base color (e.g. warm brown for a teddy bear, naturally colored for the animal); a small lighter cream or tan muzzle and belly patch only; NO green, gray, blue, pink or salmon tones anywhere in the fur, no clothing, zero shading, no color gradients on the body",
+        );
+      }
     }
   }
 
@@ -893,101 +910,149 @@ export function createAIEmbroideryRouter(): Router {
             finalPrompt,
             enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult, underSpecified },
           }));
-          // Gemini (sole provider) — aspect-aware art (tall for stocking).
-          const dalleResult = await generateImageWithDallE(finalPrompt, undefined, userId, premium, aspect);
-          if (!dalleResult?.buffer) {
-            throw new Error("AI generation returned no image");
+          // Full conversion pipeline (image → grid → mask → halo → guards →
+          // deterministic color rescue). Extracted so a MISSING-NAMED-COLOR
+          // charm can re-run ONCE with a hardened prompt instead of silently
+          // saving a sweater-less design (owner 10-09 17:40Z charm verdict #2).
+          const runConversion = async (promptToUse: string) => {
+            // Gemini (sole provider) — aspect-aware art (tall for stocking).
+            const dalleResult = await generateImageWithDallE(promptToUse, undefined, userId, premium, aspect);
+            if (!dalleResult?.buffer) {
+              throw new Error("AI generation returned no image");
+            }
+            const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
+            // Color cap: floor higher than before so vibrant scenes keep
+            // enough colors (owner: sunset scene collapsed to 4 muddy colors
+            // at cap 6). Raise the floor to 16 so painterly shading collapses
+            // into identity colors instead of gray-beige mud.
+            const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
+            // Convert at the CANVAS aspect/size, not always square 200.
+            // Frame canvases (square/landscape) get the deterministic margin
+            // band so the subject always sits inside a visible border — the
+            // model may ignore the margin prompt, so we enforce it in the grid.
+            const grid = await imageBufferToStitchGrid(
+              dalleResult.buffer,
+              gridSize,
+              Math.min(maxColors, aiColorCap),
+              { width: genW, height: genH },
+              { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
+            );
+            // Deterministic content recenter (owner 09-15 — snowflake ornament "is
+            // not centered and left white edge"): Gemini can draw the subject
+            // off-center in the canvas, and the pixel→grid conversion carries the
+            // offset through (white band on one side). Shift the whole grid so the
+            // content bbox centers on the canvas. FRAME canvases keep the subject
+            // inside the deterministic margin band (the band is sacred — the
+            // recenter must never push content into it); product shapes get pure
+            // centering. Already-centered content is returned unchanged, so
+            // existing symmetric margins are preserved. Fix applies to NEW
+            // generations only — saved patterns keep their baked grids.
+            const recentered = recenterGrid(
+              grid.grid,
+              isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
+            );
+            // Geometric shape-mask enforcement (owner 09-15 pillow repro "over
+            // filled mask, cut off heart"): the silhouette is enforced at the
+            // grid level so nothing bleeds past the stocking/ornament/pillow
+            // boundary — the prompt alone can't guarantee Gemini respects the
+            // shape outline. Clears cells outside the silhouette and fills
+            // enclosed background holes with the nearest subject color for a
+            // coherent solid subject with true cut-out edges.
+            const masked =
+              shape === "stocking" || shape === "ornament" || shape === "pillow"
+                ? applyProductShapeMask(recentered, shape, genW, genH)
+                : recentered;
+            // Edge-halo fill (owner 10-09 retest #4 — "odd white lip edge around
+            // the entire stocking edge"): the AI image's white transition band
+            // survives inside the masked silhouette, so the stitched body reads a
+            // white lip and does NOT fill to the mask edge (her real 154×238 grid:
+            // depth-1 ring 89% white under a smooth 6-8-cell halo). Deterministic
+            // per-cell pass: white cells at depth 1..8 from the silhouette whose
+            // inward white run is short (< 9 — a thin band, not the thick cuff/toe)
+            // and which are cupped by a used non-white interior get recolored to
+            // that interior modal color — the body reaches the silhouette edge
+            // while thick legit whites (cuff/toe) and deep interior details stay.
+            // Stocking shapes only; small grids (≤60) are untouched (their
+            // flat-sticker path already produces cut-out edges).
+            // trimLegWhites (owner 10-09 17:30Z verdict #2): when the prompt
+            // declared the body blue with white cuff/toe (stockingBodyDirective),
+            // white in the LEG rows at depth <= 14 is a washed transition band
+            // around the blue core — the body must read edge-to-edge. Isolated
+            // interior flakes (the snowflake detail ON the blue body) survive the
+            // rim-connectivity flood.
+            const bodyDirective = stockingBodyDirective(prompt, shape);
+            const haloFilled =
+              shape === "stocking" && !isSmallGrid(genW, genH)
+                ? edgeHaloFill(masked, shape, genW, genH, { trimLegWhites: !!bodyDirective })
+                : masked;
+            // Deterministic face-feature guard (owner 09-15, 3rd report: bag
+            // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
+            // cells). The prompt can't guarantee the model draws features and
+            // the converter can only repaint dark pixels the source contained —
+            // so on the small-grid path (≤60 cells, outlinePreserve already on)
+            // rescue the subject geometrically: dark silhouette outline for ANY
+            // subject, plus eyes+nose for animal/face prompts. Runs AFTER the
+            // shape mask, so synthesized eyes land inside the silhouette.
+            const guarded = isSmallGrid(genW, genH)
+              ? applyFaceFeatureGuard(haloFilled, grid.dmcColors, prompt)
+              : { grid: haloFilled, dmcColors: grid.dmcColors };
+            // Deterministic bear-fur color rescue (owner 10-09 17:40Z charm
+            // verdict #2 — "blue sweater" charm shipped rust #bf5816 / orange
+            // #e27323 in EVERY round; the directive is advisory, the prompt
+            // cannot hold): when the final grid is rust/orange-DOMINANT with no
+            // brown/tan present, recolor the orange-family cells to a canonical
+            // bear brown (same deterministic machinery as the face guard).
+            // Small-grid charm path only; grids that already read brown/tan
+            // (or non-bear subjects) return the same references.
+            const rescued = isSmallGrid(genW, genH)
+              ? applyBearColorRescue(guarded.grid, guarded.dmcColors, prompt)
+              : guarded;
+            // Quality gate — warn (don't silently save) when the conversion
+            // came out sparse/muddy, OR (on frame canvases) the subject
+            // bleeds to an edge.
+            const qualityWarning = qualityGate(rescued.grid, rescued.dmcColors, prompt, {
+              frame: isFrameCanvasResult,
+              canvasWidth: genW,
+              canvasHeight: genH,
+            });
+            return { grid, guarded: rescued, preview, qualityWarning };
+          };
+          // Run the pipeline once; if a prompt-named NON-subject color ("blue
+          // sweater") is ABSENT from the final grid, re-roll ONCE with a
+          // hardened prompt (the model monochromed the whole charm under the
+          // old image-wide directive — never silently save a sweater-less
+          // design). Last resort: conversionWarning naming the missing color.
+          let conversion = await runConversion(finalPrompt);
+          if (smallGrid) {
+            const missing = missingNamedOtherColor(conversion.guarded.grid, prompt);
+            if (missing) {
+              const hardenedPrompt = `${finalPrompt}, ${hardenedColorClause(missing)}`;
+              console.error(JSON.stringify({
+                event: "ai_color_reroll",
+                missing: { color: missing.color, noun: missing.noun },
+                hardenedPrompt,
+              }));
+              const retried = await runConversion(hardenedPrompt);
+              const stillMissing = missingNamedOtherColor(retried.guarded.grid, prompt);
+              if (stillMissing) {
+                const missingColor = stillMissing.color;
+                conversion = { ...retried, conversionWarning: `The ${missingColor} ${stillMissing.noun} did not come through in the AI image — the pattern was generated without a solid ${missingColor} area; regenerate or name the color explicitly (e.g. "a ${missingColor} ${stillMissing.noun}")` };
+              } else {
+                conversion = { ...retried, promptUsed: hardenedPrompt };
+              }
+            }
           }
-          const preview = `data:image/png;base64,${dalleResult.buffer.toString("base64")}`;
-          // Color cap: floor higher than before so vibrant scenes keep
-          // enough colors (owner: sunset scene collapsed to 4 muddy colors
-          // at cap 6). Raise the floor to 16 so painterly shading collapses
-          // into identity colors instead of gray-beige mud.
-          const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
-          // Convert at the CANVAS aspect/size, not always square 200.
-          // Frame canvases (square/landscape) get the deterministic margin
-          // band so the subject always sits inside a visible border — the
-          // model may ignore the margin prompt, so we enforce it in the grid.
-          const grid = await imageBufferToStitchGrid(
-            dalleResult.buffer,
-            gridSize,
-            Math.min(maxColors, aiColorCap),
-            { width: genW, height: genH },
-            { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
+          return buildPatternResponse(
+            { ...conversion.grid, grid: conversion.guarded.grid, dmcColors: conversion.guarded.dmcColors },
+            {
+              promptUsed: (conversion as any).promptUsed ?? finalPrompt,
+              processingTimeMs: 0,
+              fabric: { count: fc, inches: +fabricInches.toFixed(2) },
+              previewUrl: conversion.preview,
+              ...(conversion.qualityWarning ? { qualityWarning: conversion.qualityWarning } : {}),
+              ...(conversion.conversionWarning ? { conversionWarning: conversion.conversionWarning } : {}),
+            },
           );
-          // Deterministic content recenter (owner 09-15 — snowflake ornament "is
-          // not centered and left white edge"): Gemini can draw the subject
-          // off-center in the canvas, and the pixel→grid conversion carries the
-          // offset through (white band on one side). Shift the whole grid so the
-          // content bbox centers on the canvas. FRAME canvases keep the subject
-          // inside the deterministic margin band (the band is sacred — the
-          // recenter must never push content into it); product shapes get pure
-          // centering. Already-centered content is returned unchanged, so
-          // existing symmetric margins are preserved. Fix applies to NEW
-          // generations only — saved patterns keep their baked grids.
-          const recentered = recenterGrid(
-            grid.grid,
-            isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
-          );
-          // Geometric shape-mask enforcement (owner 09-15 pillow repro "over
-          // filled mask, cut off heart"): the silhouette is enforced at the
-          // grid level so nothing bleeds past the stocking/ornament/pillow
-          // boundary — the prompt alone can't guarantee Gemini respects the
-          // shape outline. Clears cells outside the silhouette and fills
-          // enclosed background holes with the nearest subject color for a
-          // coherent solid subject with true cut-out edges.
-          const masked =
-            shape === "stocking" || shape === "ornament" || shape === "pillow"
-              ? applyProductShapeMask(recentered, shape, genW, genH)
-              : recentered;
-          // Edge-halo fill (owner 10-09 retest #4 — "odd white lip edge around
-          // the entire stocking edge"): the AI image's white transition band
-          // survives inside the masked silhouette, so the stitched body reads a
-          // white lip and does NOT fill to the mask edge (her real 154×238 grid:
-          // depth-1 ring 89% white under a smooth 6-8-cell halo). Deterministic
-          // per-cell pass: white cells at depth 1..8 from the silhouette whose
-          // inward white run is short (< 9 — a thin band, not the thick cuff/toe)
-          // and which are cupped by a used non-white interior get recolored to
-          // that interior modal color — the body reaches the silhouette edge
-          // while thick legit whites (cuff/toe) and deep interior details stay.
-          // Stocking shapes only; small grids (≤60) are untouched (their
-          // flat-sticker path already produces cut-out edges).
-          // trimLegWhites (owner 10-09 17:30Z verdict #2): when the prompt
-          // declared the body blue with white cuff/toe (stockingBodyDirective),
-          // white in the LEG rows at depth <= 14 is a washed transition band
-          // around the blue core — the body must read edge-to-edge. Isolated
-          // low-density flakes (snowflake detail ON the blue body) survive.
-          const bodyDirective = stockingBodyDirective(prompt, shape);
-          const haloFilled =
-            shape === "stocking" && !isSmallGrid(genW, genH)
-              ? edgeHaloFill(masked, shape, genW, genH, { trimLegWhites: !!bodyDirective })
-              : masked;
-          // Deterministic face-feature guard (owner 09-15, 3rd report: bag
-          // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
-          // cells). The prompt can't guarantee the model draws features and
-          // the converter can only repaint dark pixels the source contained —
-          // so on the small-grid path (≤60 cells, outlinePreserve already on)
-          // rescue the subject geometrically: dark silhouette outline for ANY
-          // subject, plus eyes+nose for animal/face prompts. Runs AFTER the
-          // shape mask, so synthesized eyes land inside the silhouette.
-          const guarded = isSmallGrid(genW, genH)
-            ? applyFaceFeatureGuard(haloFilled, grid.dmcColors, prompt)
-            : { grid: haloFilled, dmcColors: grid.dmcColors };
-          // Quality gate — warn (don't silently save) when the conversion
-          // came out sparse/muddy, OR (on frame canvases) the subject
-          // bleeds to an edge.
-          const qualityWarning = qualityGate(guarded.grid, guarded.dmcColors, prompt, {
-            frame: isFrameCanvasResult,
-            canvasWidth: genW,
-            canvasHeight: genH,
-          });
-          return buildPatternResponse({ ...grid, grid: guarded.grid, dmcColors: guarded.dmcColors }, {
-            promptUsed: finalPrompt,
-            processingTimeMs: 0,
-            fabric: { count: fc, inches: +fabricInches.toFixed(2) },
-            previewUrl: preview,
-            ...(qualityWarning ? { qualityWarning } : {}),
-          });
         });
         res.status(202).json({ jobId });
         return;

@@ -18,6 +18,8 @@ import {
   edgeHaloDepth,
   EDGE_HALO_MAX_DEPTH,
   EDGE_HALO_THICK_RUN,
+  EDGE_HALO_TRIM_ROW_LO_FRAC,
+  EDGE_HALO_TRIM_ROW_HI_FRAC,
 } from "../domain/stitch/edgeHaloFill";
 import { buildProductSilhouette } from "../domain/stitch/productShapeMask";
 import type { StitchCell, StitchGrid } from "../domain/stitch/types";
@@ -275,8 +277,11 @@ describe("edgeHaloFill — trimLegWhites (white-washed source, body-color prompt
   const H = 180;
   it("collapses the leg ring to <5% while keeping cap/toe and interior flakes", () => {
     const { grid, depth, flakeCells } = buildWashedStockingFixture(W, H, 12);
-    const capHi = Math.floor(H * 0.27);
-    const toeLo = Math.floor(H * 0.87);
+    // The trim row band IS the acceptance leg region (real grid: rows 70-195 of
+    // 238 ≈ 0.29-0.82 — the cuff ends ~55, the toe starts ~187/195 and the old
+    // 0.87 hi would EAT it). Measure against the SAME constants the fill uses.
+    const capHi = Math.floor(H * EDGE_HALO_TRIM_ROW_LO_FRAC);
+    const toeLo = Math.floor(H * EDGE_HALO_TRIM_ROW_HI_FRAC);
     const before = ringWhiteFraction(grid, depth, capHi, toeLo);
     expect(before.fraction).toBeGreaterThan(0.3); // genuinely washed
     const capWhiteBefore = ringWhiteFraction(grid, depth, 0, capHi).white;
