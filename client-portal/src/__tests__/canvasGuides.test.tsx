@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import StitchGrid, { type StitchGridData, type StitchCell } from '../components/StitchGrid';
-import { CANVAS_PRESETS, inchesToStitches } from '../pages/Designer';
+import { CANVAS_PRESETS, inchesToStitches, aiShapeForGuide } from '../pages/Designer';
 import { STOCKING_GUIDE, stockingPointsInBox } from '../data/guides';
 
 function makeData(width: number, height: number): StitchGridData {
@@ -49,12 +49,12 @@ describe('Designer canvas product guides — size math', () => {
     expect(guideFor('8×10 Frame')).toBe('rect');
     expect(guideFor('Pillow')).toBe('roundedRect');
     expect(guideFor('Large Pillow')).toBe('roundedRect');
-    expect(guideFor('Bag Charm')).toBeUndefined();
+    expect(guideFor('Bag Charm')).toBe('circle');
     expect(guideFor('Wall Hanging')).toBeUndefined();
   });
 
-  it('the stocking guide polygon is a closed 49-point contour', () => {
-    expect(STOCKING_GUIDE.length).toBe(49);
+  it('the stocking guide polygon is a closed 63-point contour', () => {
+    expect(STOCKING_GUIDE.length).toBe(63);
     expect(STOCKING_GUIDE[0]).toEqual([0.0758, 0]);
     expect(STOCKING_GUIDE[STOCKING_GUIDE.length - 1]).toEqual([0.0303, 0]);
   });
@@ -88,6 +88,32 @@ describe('Designer canvas product guides — size math', () => {
   });
 });
 
+describe('preset guide → backend shape mapping (task 16e05580 — Bag Charm circle)', () => {
+  it('Bag Charm preset carries the circle guide AND maps to backend shape "ornament"', () => {
+    const bagCharm = CANVAS_PRESETS.find((p) => p.name === 'Bag Charm');
+    expect(bagCharm).toBeDefined();
+    expect(bagCharm!.inchW).toBe(2);
+    expect(bagCharm!.inchH).toBe(2);
+    // The P0 bug: this was undefined → aiShape undefined → backend square.
+    expect(bagCharm!.guide).toBe('circle');
+    expect(aiShapeForGuide(bagCharm!.guide)).toBe('ornament');
+  });
+
+  it('aiShapeForGuide maps every guide type to the backend shape enum', () => {
+    expect(aiShapeForGuide('circle')).toBe('ornament');
+    expect(aiShapeForGuide('roundedRect')).toBe('pillow');
+    expect(aiShapeForGuide('rect')).toBe('rect');
+    expect(aiShapeForGuide('stocking')).toBe('stocking');
+    expect(aiShapeForGuide(undefined)).toBeUndefined(); // custom canvas → square
+  });
+
+  it('every circle-guide preset maps to shape "ornament" (Ornament, Large Ornament, Bag Charm)', () => {
+    for (const p of CANVAS_PRESETS) {
+      if (p.guide === 'circle') expect(aiShapeForGuide(p.guide)).toBe('ornament');
+    }
+  });
+});
+
 describe('StitchGrid — guide prop rendering', () => {
   it('renders without error for every guide type', () => {
     for (const type of ['circle', 'rect', 'roundedRect', 'stocking'] as const) {
@@ -117,6 +143,7 @@ describe('StitchGrid — guide drawing (canvas calls)', () => {
     textBaseline = '';
     calls: string[] = [];
     scale() { this.calls.push('scale'); }
+    setTransform() { this.calls.push('setTransform'); } // pre-existing gap: rAF draw loop calls this; without the stub the guide-drawing tests throw
     clearRect() { this.calls.push('clearRect'); }
     fillRect() { this.calls.push('fillRect'); }
     strokeRect() { this.calls.push('strokeRect'); }

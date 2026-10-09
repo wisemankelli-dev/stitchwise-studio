@@ -157,23 +157,28 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
     expect(draft.gridWidth).toBe(28);
     expect(draft.gridHeight).toBe(28);
     // The pre-AI stick figure (old-format cells) is replaced by the fresh
-    // result — the stored draft must NOT be the old grid anymore.
+    // result — the stored draft must NOT be the old grid anymore. The bear is
+    // centered (inside the Bag Charm circle mask), so all 4 cells persist.
     expect(draft.grid).toEqual({
-      '0,0': '#e11d48',
-      '0,1': '#1e293b',
-      '1,0': '#1e293b',
-      '1,1': '#e11d48',
+      '13,13': '#e11d48',
+      '13,14': '#1e293b',
+      '14,13': '#1e293b',
+      '14,14': '#e11d48',
     });
   });
 });
 
-/** Build a healthy backend-style response at size×size with a 2×2 bear. */
+/** Build a healthy backend-style response at size×size with a 2×2 bear. The
+ *  bear is CENTERED because the backend recenters + circle-masks ornament
+ *  generations, and the client also circle-masks Bag Charm (guide:'circle' since
+ *  task 16e05580) — a corner bear would be clipped to nothing. */
 function aiResponse(size: number, preview = 'data:image/png;base64,QUlTQU1QTEU='): AIPatternResponse {
   const grid: string[][] = Array.from({ length: size }, () => Array<string>(size).fill(''));
-  grid[0][0] = '#e11d48';
-  grid[0][1] = '#1e293b';
-  grid[1][0] = '#1e293b';
-  grid[1][1] = '#e11d48';
+  const c = Math.floor(size / 2) - 1; // 28 → 13: 2×2 bear at the 28×28 center
+  grid[c][c] = '#e11d48';
+  grid[c][c + 1] = '#1e293b';
+  grid[c + 1][c] = '#1e293b';
+  grid[c + 1][c + 1] = '#e11d48';
   return {
     success: true,
     grid,
