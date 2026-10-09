@@ -29,6 +29,7 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
+import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
@@ -929,6 +930,22 @@ export function createAIEmbroideryRouter(): Router {
             shape === "stocking" || shape === "ornament" || shape === "pillow"
               ? applyProductShapeMask(recentered, shape, genW, genH)
               : recentered;
+          // Edge-halo fill (owner 10-09 retest #4 — "odd white lip edge around
+          // the entire stocking edge"): the AI image's white transition band
+          // survives inside the masked silhouette, so the stitched body reads a
+          // white lip and does NOT fill to the mask edge (her real 154×238 grid:
+          // depth-1 ring 89% white under a smooth 6-8-cell halo). Deterministic
+          // per-cell pass: white cells at depth 1..8 from the silhouette whose
+          // inward white run is short (< 9 — a thin band, not the thick cuff/toe)
+          // and which are cupped by a used non-white interior get recolored to
+          // that interior modal color — the body reaches the silhouette edge
+          // while thick legit whites (cuff/toe) and deep interior details stay.
+          // Stocking shapes only; small grids (≤60) are untouched (their
+          // flat-sticker path already produces cut-out edges).
+          const haloFilled =
+            shape === "stocking" && !isSmallGrid(genW, genH)
+              ? edgeHaloFill(masked, shape, genW, genH)
+              : masked;
           // Deterministic face-feature guard (owner 09-15, 3rd report: bag
           // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
           // cells). The prompt can't guarantee the model draws features and
@@ -938,8 +955,8 @@ export function createAIEmbroideryRouter(): Router {
           // subject, plus eyes+nose for animal/face prompts. Runs AFTER the
           // shape mask, so synthesized eyes land inside the silhouette.
           const guarded = isSmallGrid(genW, genH)
-            ? applyFaceFeatureGuard(masked, grid.dmcColors, prompt)
-            : { grid: masked, dmcColors: grid.dmcColors };
+            ? applyFaceFeatureGuard(haloFilled, grid.dmcColors, prompt)
+            : { grid: haloFilled, dmcColors: grid.dmcColors };
           // Quality gate — warn (don't silently save) when the conversion
           // came out sparse/muddy, OR (on frame canvases) the subject
           // bleeds to an edge.
