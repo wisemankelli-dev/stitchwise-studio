@@ -389,6 +389,45 @@ describe("enrichAIPrompt", () => {
     expect(prompt).not.toContain("perfectly symmetric head");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
+  // ─── Subject natural-color directive (owner 10-09 charm verdict: prompt
+  // 'teddy bear' with NO color word came out RED/ORANGE — #bf5816 151 st on
+  // the 28×28 charm; "Bear should have been brown and came out red") ─────────
+  it("OWNER 10-09 charm verdict: 'teddy bear' (no color word) gets the natural-color directive (brown, no red)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(smallGrid).toBe(false);
+    expect(prompt).toContain("Natural colors: a teddy bear is brown and tan");
+    expect(prompt).toContain("use only brown and tan tones");
+    expect(prompt).toContain("no red");
+    expect(prompt).toContain("no orange");
+    expect(prompt).toContain("no pink");
+  });
+  it("natural-color directive is suppressed when the user names a color ('brown teddy bear')", () => {
+    const { prompt } = enrichAIPrompt("brown teddy bear", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(prompt).not.toContain("Natural colors");
+  });
+  it("natural-color directive is not added for non-table subjects ('a truck')", () => {
+    const { prompt } = enrichAIPrompt("a truck", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(prompt).not.toContain("Natural colors");
+  });
+  it("OWNER 10-09 charm: 28x28 'teddy bear' bag charm gets the directive alongside the small-grid flat-sticker rules", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", "ornament", {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("Natural colors: a teddy bear is brown and tan");
+    expect(prompt).toContain("no red");
+    expect(prompt).toContain("the ENTIRE animal is one solid flat color");
+  });
   // ─── Subject drift + palette bloom for NON-animal prompts (owner 09-21
   // gap #41: "snowflakes with a blue background" on a stocking drew a
   // human-like FIGURE in 9 colors) ──────────────────────────────────────────

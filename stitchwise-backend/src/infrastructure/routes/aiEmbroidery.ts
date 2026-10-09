@@ -32,6 +32,7 @@ import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
+import { naturalColorDirective } from "../../domain/stitch/naturalColorDirective";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -637,6 +638,16 @@ export function enrichAIPrompt(
     }
   }
 
+  // Subject natural-color directive (owner 10-09 charm verdict: prompt 'teddy
+  // bear' — NO color word — produced a RED/ORANGE bear, #bf5816 151 st on the
+  // 28×28 charm; "Bear should have been brown and came out red"). A named-color
+  // guard can't catch an un-named subject, so when a KNOWN subject is named
+  // and the user named no color, force its canonical natural colors. Scatter
+  // prompts skip this — the motif anchor + palette guard already own those.
+  const naturalColor = isScatterPattern ? null : naturalColorDirective(prompt);
+  if (naturalColor) {
+    enriched.push(naturalColor.directive);
+  }
   return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied, smallGrid };
 }
 
