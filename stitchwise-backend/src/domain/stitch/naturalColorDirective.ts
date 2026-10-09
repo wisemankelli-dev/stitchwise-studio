@@ -191,3 +191,49 @@ export function naturalColorDirectives(prompt: string): NaturalColorMatch[] {
 export function naturalColorDirective(prompt: string): NaturalColorMatch | null {
   return naturalColorDirectives(prompt)[0] ?? null;
 }
+
+/**
+ * Noun-phrase color attachment: true when ANY unambiguous color word sits
+ * within 2 tokens before or 1 token after an occurrence of `nounRe`.
+ */
+function colorWordAttachedToNoun(lower: string, nounRe: RegExp): boolean {
+  let m: RegExpExecArray | null;
+  const re = new RegExp(nounRe.source, "i");
+  let idx = 0;
+  while ((m = re.exec(lower.slice(idx))) !== null) {
+    const start = idx + m.index;
+    const end = start + m[0].length;
+    const before = lower.slice(Math.max(0, start - 24), start).split(/[^a-z]+/).filter(Boolean).slice(-2);
+    const after = lower.slice(end, end + 24).split(/[^a-z]+/).filter(Boolean)[0];
+    for (const t of [...before, after]) {
+      if (t && COLOR_WORD_SET.has(t)) return true;
+    }
+    idx = end;
+  }
+  return false;
+}
+/**
+ * Stocking BODY color re-anchoring (owner 10-09 17:30Z verdict: "blue
+ * background with white top and white toe ... Add white snowflakes" painted a
+ * WHITE stocking — the product mask clips the blue BACKGROUND away, leaving
+ * a white-washed body and a thick white rim. The stocking shape IS the canvas
+ * (fill-to-edge semantics): a color word attached to the BACKGROUND must be
+ * re-anchored onto the STOCKING BODY, and an uncolored body gets the product
+ * default deep blue. Only fires for shape === 'stocking' and only when the
+ * user did NOT attach a color to the stocking/body nouns themselves.
+ */
+export function stockingBodyDirective(
+  prompt: string,
+  shape?: "stocking" | "ornament" | "pillow" | "square" | "rect" | string,
+): string | null {
+  if (shape !== "stocking" || !prompt) return null;
+  const lower = prompt.toLowerCase();
+  if (!lower) return null;
+  const bodyNounRe = /\bstocking(s)?\b|\bsock(s)?\b|\bboot(s)?\b|\bthe stocking\b|\bbody of the stocking\b|\bthe body\b/;
+  if (colorWordAttachedToNoun(lower, bodyNounRe)) return null; // user colored the body — their color wins
+  return (
+    "the STOCKING BODY itself is deep blue, NOT a blue background behind a white stocking: " +
+    "paint the stocking body dark blue and draw the snowflakes WHITE directly ON the blue stocking body; " +
+    "the cuff at the top and the toe at the bottom are white"
+  );
+}

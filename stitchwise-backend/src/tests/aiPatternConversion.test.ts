@@ -32,6 +32,7 @@ import {
   extractNamedPromptColors,
 } from "../infrastructure/routes/aiEmbroidery";
 import { imageBufferToStitchGrid } from "../domain/stitch/patternConverter";
+import { stockingBodyDirective } from "../domain/stitch/naturalColorDirective";
 import type { StitchCell } from "../domain/stitch/types";
 
 // ─── enrichAIPrompt ─────────────────────────────────────────────────────
@@ -1425,5 +1426,22 @@ describe("padUnderSpecifiedPrompt lexicon", () => {
     expect(padUnderSpecifiedPrompt("cute cat")).toBe("cute cat");
     expect(padUnderSpecifiedPrompt("red truck")).toBe("red truck");
     expect(padUnderSpecifiedPrompt("sunset beach scene")).toBe("sunset beach scene");
+  });
+});
+
+// ─── stockingBodyDirective wiring ─────────────────────────────────────────
+// (owner 10-09 17:30Z verdict #2: 'blue background with white top and white
+// toe' painted a WHITE stocking — the fill must be told the BODY is blue.)
+describe("stockingBodyDirective - wiring contract", () => {
+  it("fires for her exact prompt, is case-insensitive, and excludes user-colored bodies", () => {
+    const d = stockingBodyDirective("blue background with white top and white toe. Add white snowflakes to the design.", "stocking");
+    expect(d).not.toBeNull();
+    expect(d!.toLowerCase()).toContain("deep blue");
+    expect(stockingBodyDirective("a red stocking with white snowflakes", "stocking")).toBeNull();
+    expect(stockingBodyDirective("BLUE BACKGROUND WITH WHITE TOP AND WHITE TOE. ADD WHITE SNOWFLAKES.", "stocking")).not.toBeNull();
+  });
+  it("never fires for charm/round shapes (no trim on the charm path)", () => {
+    expect(stockingBodyDirective("teddybear with a blue sweater", "circle")).toBeNull();
+    expect(stockingBodyDirective("blue background with white top and white toe. Add white snowflakes to the design.", "ornament")).toBeNull();
   });
 });

@@ -33,7 +33,7 @@ import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
-import { naturalColorDirective } from "../../domain/stitch/naturalColorDirective";
+import { naturalColorDirective, stockingBodyDirective } from "../../domain/stitch/naturalColorDirective";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -649,6 +649,16 @@ export function enrichAIPrompt(
   if (naturalColor) {
     enriched.push(naturalColor.directive);
   }
+  // Stocking BODY color re-anchoring (owner 10-09 17:30Z verdict: "blue
+  // background ... white top and white toe" painted a WHITE stocking — the
+  // mask clips the blue background away). The shape is the canvas: a color on
+  // the BACKGROUND (or an uncolored body) must anchor to the STOCKING BODY or
+  // Gemini paints a blank white stocking. Fires for scatter prompts too (the
+  // snowflake pattern lives ON the blue body).
+  const stockingBody = stockingBodyDirective(prompt, shape);
+  if (stockingBody) {
+    enriched.push(stockingBody);
+  }
   return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied, smallGrid };
 }
 
@@ -942,9 +952,15 @@ export function createAIEmbroideryRouter(): Router {
           // while thick legit whites (cuff/toe) and deep interior details stay.
           // Stocking shapes only; small grids (≤60) are untouched (their
           // flat-sticker path already produces cut-out edges).
+          // trimLegWhites (owner 10-09 17:30Z verdict #2): when the prompt
+          // declared the body blue with white cuff/toe (stockingBodyDirective),
+          // white in the LEG rows at depth <= 14 is a washed transition band
+          // around the blue core — the body must read edge-to-edge. Isolated
+          // low-density flakes (snowflake detail ON the blue body) survive.
+          const bodyDirective = stockingBodyDirective(prompt, shape);
           const haloFilled =
             shape === "stocking" && !isSmallGrid(genW, genH)
-              ? edgeHaloFill(masked, shape, genW, genH)
+              ? edgeHaloFill(masked, shape, genW, genH, { trimLegWhites: !!bodyDirective })
               : masked;
           // Deterministic face-feature guard (owner 09-15, 3rd report: bag
           // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark

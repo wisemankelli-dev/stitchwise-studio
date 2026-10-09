@@ -62,6 +62,43 @@ export const EDGE_HALO_MAX_DEPTH = 8;
 export const EDGE_HALO_THICK_RUN = 9;
 /** Cells within this Chebyshev radius supply the "cupping" interior color. */
 const CUP_RADIUS = 4;
+// ─── Wide-band mode (owner 10-09 17:30Z verdict: "Blue stock white snowflake-
+//   3" — the retest-4 fix is INSUFFICIENT: that source's white transition band
+//   is 12+ cells deep (ring1 72% white / ring8 48% / ring12 33%), so the
+//   depth≤8 + run<9 + cup-radius-4 gates never fire. This mode widens the
+//   gates for white-WASHED sources (detected via ring white fractions) while
+//   the per-cell rules still protect legit thick whites and interior flakes).
+/** Wide gate — the observed 12+ cell band, with margin. */
+export const EDGE_HALO_WIDE_MAX_DEPTH = 14;
+/** A white structure whose inward run reaches this depth = THICK legit white
+ *  (cuff/toe columns reach depth ~14-25) → keep even in wide mode. The
+ *  shallow lip band terminates at the blue body well before this. */
+export const EDGE_HALO_WIDE_THICK_DEPTH = 12;
+/** Wider cup for washed sources — the blue body sits further from the rim. */
+export const EDGE_HALO_WIDE_CUP_RADIUS = 8;
+/** A local white fraction (radius-4 window) below this = an ISOLATED interior
+ *  detail island (snowflake) → keep; a band cell sits in a majority-white
+ *  context → recolor. */
+export const EDGE_HALO_DENSITY_RADIUS = 4;
+export const EDGE_HALO_DENSITY_MIN = 0.5;
+/** Wide mode fires when the stitched ring-3 (or ring-8) is majority white —
+ *  a white-washed source (a thin 6-8-cell band is gone by ring 8). */
+export const EDGE_HALO_WIDE_RING8_PCT = 0.4;
+/** trimLegWhites mode (owner 10-09 17:30Z verdict): when the prompt-directed
+ *  body color fires (stockingBodyDirective — the body is blue, cuff/toe white),
+ *  the LEG rows must read body color edge-to-edge. White there at depth <= 14
+ *  is wash (a 12+ cell transition band around a blue core), NOT legit thick
+ *  white — the cuff ends at ~25% height and the toe starts at ~87% (49-point
+ *  silhouette guide y = 0.2526 / ~0.87-1.0). Isolated low-density white
+ *  islands (snowflake detail ON the blue body) stay — the localWhiteDensity
+ *  gate is the flake-vs-band discriminator. */
+export const EDGE_HALO_TRIM_MAX_DEPTH = 14;
+export const EDGE_HALO_TRIM_ROW_LO_FRAC = 0.27;
+export const EDGE_HALO_TRIM_ROW_HI_FRAC = 0.87;
+/** Depth beyond which cells define the shape's TRUE body color (the blue core
+ *  in a washed source). Used as the fallback cup when the shallow band has no
+ *  non-white within the wide cup radius (a fully-white 12-deep wash). */
+export const EDGE_HALO_DEEP_REFERENCE_DEPTH = 16;
 
 function isWhite(cell: StitchCell | undefined): boolean {
   return !!cell && cell.color !== "" && cell.color.toLowerCase() === WHITE_HEX;
@@ -205,6 +242,103 @@ function cuppingColor(
 }
 
 /**
+ * White fraction of the stitched cells at exactly `ring` Chebyshev depth,
+ * RESTRICTED to the LEG rows (default the middle 28%-85% of the height — the
+ * owner's acceptance leg region rows 70-195 of 238 ≈ 29%-82%). Measuring the
+ * WHOLE silhouette is wrong: the legit full-width white cap and toe make the
+ * global ring fractions majority-white even on a thin-band source. Canvas
+ * cells (depth 0) are excluded; a ring with no stitched cells reads 0.
+ */
+function whiteFractionAtRing(
+  depth: number[][],
+  grid: StitchGrid,
+  ring: number,
+  rowLo?: number,
+  rowHi?: number,
+): number {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  const lo = rowLo ?? Math.floor(height * 0.28);
+  const hi = rowHi ?? Math.floor(height * 0.85);
+  let stitched = 0;
+  let white = 0;
+  for (let r = lo; r <= hi && r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (depth[r]?.[c] !== ring) continue;
+      stitched++;
+      if (isWhite(grid[r]?.[c])) white++;
+    }
+  }
+  return stitched === 0 ? 0 : white / stitched;
+}
+/**
+ * True when some inward white ray from (r0,c0) reaches a white cell whose
+ * Chebyshev depth is STRICTLY GREATER than `target` (non-decreasing depth,
+ * <=2 flat steps — same walk contract as inwardWhiteRun). A deep-reaching
+ * white structure (cuff column, toe like, a genuine white-washed BODY) is
+ * thick and must survive; a shallow lip band terminates at the blue body
+ * before reaching the target.
+ */
+function inwardWhiteRunReaches(
+  r0: number,
+  c0: number,
+  depth: number[][],
+  grid: StitchGrid,
+  target: number,
+): boolean {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  const d0 = depth[r0][c0];
+  for (const [dr, dc] of DIRECTIONS) {
+    let r = r0 + dr;
+    let c = c0 + dc;
+    let prev = d0;
+    let flat = 0;
+    while (r >= 0 && r < height && c >= 0 && c < width) {
+      const nd = depth[r][c];
+      if (nd < prev) break;
+      if (nd === prev) {
+        flat++;
+        if (flat > MAX_FLAT_STEPS) break;
+      } else {
+        flat = 0;
+      }
+      if (!isWhite(grid[r]?.[c])) break;
+      if (nd > target) return true;
+      prev = nd;
+      r += dr;
+      c += dc;
+    }
+  }
+  return false;
+}
+/**
+ * White fraction within a Chebyshev `radius` window around (r0,c0). Band
+ * cells sit in majority-white contexts; isolated interior detail islands
+ * (snowflakes ON the blue body) sit in majority-non-white contexts.
+ */
+function localWhiteDensity(
+  r0: number,
+  c0: number,
+  radius: number,
+  grid: StitchGrid,
+): number {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  let seen = 0;
+  let white = 0;
+  for (let r = Math.max(0, r0 - radius); r <= Math.min(height - 1, r0 + radius); r++) {
+    for (let c = Math.max(0, c0 - radius); c <= Math.min(width - 1, c0 + radius); c++) {
+      if (r === r0 && c === c0) continue;
+      const cell = grid[r]?.[c];
+      if (!cell || !cell.color || cell.color === "") continue;
+      seen++;
+      if (isWhite(cell)) white++;
+    }
+  }
+  return seen === 0 ? 0 : white / seen;
+}
+/**
  * Enforce fill-to-edge on a product-shape silhouette by absorbing the white
  * transition band ("lip") that survives inside the mask.
  *
@@ -223,11 +357,50 @@ function cuppingColor(
  * to 16/330 (4.85%) — exactly the acceptance the owner verified conceptually
  * in lip-facts.txt.
  */
+/**
+ * Modal color of NON-WHITE stitched cells at depth >= minDepth (the shape's
+ * deep body). Null when the deep interior is empty or all white (a genuinely
+ * white stocking — nothing to fill toward). Ties → lexicographic smallest.
+ */
+function deepInteriorModalNonWhite(
+  depth: number[][],
+  grid: StitchGrid,
+  minDepth: number,
+): string | null {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  const counts = new Map<string, number>();
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if ((depth[r]?.[c] ?? 0) < minDepth) continue;
+      if (!isStitchedNonWhite(grid[r]?.[c])) continue;
+      const color = grid[r][c]!.color.toLowerCase();
+      counts.set(color, (counts.get(color) ?? 0) + 1);
+    }
+  }
+  if (counts.size === 0) return null;
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [color, count] of counts) {
+    if (count > bestCount || (count === bestCount && (best === null || color < best))) {
+      best = color;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+export interface EdgeHaloFillOptions {
+  /** Prompt-directed body color fired (stockingBodyDirective): trim washed white
+   *  in the LEG rows (depth <= 14) down to the local interior color, keeping
+   *  cuff/toe rows and isolated interior flakes. */
+  trimLegWhites?: boolean;
+}
 export function edgeHaloFill(
   grid: StitchGrid,
   shape: ProductMaskShape,
   targetW: number,
   targetH: number,
+  opts?: EdgeHaloFillOptions,
 ): StitchGrid {
   if (shape !== "stocking") return grid;
   const height = grid.length;
@@ -253,15 +426,52 @@ export function edgeHaloFill(
   };
 
   const out: StitchGrid = grid.map((row) => row.slice());
+  const trimLegWhites = !!opts?.trimLegWhites && shape === "stocking";
+  const trimRowLo = Math.floor(height * EDGE_HALO_TRIM_ROW_LO_FRAC);
+  const trimRowHi = Math.floor(height * EDGE_HALO_TRIM_ROW_HI_FRAC);
+  // Wide mode activates on WHITE-WASHED sources via the DEEP ring only: in
+  // the LEG rows (cap/toe excluded) a thin 6-8-cell band is gone by ring 8
+  // (owner retest-4 source ring8 26%), while a 12+ cell wash still reads
+  // majority white at ring 8 (owner's new source ring8 48%). Ring 3 is
+  // deliberately NOT used — both band types look white at ring 3.
+  const wideMode = whiteFractionAtRing(depth, grid, 8) >= EDGE_HALO_WIDE_RING8_PCT;
   for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) {
       const d = depth[r]?.[c] ?? 0;
       if (!isWhite(grid[r]?.[c])) continue;
-      if (d < 1 || d > EDGE_HALO_MAX_DEPTH) continue;
-      if (inwardWhiteRun(r, c, depth, grid) >= EDGE_HALO_THICK_RUN) continue;
-      const cup = cuppingColor(r, c, CUP_RADIUS, grid);
-      if (!cup) continue;
-      out[r][c] = recover(cup);
+      if (d < 1) continue;
+      if (trimLegWhites && r >= trimRowLo && r < trimRowHi && d <= EDGE_HALO_TRIM_MAX_DEPTH) {
+        // Prompt says the BODY is colored (blue) with white cuff/toe: white in
+        // the leg at depth <= 14 is the washed transition band. Recolor it to
+        // the local interior color UNLESS it is an isolated low-density flake
+        // (the snowflake detail we want — flakes sit ON the blue body).
+        if (localWhiteDensity(r, c, EDGE_HALO_DENSITY_RADIUS, grid) < EDGE_HALO_DENSITY_MIN) continue;
+        const cup =
+          cuppingColor(r, c, EDGE_HALO_WIDE_CUP_RADIUS, grid) ??
+          deepInteriorModalNonWhite(depth, grid, EDGE_HALO_DEEP_REFERENCE_DEPTH);
+        if (!cup) continue;
+        out[r][c] = recover(cup);
+        continue;
+      }
+      if (wideMode) {
+        if (d > EDGE_HALO_WIDE_MAX_DEPTH) continue;
+        // Keep thick legit whites: anything whose white structure reaches
+        // deeper than the lip band (cuff columns, toe body, a genuinely
+        // white-washed BODY) survives; the shallow lip terminates at blue.
+        if (inwardWhiteRunReaches(r, c, depth, grid, EDGE_HALO_WIDE_THICK_DEPTH)) continue;
+        // Keep ISOLATED interior detail islands (snowflakes ON the blue body)
+        // — they sit in a majority-non-white neighborhood, band cells don't.
+        if (localWhiteDensity(r, c, EDGE_HALO_DENSITY_RADIUS, grid) < EDGE_HALO_DENSITY_MIN) continue;
+        const cup = cuppingColor(r, c, EDGE_HALO_WIDE_CUP_RADIUS, grid);
+        if (!cup) continue;
+        out[r][c] = recover(cup);
+      } else {
+        if (d > EDGE_HALO_MAX_DEPTH) continue;
+        if (inwardWhiteRun(r, c, depth, grid) >= EDGE_HALO_THICK_RUN) continue;
+        const cup = cuppingColor(r, c, CUP_RADIUS, grid);
+        if (!cup) continue;
+        out[r][c] = recover(cup);
+      }
     }
   }
   return out;
