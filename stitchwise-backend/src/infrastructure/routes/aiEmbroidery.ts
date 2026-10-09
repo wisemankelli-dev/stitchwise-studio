@@ -30,6 +30,7 @@ import {
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
+import { figureSignalWarning, isScatterPatternPrompt } from "../../domain/stitch/figureSignalGuard";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -421,6 +422,14 @@ export function enrichAIPrompt(
   // (skin tan/red/green/orange/gold). Non-animal subjects get the same
   // fill-the-silhouette constraint WITHOUT any head/body/torso anatomy.
   const isAnimal = isAnimalFacePrompt(prompt);
+  // Scatter/pattern gate (owner 09-21 gap #41 3rd report): a subject like
+  // "snowflakes" is a REPEATING PATTERN, not one object. The fill/stretch
+  // sentences below turn it into a single stretched figure (Gemini drew a
+  // snowman for "snowflakes on a blue stocking"). When the prompt asks for a
+  // scattered/repeating arrangement, the shape sentences switch to
+  // many-small-separate-copies wording. Animal/face prompts never match the
+  // scatter token set, so bag-charm #182–#184 paths stay byte-identical.
+  const isScatterPattern = !isAnimal && isScatterPatternPrompt(prompt);
 
   // Vibrant / color-rich guidance (replaces the old color-draining hints).
   // NOTE: this deliberately stays in EVERY enriched prompt — including the
@@ -459,6 +468,14 @@ export function enrichAIPrompt(
       enriched.push(
         "the subject itself must take the exact shape of a tall Christmas stocking: the subject's own body IS the stocking silhouette — head near the top cuff, torso widening then tapering into a pointed toe at the bottom, no separate stocking object wrapped around the subject, no scene inside; the subject fills the whole tall stocking shape edge to edge, no blank space",
       );
+    } else if (isScatterPattern) {
+      // Scatter/pattern subject (owner 09-21 3rd report — "snowflakes on a
+      // blue stocking" drew ONE snowman): the stretch-fill wording below
+      // turns a repeating motif into a single object. Ask for many small
+      // separate copies scattered as a repeating pattern instead.
+      enriched.push(
+        "fill the stocking with many small separate copies of the subject, scattered evenly as a repeating pattern across the ENTIRE stocking silhouette from the top cuff down to the pointed toe — no single large object, no character, no snowman, no face, no blank patches, no scene inside",
+      );
     } else {
       // NON-animal subject (owner 09-21 gap #41 — "snowflakes with a blue
       // background" drew a human-like FIGURE in 9 colors): the animal wording
@@ -471,9 +488,15 @@ export function enrichAIPrompt(
     }
     shapeHintApplied = true;
   } else if (shape === "ornament") {
-    enriched.push(
-      "perfectly fill a circular ornament bauble: the artwork will be clipped to a CIRCLE, so draw the subject centered inside a circle inscribed in the square canvas, filling that circle from top to bottom and side to side; the four corners of the square stay empty; keep the whole subject inside the circle, nothing important touches the circle edge, and the subject should be LARGE and fill most of the circle",
-    );
+    if (isScatterPattern) {
+      enriched.push(
+        "cover the whole ornament circle with many small separate copies of the subject, scattered evenly as a repeating pattern across the entire circle, filling it edge to edge — no single large object, no character, no snowman, no face, no blank patches",
+      );
+    } else {
+      enriched.push(
+        "perfectly fill a circular ornament bauble: the artwork will be clipped to a CIRCLE, so draw the subject centered inside a circle inscribed in the square canvas, filling that circle from top to bottom and side to side; the four corners of the square stay empty; keep the whole subject inside the circle, nothing important touches the circle edge, and the subject should be LARGE and fill most of the circle",
+      );
+    }
     shapeHintApplied = true;
   } else if (shape === "pillow") {
     // Owner 09-11 (same rule as stocking): the subject must FILL the mask, not
@@ -482,6 +505,10 @@ export function enrichAIPrompt(
     if (isAnimal) {
       enriched.push(
         "the artwork will be clipped to a ROUNDED SQUARE silhouette, and the subject itself must fill that silhouette: the subject's own body spreads to take the pillow's shape edge to edge (corners slightly rounded), no separate pillow object drawn around the subject, no scene inside; the outer corners of the canvas stay empty; nothing important touches the rounded edge",
+      );
+    } else if (isScatterPattern) {
+      enriched.push(
+        "cover the whole pillow with many small separate copies of the subject, scattered evenly as a repeating pattern across the entire rounded-square silhouette edge to edge — no single large object, no character, no snowman, no face, no blank patches",
       );
     } else {
       // NON-animal subject (gap #41 — same de-anthropomorphization as
@@ -493,16 +520,28 @@ export function enrichAIPrompt(
     shapeHintApplied = true;
   } else if (isFrame) {
     // Square/landscape canvas → frame with padding, never crop the subject.
-    enriched.push(
-      "subject fills the frame with comfortable padding and margins on all sides, the entire subject stays fully inside the canvas, nothing touches the edges, leave 5-10% margin around the subject, head not cropped at top, feet and hands not cropped at bottom",
-    );
+    if (isScatterPattern) {
+      enriched.push(
+        "cover the whole canvas with many small separate copies of the subject, scattered evenly across the entire frame as a repeating pattern — no single large object, no character, no snowman, no face, no blank patches",
+      );
+    } else {
+      enriched.push(
+        "subject fills the frame with comfortable padding and margins on all sides, the entire subject stays fully inside the canvas, nothing touches the edges, leave 5-10% margin around the subject, head not cropped at top, feet and hands not cropped at bottom",
+      );
+    }
     shapeHintApplied = true;
   } else if (shape === "square" || shape === "rect") {
     // Explicit square/rect shape with a TALL canvas → keep old fill behavior.
     enriched.push("subject fills the whole rectangular frame, edge to edge, no empty margins");
     shapeHintApplied = true;
   } else {
-    enriched.push("subject fills most of the frame");
+    if (isScatterPattern) {
+      enriched.push(
+        "cover the whole canvas with many small separate copies of the subject, scattered evenly as a repeating pattern — no single large object, no character, no snowman, no face",
+      );
+    } else {
+      enriched.push("subject fills most of the frame");
+    }
   }
 
   // Scene guard — a beach/sunset/landscape is a SCENE, not a person portrait.
@@ -704,6 +743,18 @@ export function qualityGate(
     if ((darkCells * 100) / filled < 1) {
       warnings.push(`the design has no dark outline or features — on a small canvas it will stitch as a flat shape; add details to the prompt (e.g. "with a face, eyes and a dark outline")`);
     }
+  }
+  // Scatter/pattern figure check (owner 09-21 gap #41 3rd report — "snowflakes
+  // on a blue stocking" drew ONE big snowman despite the palette fix):
+  // deterministic signal on the FINAL grid (after quantization + masks +
+  // guards): connected-component analysis; if the prompt asked for a
+  // scattered/repeating pattern and a single component dominates the fill
+  // (vertically elongated or nearly the only component), the AI drew one
+  // figure, not the pattern — warn so the user regenerates. Never fires for
+  // non-scatter prompts (animal/single-subject paths stay silent).
+  const figureWarn = figureSignalWarning(grid, prompt);
+  if (figureWarn) {
+    warnings.push(figureWarn);
   }
   return warnings.length ? warnings.join(" · ") : null;
 }

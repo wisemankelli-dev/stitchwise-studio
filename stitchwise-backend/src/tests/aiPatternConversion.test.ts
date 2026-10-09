@@ -392,7 +392,7 @@ describe("enrichAIPrompt", () => {
   // ─── Subject drift + palette bloom for NON-animal prompts (owner 09-21
   // gap #41: "snowflakes with a blue background" on a stocking drew a
   // human-like FIGURE in 9 colors) ──────────────────────────────────────────
-  it("OWNER REPRO: snowflakes + blue on a stocking get the subject guard, de-anthropomorphized silhouette AND color fidelity", () => {
+  it("OWNER REPRO: snowflakes + blue on a stocking get the subject guard, SCATTER-pattern silhouette AND color fidelity (gap #41 3rd report, owner 09-21)", () => {
     const { prompt, smallGrid } = enrichAIPrompt("snowflakes with a blue background", "stocking", {
       canvasWidth: 154,
       canvasHeight: 238,
@@ -402,8 +402,15 @@ describe("enrichAIPrompt", () => {
     expect(prompt).toContain("Draw ONLY the subject named");
     expect(prompt).toContain("no people, no faces, no figures, no body parts");
     expect(prompt).toContain("no letters, no text, no logos, no extra objects or scenery");
-    // (b) de-anthropomorphized stocking silhouette — NO head/torso/toe anatomy.
-    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    // (b) SCATTER-pattern stocking silhouette (owner 09-21 3rd report: the
+    // stretch-fill sentence below made Gemini draw ONE snowman for a
+    // repeating motif) — many small separate copies, never one big object.
+    expect(prompt).toContain("many small separate copies of the subject");
+    expect(prompt).toContain("scattered evenly as a repeating pattern");
+    expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    // The old stretch-fill wording must NOT appear for scattering subjects.
+    expect(prompt).not.toContain("fills the entire stocking silhouette");
+    expect(prompt).not.toContain("spreading and stretching edge to edge");
     expect(prompt).not.toContain("head near the top cuff");
     expect(prompt).not.toContain("torso widening");
     expect(prompt).not.toContain("own body IS the stocking silhouette");
@@ -414,15 +421,65 @@ describe("enrichAIPrompt", () => {
     // the safe wording; "no gradients" literally must not appear).
     expect(prompt).not.toMatch(/flat vector art|solid flat colors only|no gradients|no shading|white background/i);
   });
-  it("NON-animal stocking WITHOUT named colors gets guard + de-anthrop silhouette but NO color directive", () => {
+  it("SCATTER snowflakes on a stocking WITHOUT named colors get guard + pattern silhouette but NO color directive", () => {
     const { prompt } = enrichAIPrompt("snowflakes", "stocking", {
       canvasWidth: 154,
       canvasHeight: 238,
     });
     expect(prompt).toContain("Draw ONLY the subject named");
-    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).toContain("many small separate copies of the subject");
+    expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("use only the colors mentioned in the prompt");
     expect(prompt).not.toContain("head near the top cuff");
+  });
+  it("SCATTER star pattern on an ornament gets the repeating-pattern circle sentence", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("white stars on a red ornament", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("cover the whole ornament circle with many small separate copies");
+    expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).not.toContain("perfectly fill a circular ornament bauble");
+  });
+  it("SCATTER hearts on a pillow get the repeating-pattern pillow sentence (no stretch-fill)", () => {
+    const { prompt } = enrichAIPrompt("scattered hearts on a pillow", "pillow", {
+      canvasWidth: 42,
+      canvasHeight: 42,
+    });
+    expect(prompt).toContain("cover the whole pillow with many small separate copies");
+    expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).not.toContain("spreads and stretches to cover the pillow's shape");
+  });
+  it("SCATTER polka dots on a square canvas get the frame pattern sentence", () => {
+    const { prompt, shapeHintApplied } = enrichAIPrompt("polka dots all over the fabric", undefined, {
+      canvasWidth: 100,
+      canvasHeight: 100,
+    });
+    expect(shapeHintApplied).toBe(true);
+    expect(prompt).toContain("cover the whole canvas with many small separate copies");
+    expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).not.toContain("subject fills the frame with comfortable padding");
+  });
+  it("a SINGLE non-scatter subject keeps the stretch-fill non-animal sentence (no scatter wording)", () => {
+    const { prompt } = enrichAIPrompt("a red truck", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    expect(prompt).toContain("fills the entire stocking silhouette from the top cuff");
+    expect(prompt).toContain("spreading and stretching edge to edge");
+    expect(prompt).not.toContain("many small separate copies");
+  });
+  it("'snowman' (ANIMAL-path keyword, pre-existing) gets NO scatter sentence", () => {
+    const { prompt } = enrichAIPrompt("snowman", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    // snowman is in ANIMAL_FACE_KEYWORDS_REGEX → animal sentence, never scatter.
+    expect(prompt).not.toContain("many small separate copies");
+    expect(prompt).not.toContain("scattered evenly as a repeating pattern");
+    expect(prompt).toContain("own body IS the stocking silhouette");
   });
   it("NON-animal pillow drops the 'own body' anatomy wording but keeps the rounded-silhouette clip", () => {
     const { prompt } = enrichAIPrompt("pansy flower", "pillow", {
@@ -650,6 +707,76 @@ describe("qualityGate", () => {
     ];
     const warning = qualityGate(g, dmc, "teddy bear", { frame: true });
     if (warning) expect(warning).not.toMatch(/touches the .* edge/);
+  });
+  // ─── Figure-signal check for SCATTER/pattern prompts (owner 09-21 gap #41
+  // 3rd report: "snowflakes on a blue stocking" drew ONE snowman) ────────────
+  // The owner's failing sample signature, synthesized at 40×50 (same
+  // geometry as the 154×238 stocking result): a white snowman figure
+  // (head + body + red scarf stripe) on a blue canvas.
+  function snowmanGrid(h: number, w: number): { grid: StitchCell[][]; dmc: { hex: string; count: number }[] } {
+    const BLUE = "#3366cc", WHITE = "#ffffff", RED = "#cc3333";
+    const g: StitchCell[][] = Array.from({ length: h }, () =>
+      Array.from({ length: w }, () => ({ color: BLUE })),
+    );
+    // White head (circle, rows 4-16) + white body (circle, rows 18-40) +
+    // red scarf bar connect everything into ONE component.
+    const circle = (cr: number, cc: number, rad: number) => {
+      for (let r = cr - rad; r <= cr + rad; r++) {
+        for (let c = cc - rad; c <= cc + rad; c++) {
+          if (r < 0 || r >= h || c < 0 || c >= w) continue;
+          if ((r - cr) ** 2 + (c - cc) ** 2 <= rad * rad) g[r][c].color = WHITE;
+        }
+      }
+    };
+    circle(10, Math.floor(w / 2), 7);   // head
+    circle(29, Math.floor(w / 2), 12);  // body (touches head via scarf)
+    for (let c = Math.floor(w / 2) - 12; c <= Math.floor(w / 2) + 12; c++) g[16][c].color = RED;
+    const dmc = [
+      { hex: BLUE, count: h * w - 350 },
+      { hex: WHITE, count: 300 },
+      { hex: RED, count: 50 },
+    ];
+    return { grid: g, dmc };
+  }
+  // Genuinely scattered white snowflakes on the same blue canvas: 17 small
+  // separate L-shapes, each ~4 cells, none touching another.
+  function scatterFlakesGrid(h: number, w: number): { grid: StitchCell[][]; dmc: { hex: string; count: number }[] } {
+    const BLUE = "#3366cc", WHITE = "#ffffff";
+    const g: StitchCell[][] = Array.from({ length: h }, () =>
+      Array.from({ length: w }, () => ({ color: BLUE })),
+    );
+    const spots: Array<[number, number]> = [
+      [4, 4], [4, 12], [4, 20], [4, 28], [4, 36],
+      [12, 8], [12, 16], [12, 24], [12, 32],
+      [20, 4], [20, 20], [20, 36], [28, 12], [28, 28],
+      [34, 6], [34, 18], [34, 30],
+    ];
+    for (const [r, c] of spots) {
+      g[r][c].color = WHITE;
+      if (c + 1 < w) g[r][c + 1].color = WHITE;
+      if (r + 1 < h) g[r + 1][c].color = WHITE;
+    }
+    const dmc = [
+      { hex: BLUE, count: h * w - 60 },
+      { hex: WHITE, count: 60 },
+    ];
+    return { grid: g, dmc };
+  }
+  it("warns 'single figure' when a SCATTER-prompt grid is one big snowman (owner 09-21 3rd report repro)", () => {
+    const { grid, dmc } = snowmanGrid(50, 40);
+    const warning = qualityGate(grid, dmc, "snowflakes with a blue background", { frame: false });
+    expect(warning).toContain("single figure");
+    expect(warning).toContain("please regenerate");
+  });
+  it("does NOT warn 'single figure' when a scatter-prompt grid is genuinely scattered flakes", () => {
+    const { grid, dmc } = scatterFlakesGrid(40, 44);
+    const warning = qualityGate(grid, dmc, "snowflakes with a blue background", { frame: false });
+    expect(warning ?? "").not.toContain("single figure");
+  });
+  it("does NOT warn 'single figure' for a NON-scatter subject (single-object prompts are allowed one figure)", () => {
+    const { grid, dmc } = snowmanGrid(50, 40);
+    expect(qualityGate(grid, dmc, "teddy bear", { frame: true })).not.toContain("single figure");
+    expect(qualityGate(grid, dmc, "a snowman", { frame: false })).not.toContain("single figure");
   });
 });
 
