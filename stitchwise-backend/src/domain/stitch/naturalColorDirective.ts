@@ -80,10 +80,18 @@ const NON_NOUN_FILTER = new Set([
   "page", "canvas", "design", "corner", "corners", "border", "frame", "sky",
   "snowflake", "snowflakes", "flakes", "pattern", "scene", "scenes",
   "wall", "table", "ground", "backdrop", "surroundings", "area", "spaces",
+  // craft-product nouns — a color on the product itself is position, not a
+  // garments ("blue stocking", "red ornament") — handled by shape directives
+  "stocking", "stockings", "sock", "socks", "ornament", "ornaments",
+  "pillow", "pillows", "quilt", "quilting", "block", "blocks", "mug", "mugs",
   // function words — a color before any of these cannot own a noun ("white
   // and", "blue with", "red in", "white is", "white a")
   "the", "a", "an", "with", "in", "of", "on", "and", "or", "is", "are", "was",
   "were", "be", "has", "have", "had", "for", "to", "from", "by", "at", "as",
+  // imperative/verb tokens — a color before these never owns a noun
+  // ("white top and white toe. Add white snowflakes" — "add" is a verb)
+  "add", "adds", "put", "include", "includes", "make", "use", "show",
+  "keep", "try", "using", "placed", "placedon",
 ]);
 /** Subject noun phrases (their own colors are handled by subjectHasAttachedColor,
  *  never by the pair scanner). */
@@ -107,7 +115,7 @@ export function otherNounColorPairs(prompt: string): OtherNounColor[] {
   for (let i = 0; i < tokens.length; i++) {
     const word = tokens[i];
     if (!/^[a-z]+$/.test(word)) continue;
-    if (!COLOR_HUE_HINT[word]) continue; // only unambiguous hue words scan for a noun<!-- -->
+    if (!COLOR_HUE_HINT[word]) continue; // only unambiguous hue words scan for a noun
     for (let k = 1; k <= 2 && i + k < tokens.length; k++) {
       const noun = tokens[i + k];
       if (!/^[a-z]+$/.test(noun)) continue;
