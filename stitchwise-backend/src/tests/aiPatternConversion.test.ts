@@ -389,6 +389,45 @@ describe("enrichAIPrompt", () => {
     expect(prompt).not.toContain("perfectly symmetric head");
     expect(prompt).not.toContain("bold flat cartoon-sticker style");
   });
+  // ─── Subject natural-color directive (owner 10-09 charm verdict: prompt
+  // 'teddy bear' with NO color word came out RED/ORANGE — #bf5816 151 st on
+  // the 28×28 charm; "Bear should have been brown and came out red") ─────────
+  it("OWNER 10-09 charm verdict: 'teddy bear' (no color word) gets the natural-color directive (brown, no red)", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(smallGrid).toBe(false);
+    expect(prompt).toContain("Natural colors: a teddy bear is brown and tan");
+    expect(prompt).toContain("use only brown and tan tones");
+    expect(prompt).toContain("no red");
+    expect(prompt).toContain("no orange");
+    expect(prompt).toContain("no pink");
+  });
+  it("natural-color directive is suppressed when the user names a color ('brown teddy bear')", () => {
+    const { prompt } = enrichAIPrompt("brown teddy bear", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(prompt).not.toContain("Natural colors");
+  });
+  it("natural-color directive is not added for non-table subjects ('a truck')", () => {
+    const { prompt } = enrichAIPrompt("a truck", "ornament", {
+      canvasWidth: 84,
+      canvasHeight: 84,
+    });
+    expect(prompt).not.toContain("Natural colors");
+  });
+  it("OWNER 10-09 charm: 28x28 'teddy bear' bag charm gets the directive alongside the small-grid flat-sticker rules", () => {
+    const { prompt, smallGrid } = enrichAIPrompt("teddy bear", "ornament", {
+      canvasWidth: 28,
+      canvasHeight: 28,
+    });
+    expect(smallGrid).toBe(true);
+    expect(prompt).toContain("Natural colors: a teddy bear is brown and tan");
+    expect(prompt).toContain("no red");
+    expect(prompt).toContain("the ENTIRE animal is one solid flat color");
+  });
   // ─── Subject drift + palette bloom for NON-animal prompts (owner 09-21
   // gap #41: "snowflakes with a blue background" on a stocking drew a
   // human-like FIGURE in 9 colors) ──────────────────────────────────────────
@@ -405,9 +444,16 @@ describe("enrichAIPrompt", () => {
     // (b) SCATTER-pattern stocking silhouette (owner 09-21 3rd report: the
     // stretch-fill sentence below made Gemini draw ONE snowman for a
     // repeating motif) — many small separate copies, never one big object.
-    expect(prompt).toContain("many small separate copies of the subject");
+    // SUBJECT-ANCHORED (owner 10-09 retest #3): the sentence names the actual
+    // motif "snowflakes", never the abstract "the subject".
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
     expect(prompt).toContain("scattered evenly as a repeating pattern");
+    expect(prompt).toContain("each snowflake identical");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    // Holiday shape (stocking) + scatter → seasonal negative list.
+    expect(prompt).toContain("no ornaments, no trees");
+    expect(prompt).toContain("ONLY the snowflakes");
     // The old stretch-fill wording must NOT appear for scattering subjects.
     expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("spreading and stretching edge to edge");
@@ -427,10 +473,29 @@ describe("enrichAIPrompt", () => {
       canvasHeight: 238,
     });
     expect(prompt).toContain("Draw ONLY the subject named");
-    expect(prompt).toContain("many small separate copies of the subject");
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("ONLY the snowflakes");
     expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+    expect(prompt).not.toContain("head near the top cuff");
+  });
+  it("OWNER 10-09 retest #3 EXACT stored prompt gets subject-anchored scatter + seasonal negatives", () => {
+    const { prompt } = enrichAIPrompt("blue background with white snowflakes.  White top and white toe", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    // Subject-anchored: the prompt's actual motif, never the abstract subject.
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
+    // Seasonal negative list for holiday shapes + scatter.
+    expect(prompt).toContain("no ornaments, no trees, no candy canes, no holly, no bows, no bells");
+    expect(prompt).toContain("no characters, no scene — ONLY the snowflakes");
+    // Color fidelity still fires (blue + white named).
+    expect(prompt).toContain("use only the colors mentioned in the prompt (blue, white)");
+    // No stretch-fill/anatomy wording leaks into the scatter path.
+    expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("head near the top cuff");
   });
   it("SCATTER star pattern on an ornament gets the repeating-pattern circle sentence", () => {
@@ -440,7 +505,11 @@ describe("enrichAIPrompt", () => {
     });
     expect(shapeHintApplied).toBe(true);
     expect(prompt).toContain("cover the whole ornament circle with many small separate copies");
+    expect(prompt).toContain("copies of the stars");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("ONLY the stars");
+    // Seasonal negative list must not self-contradict a stars motif.
+    expect(prompt).not.toContain("no stars");
     expect(prompt).not.toContain("perfectly fill a circular ornament bauble");
   });
   it("SCATTER hearts on a pillow get the repeating-pattern pillow sentence (no stretch-fill)", () => {
@@ -449,7 +518,9 @@ describe("enrichAIPrompt", () => {
       canvasHeight: 42,
     });
     expect(prompt).toContain("cover the whole pillow with many small separate copies");
+    expect(prompt).toContain("copies of the hearts");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("no ornaments, no trees");
     expect(prompt).not.toContain("spreads and stretches to cover the pillow's shape");
   });
   it("SCATTER polka dots on a square canvas get the frame pattern sentence", () => {
@@ -459,6 +530,7 @@ describe("enrichAIPrompt", () => {
     });
     expect(shapeHintApplied).toBe(true);
     expect(prompt).toContain("cover the whole canvas with many small separate copies");
+    expect(prompt).toContain("copies of the polka dots");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
     expect(prompt).not.toContain("subject fills the frame with comfortable padding");
   });

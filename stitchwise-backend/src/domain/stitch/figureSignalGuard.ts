@@ -54,6 +54,51 @@ export function isScatterPatternPrompt(prompt: string): boolean {
   if (!prompt) return false;
   return SCATTER_SUBJECT_REGEX.test(prompt);
 }
+/**
+ * Ordered motif-token matchers for scatter/pattern prompts. First match wins,
+ * so multi-word tokens ("candy canes", "snow flakes", "polka dots") must come
+ * before their single-word fragments ("canes", "dots", "stars"). Returns the
+ * prompt's own phrasing, lowercased — e.g. "snowflakes", "stars", "polka dots".
+ */
+const SCATTER_MOTIF_REGEXES: RegExp[] = [
+  /\bsnow ?flakes?\b/i,
+  /\bcandy canes?\b/i,
+  /\bpolka dots?\b/i,
+  /\bstars?\b/i,
+  /\bdots?\b/i,
+  /\bsparkles?\b/i,
+  /\bsnowmen\b/i,
+  /\bconfetti\b/i,
+  /\bhearts?\b/i,
+  /\bstripes?\b/i,
+  /\bdiamonds?\b/i,
+  /\bchevrons?\b/i,
+  /\bspirals?\b/i,
+  /\bflakes?\b/i,
+  /\bmotifs?\b/i,
+];
+/**
+ * The motif noun of a scatter/pattern prompt ("snowflakes", "stars",
+ * "polka dots") or null for non-scatter prompts. Owners 10-09 retest #3:
+ * the repeating-pattern sentence said "copies of THE SUBJECT" and Gemini
+ * invented its own subject (painted a Christmas scene inside the stocking).
+ * Anchoring the sentence to the prompt's actual motif fixes that.
+ */
+export function extractScatterMotif(prompt: string): string | null {
+  if (!prompt) return null;
+  for (const re of SCATTER_MOTIF_REGEXES) {
+    const m = prompt.match(re);
+    if (m) return m[0].toLowerCase();
+  }
+  return null;
+}
+/** Crude singularizer for motif nouns ("snowflakes" → "snowflake", "candy canes" → "candy cane"). */
+export function singularizeMotif(motif: string): string {
+  if (!motif) return motif;
+  const trimmed = motif.trim();
+  if (trimmed.length > 4 && trimmed.endsWith("s") && !trimmed.endsWith("ss")) return trimmed.slice(0, -1);
+  return trimmed;
+}
 
 export interface FigureSignal {
   /** Total foreground cells (every color except the dominant canvas color). */

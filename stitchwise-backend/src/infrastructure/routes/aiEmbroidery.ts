@@ -30,7 +30,9 @@ import {
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
-import { figureSignalWarning, isScatterPatternPrompt } from "../../domain/stitch/figureSignalGuard";
+import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
+import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
+import { naturalColorDirective } from "../../domain/stitch/naturalColorDirective";
 import { generateShape } from "../../domain/ai/shapeLibrary";
 import { optionalAuth } from "../middleware/auth";
 import {
@@ -403,6 +405,19 @@ export function padUnderSpecifiedPrompt(rawPrompt: string): string {
   }
   return rawPrompt;
 }
+/**
+ * Seasonal decorations a scatter/pattern prompt on a holiday shape MUST NOT
+ * contain. Gemini reads "snowflakes on a stocking" as "Christmas scene"
+ * unless told otherwise (owner 10-09 retest #3: green/red/brown = 23% of the
+ * fill, zero actual snowflakes). The motif itself is excluded from the list
+ * so "stars on a stocking" never sees "no stars".
+ */
+const SEASONAL_NEGATIVES = ["ornaments", "trees", "candy canes", "holly", "bows", "bells", "stars", "characters", "scene"];
+function scatterSeasonalSuffix(motif: string): string {
+  const forbidden = SEASONAL_NEGATIVES.filter((w) => !motif.includes(w) && !w.includes(motif));
+  if (forbidden.length === 0) return "";
+  return `, no ${forbidden.join(", no ")} — ONLY the ${motif}`;
+}
 export function enrichAIPrompt(
   prompt: string,
   shape?: "stocking" | "ornament" | "pillow" | "square" | "rect",
@@ -430,6 +445,12 @@ export function enrichAIPrompt(
   // many-small-separate-copies wording. Animal/face prompts never match the
   // scatter token set, so bag-charm #182–#184 paths stay byte-identical.
   const isScatterPattern = !isAnimal && isScatterPatternPrompt(prompt);
+  // Subject-anchored motif (owner 10-09 retest #3): the repeating-pattern
+  // sentence says "copies of THE SUBJECT" — the abstract wording let Gemini
+  // invent its own subject (a Christmas scene, 23% green/red/brown, zero
+  // snowflakes). Interpolate the prompt's actual motif + its singular form.
+  const scatterMotif = isScatterPattern ? (extractScatterMotif(prompt) ?? "the subject") : "";
+  const scatterSingular = isScatterPattern && scatterMotif !== "the subject" ? singularizeMotif(scatterMotif) : scatterMotif;
 
   // Vibrant / color-rich guidance (replaces the old color-draining hints).
   // NOTE: this deliberately stays in EVERY enriched prompt — including the
@@ -474,7 +495,7 @@ export function enrichAIPrompt(
       // turns a repeating motif into a single object. Ask for many small
       // separate copies scattered as a repeating pattern instead.
       enriched.push(
-        "fill the stocking with many small separate copies of the subject, scattered evenly as a repeating pattern across the ENTIRE stocking silhouette from the top cuff down to the pointed toe — no single large object, no character, no snowman, no face, no blank patches, no scene inside",
+        `fill the stocking with many small separate copies of the ${scatterMotif}, scattered evenly as a repeating pattern across the ENTIRE stocking silhouette from the top cuff down to the pointed toe, each ${scatterSingular} identical with space between them — no single large object, no character, no snowman, no face, no blank patches, no scene inside${scatterSeasonalSuffix(scatterMotif)}`,
       );
     } else {
       // NON-animal subject (owner 09-21 gap #41 — "snowflakes with a blue
@@ -490,7 +511,7 @@ export function enrichAIPrompt(
   } else if (shape === "ornament") {
     if (isScatterPattern) {
       enriched.push(
-        "cover the whole ornament circle with many small separate copies of the subject, scattered evenly as a repeating pattern across the entire circle, filling it edge to edge — no single large object, no character, no snowman, no face, no blank patches",
+        `cover the whole ornament circle with many small separate copies of the ${scatterMotif}, scattered evenly as a repeating pattern across the entire circle, each ${scatterSingular} identical with space between them — no single large object, no character, no snowman, no face, no blank patches${scatterSeasonalSuffix(scatterMotif)}`,
       );
     } else {
       enriched.push(
@@ -508,7 +529,7 @@ export function enrichAIPrompt(
       );
     } else if (isScatterPattern) {
       enriched.push(
-        "cover the whole pillow with many small separate copies of the subject, scattered evenly as a repeating pattern across the entire rounded-square silhouette edge to edge — no single large object, no character, no snowman, no face, no blank patches",
+        `cover the whole pillow with many small separate copies of the ${scatterMotif}, scattered evenly as a repeating pattern across the entire rounded-square silhouette, each ${scatterSingular} identical with space between them — no single large object, no character, no snowman, no face, no blank patches${scatterSeasonalSuffix(scatterMotif)}`,
       );
     } else {
       // NON-animal subject (gap #41 — same de-anthropomorphization as
@@ -522,7 +543,7 @@ export function enrichAIPrompt(
     // Square/landscape canvas → frame with padding, never crop the subject.
     if (isScatterPattern) {
       enriched.push(
-        "cover the whole canvas with many small separate copies of the subject, scattered evenly across the entire frame as a repeating pattern — no single large object, no character, no snowman, no face, no blank patches",
+        `cover the whole canvas with many small separate copies of the ${scatterMotif}, scattered evenly across the entire frame as a repeating pattern, each ${scatterSingular} identical with space between them — no single large object, no character, no snowman, no face, no blank patches`,
       );
     } else {
       enriched.push(
@@ -537,7 +558,7 @@ export function enrichAIPrompt(
   } else {
     if (isScatterPattern) {
       enriched.push(
-        "cover the whole canvas with many small separate copies of the subject, scattered evenly as a repeating pattern — no single large object, no character, no snowman, no face",
+        `cover the whole canvas with many small separate copies of the ${scatterMotif}, scattered evenly as a repeating pattern, each ${scatterSingular} identical with space between them — no single large object, no character, no snowman, no face`,
       );
     } else {
       enriched.push("subject fills most of the frame");
@@ -617,6 +638,16 @@ export function enrichAIPrompt(
     }
   }
 
+  // Subject natural-color directive (owner 10-09 charm verdict: prompt 'teddy
+  // bear' — NO color word — produced a RED/ORANGE bear, #bf5816 151 st on the
+  // 28×28 charm; "Bear should have been brown and came out red"). A named-color
+  // guard can't catch an un-named subject, so when a KNOWN subject is named
+  // and the user named no color, force its canonical natural colors. Scatter
+  // prompts skip this — the motif anchor + palette guard already own those.
+  const naturalColor = isScatterPattern ? null : naturalColorDirective(prompt);
+  if (naturalColor) {
+    enriched.push(naturalColor.directive);
+  }
   return { prompt: enriched.join(", "), sceneGuardApplied, shapeHintApplied, smallGrid };
 }
 
@@ -755,6 +786,16 @@ export function qualityGate(
   const figureWarn = figureSignalWarning(grid, prompt);
   if (figureWarn) {
     warnings.push(figureWarn);
+  }
+  // Palette-violation check (owner 10-09 retest #3 — "blue stocking-
+  // snowflake design": 23% of the fill in GREEN/RED/BROWN the prompt never
+  // named; the model painted a Christmas scene). Deterministic hue-family
+  // comparison of the FINAL grid palette vs. the prompt's named colors.
+  // Scatter/pattern prompts only — single-subject "natural colors" and
+  // animal/face paths stay byte-identical.
+  const paletteWarn = paletteViolationWarning(dmcColors, prompt);
+  if (paletteWarn) {
+    warnings.push(paletteWarn);
   }
   return warnings.length ? warnings.join(" · ") : null;
 }
