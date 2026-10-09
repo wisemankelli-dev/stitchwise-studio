@@ -405,9 +405,16 @@ describe("enrichAIPrompt", () => {
     // (b) SCATTER-pattern stocking silhouette (owner 09-21 3rd report: the
     // stretch-fill sentence below made Gemini draw ONE snowman for a
     // repeating motif) — many small separate copies, never one big object.
-    expect(prompt).toContain("many small separate copies of the subject");
+    // SUBJECT-ANCHORED (owner 10-09 retest #3): the sentence names the actual
+    // motif "snowflakes", never the abstract "the subject".
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
     expect(prompt).toContain("scattered evenly as a repeating pattern");
+    expect(prompt).toContain("each snowflake identical");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    // Holiday shape (stocking) + scatter → seasonal negative list.
+    expect(prompt).toContain("no ornaments, no trees");
+    expect(prompt).toContain("ONLY the snowflakes");
     // The old stretch-fill wording must NOT appear for scattering subjects.
     expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("spreading and stretching edge to edge");
@@ -427,10 +434,29 @@ describe("enrichAIPrompt", () => {
       canvasHeight: 238,
     });
     expect(prompt).toContain("Draw ONLY the subject named");
-    expect(prompt).toContain("many small separate copies of the subject");
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("ONLY the snowflakes");
     expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("use only the colors mentioned in the prompt");
+    expect(prompt).not.toContain("head near the top cuff");
+  });
+  it("OWNER 10-09 retest #3 EXACT stored prompt gets subject-anchored scatter + seasonal negatives", () => {
+    const { prompt } = enrichAIPrompt("blue background with white snowflakes.  White top and white toe", "stocking", {
+      canvasWidth: 154,
+      canvasHeight: 238,
+    });
+    // Subject-anchored: the prompt's actual motif, never the abstract subject.
+    expect(prompt).toContain("many small separate copies of the snowflakes");
+    expect(prompt).not.toContain("copies of the subject");
+    // Seasonal negative list for holiday shapes + scatter.
+    expect(prompt).toContain("no ornaments, no trees, no candy canes, no holly, no bows, no bells");
+    expect(prompt).toContain("no characters, no scene — ONLY the snowflakes");
+    // Color fidelity still fires (blue + white named).
+    expect(prompt).toContain("use only the colors mentioned in the prompt (blue, white)");
+    // No stretch-fill/anatomy wording leaks into the scatter path.
+    expect(prompt).not.toContain("fills the entire stocking silhouette");
     expect(prompt).not.toContain("head near the top cuff");
   });
   it("SCATTER star pattern on an ornament gets the repeating-pattern circle sentence", () => {
@@ -440,7 +466,11 @@ describe("enrichAIPrompt", () => {
     });
     expect(shapeHintApplied).toBe(true);
     expect(prompt).toContain("cover the whole ornament circle with many small separate copies");
+    expect(prompt).toContain("copies of the stars");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("ONLY the stars");
+    // Seasonal negative list must not self-contradict a stars motif.
+    expect(prompt).not.toContain("no stars");
     expect(prompt).not.toContain("perfectly fill a circular ornament bauble");
   });
   it("SCATTER hearts on a pillow get the repeating-pattern pillow sentence (no stretch-fill)", () => {
@@ -449,7 +479,9 @@ describe("enrichAIPrompt", () => {
       canvasHeight: 42,
     });
     expect(prompt).toContain("cover the whole pillow with many small separate copies");
+    expect(prompt).toContain("copies of the hearts");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
+    expect(prompt).toContain("no ornaments, no trees");
     expect(prompt).not.toContain("spreads and stretches to cover the pillow's shape");
   });
   it("SCATTER polka dots on a square canvas get the frame pattern sentence", () => {
@@ -459,6 +491,7 @@ describe("enrichAIPrompt", () => {
     });
     expect(shapeHintApplied).toBe(true);
     expect(prompt).toContain("cover the whole canvas with many small separate copies");
+    expect(prompt).toContain("copies of the polka dots");
     expect(prompt).toContain("no single large object, no character, no snowman, no face");
     expect(prompt).not.toContain("subject fills the frame with comfortable padding");
   });

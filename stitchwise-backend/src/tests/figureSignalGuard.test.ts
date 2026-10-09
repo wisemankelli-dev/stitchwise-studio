@@ -15,6 +15,8 @@ import {
   isScatterPatternPrompt,
   analyzeFigureSignal,
   figureSignalWarning,
+  extractScatterMotif,
+  singularizeMotif,
 } from "../domain/stitch/figureSignalGuard";
 import type { StitchCell } from "../domain/stitch/types";
 
@@ -135,21 +137,29 @@ describe("figureSignalWarning", () => {
   });
   it("warns on the REAL live sample — 10-09 'snowflake stocking blue' (154x238 snapshot, dominant WHITE field + ONE tall dark-blue figure)", () => {
     // Faithful reduction of live-dev-20261009T114034Z: white #ffffff field
-    // (7630 cells, dominant), ONE dark-blue #2e609d figure with a head →
-    // shoulders → waist → hips → toe-taper profile (5967 cells, rows 39–209
-    // of 238 = 0.72 of canvas height), plus a light-blue #6c95c4 splash.
+    // (dominant), ONE dark-blue #2e609d SOLID figure with a head → shoulders →
+    // waist → hips → toe-taper profile (rows 2–39 of 40 ≈ real 0.72 extent),
+    // plus a detached light-blue #6c95c4 splash. Every consecutive row shares
+    // ≥1 column so the figure is a single 4-connected component (the real
+    // grid's dark mass is one connected blob, not isolated bands).
     const R = 40, C = 48;
     const g: StitchCell[][] = Array.from({ length: R }, () =>
       Array.from({ length: C }, () => ({ color: WHITE })),
     );
-    const fig = (r: number, c0: number, c1: number) => {
+    const bands: Array<[number, number, number]> = [
+      [2, 21, 26], [3, 20, 27], [4, 20, 27], [5, 21, 26], // head
+      [6, 18, 29], [7, 12, 35], [8, 11, 36], [9, 9, 38], [10, 8, 39], [11, 8, 39],
+      [12, 8, 39], [13, 9, 38], [14, 9, 38], [15, 10, 37], [16, 11, 36], [17, 12, 35],
+      [18, 14, 33], [19, 15, 32], // shoulders
+      [20, 16, 31], [21, 16, 31], [22, 16, 31], [23, 17, 30], [24, 17, 30],
+      [25, 16, 31], [26, 15, 32], [27, 14, 33], // waist
+      [28, 13, 34], [29, 9, 38], [30, 8, 39], [31, 7, 40], [32, 7, 40],
+      [33, 8, 39], [34, 8, 39], [35, 8, 39], [36, 10, 37], // hips
+      [37, 21, 26], [38, 23, 24], [39, 23, 24], // toe taper
+    ];
+    for (const [r, c0, c1] of bands) {
       for (let c = c0; c <= c1; c++) g[r][c].color = DARK_BLUE;
-    };
-    fig(2, 21, 26); fig(3, 20, 27); fig(4, 20, 27); fig(5, 21, 26); // head
-    fig(8, 11, 36); fig(11, 8, 39); fig(14, 9, 38); fig(17, 12, 35); // shoulders
-    fig(21, 16, 31); fig(24, 17, 30); // waist
-    fig(29, 9, 38); fig(32, 7, 40); fig(35, 8, 39); // hips
-    fig(37, 21, 26); fig(38, 23, 24); fig(39, 23, 24); // toe taper
+    }
     g[6][40].color = LIGHT_BLUE; // detached light-blue splash (like the 2489 cells)
     const s = analyzeFigureSignal(g);
     // Single dominating figure: largestFraction near 1, tall on the canvas.
@@ -159,5 +169,33 @@ describe("figureSignalWarning", () => {
     expect(figureSignalWarning(g, "blue background with white snowflakes")).toContain("single figure");
     // Same grid must stay silent for a single-subject prompt.
     expect(figureSignalWarning(g, "teddy bear")).toBeNull();
+  });
+});
+// ─── extractScatterMotif / singularizeMotif ─────────────────────────────
+describe("extractScatterMotif / singularizeMotif", () => {
+  it("extracts the motif noun from the owner's 10-09 stored prompt", () => {
+    expect(extractScatterMotif("blue background with white snowflakes.  White top and white toe")).toBe("snowflakes");
+    expect(singularizeMotif("snowflakes")).toBe("snowflake");
+  });
+  it("extracts multi-word motifs before single-word fragments", () => {
+    expect(extractScatterMotif("polka dots all over the fabric")).toBe("polka dots");
+    expect(singularizeMotif("polka dots")).toBe("polka dot");
+    expect(extractScatterMotif("candy canes everywhere")).toBe("candy canes");
+    expect(singularizeMotif("candy canes")).toBe("candy cane");
+  });
+  it("extracts stars / hearts and their singulars", () => {
+    expect(extractScatterMotif("white stars on a red ornament")).toBe("stars");
+    expect(singularizeMotif("stars")).toBe("star");
+    expect(extractScatterMotif("scattered hearts on a pillow")).toBe("hearts");
+    expect(singularizeMotif("hearts")).toBe("heart");
+  });
+  it("returns null for non-scatter prompts (animals, single subjects)", () => {
+    expect(extractScatterMotif("a teddy bear")).toBeNull();
+    expect(extractScatterMotif("a red truck")).toBeNull();
+    expect(extractScatterMotif("snowman")).toBeNull();
+  });
+  it("leaves unchanging nouns alone", () => {
+    expect(singularizeMotif("confetti")).toBe("confetti");
+    expect(singularizeMotif("polka")).toBe("polka");
   });
 });
