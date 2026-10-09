@@ -47,7 +47,7 @@ import type { StitchCell } from "./types";
  * subject) does NOT match; "stars" does.
  */
 const SCATTER_SUBJECT_REGEX =
-  /\b(snowflakes|snow flakes|stars|dots|polka|candy canes|snowmen|confetti|bunting|sparkles|motifs|chevrons|sprinkles|scatter|scattered|repeating|repeated|repeats?|pattern|patterns|many small|all over|patchwork of|field of|swarm of|banner of)\b/i;
+  /\b(snowflakes?|snow flakes|flakes?|stars|dots|polka|candy canes|snowmen|confetti|bunting|sparkles|motifs?|chevrons|sprinkles|scatter|scattered|repeating|repeated|repeats?|pattern|patterns|many small|all over|patchwork of|field of|swarm of|banner of)\b/i;
 
 /** True when the prompt asks for a scattered / repeating pattern (not a single object). */
 export function isScatterPatternPrompt(prompt: string): boolean {
@@ -70,6 +70,8 @@ export interface FigureSignal {
   rowSpan: number;
   /** Component width (cols) of the largest component. */
   colSpan: number;
+  /** rowSpan / grid height — vertical extent ratio of the largest component (0..1). */
+  heightExtentRatio: number;
   /** The dominant (most common) canvas color, lowercased; "" when the canvas is empty. */
   dominantHex: string;
 }
@@ -93,6 +95,7 @@ export function analyzeFigureSignal(
     bbox: null,
     rowSpan: 0,
     colSpan: 0,
+    heightExtentRatio: 0,
     dominantHex: "",
   };
   if (rows === 0 || cols === 0) return empty;
@@ -176,6 +179,7 @@ export function analyzeFigureSignal(
     bbox: largestBBox,
     rowSpan: largestBBox ? largestBBox.maxRow - largestBBox.minRow + 1 : 0,
     colSpan: largestBBox ? largestBBox.maxCol - largestBBox.minCol + 1 : 0,
+    heightExtentRatio: largestBBox ? (largestBBox.maxRow - largestBBox.minRow + 1) / rows : 0,
     dominantHex: bgHex,
   };
 }
@@ -200,8 +204,9 @@ export function figureSignalWarning(
   const dominating = s.largestFraction > 0.5;
   if (!dominating) return null;
   const verticallyElongated = s.rowSpan >= s.colSpan * 1.3;
+  const tallOnCanvas = s.heightExtentRatio > 0.6;
   const veryFewComponents = s.componentCount <= 2;
-  if (verticallyElongated || veryFewComponents) {
+  if (verticallyElongated || tallOnCanvas || veryFewComponents) {
     return "The AI drew a single figure instead of your scattered pattern — please regenerate";
   }
   return null;

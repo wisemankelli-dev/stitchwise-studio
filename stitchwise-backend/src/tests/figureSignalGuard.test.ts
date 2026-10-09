@@ -21,6 +21,8 @@ import type { StitchCell } from "../domain/stitch/types";
 const BLUE = "#3366cc";
 const WHITE = "#ffffff";
 const RED = "#cc3333";
+const DARK_BLUE = "#2e609d"; // dark figure color from the real 10-09 snapshot
+const LIGHT_BLUE = "#6c95c4"; // light splash color from the real 10-09 snapshot
 
 function makeGrid(h: number, w: number, fill = BLUE): StitchCell[][] {
   return Array.from({ length: h }, () => Array.from({ length: w }, () => ({ color: fill })));
@@ -130,5 +132,32 @@ describe("figureSignalWarning", () => {
     const g = makeGrid(20, 20, WHITE);
     for (let c = 8; c < 12; c++) g[8][c].color = BLUE; // one small blue mark
     expect(figureSignalWarning(g, "snowflakes", { dominantHex: WHITE })).toBeNull();
+  });
+  it("warns on the REAL live sample — 10-09 'snowflake stocking blue' (154x238 snapshot, dominant WHITE field + ONE tall dark-blue figure)", () => {
+    // Faithful reduction of live-dev-20261009T114034Z: white #ffffff field
+    // (7630 cells, dominant), ONE dark-blue #2e609d figure with a head →
+    // shoulders → waist → hips → toe-taper profile (5967 cells, rows 39–209
+    // of 238 = 0.72 of canvas height), plus a light-blue #6c95c4 splash.
+    const R = 40, C = 48;
+    const g: StitchCell[][] = Array.from({ length: R }, () =>
+      Array.from({ length: C }, () => ({ color: WHITE })),
+    );
+    const fig = (r: number, c0: number, c1: number) => {
+      for (let c = c0; c <= c1; c++) g[r][c].color = DARK_BLUE;
+    };
+    fig(2, 21, 26); fig(3, 20, 27); fig(4, 20, 27); fig(5, 21, 26); // head
+    fig(8, 11, 36); fig(11, 8, 39); fig(14, 9, 38); fig(17, 12, 35); // shoulders
+    fig(21, 16, 31); fig(24, 17, 30); // waist
+    fig(29, 9, 38); fig(32, 7, 40); fig(35, 8, 39); // hips
+    fig(37, 21, 26); fig(38, 23, 24); fig(39, 23, 24); // toe taper
+    g[6][40].color = LIGHT_BLUE; // detached light-blue splash (like the 2489 cells)
+    const s = analyzeFigureSignal(g);
+    // Single dominating figure: largestFraction near 1, tall on the canvas.
+    expect(s.largestFraction).toBeGreaterThan(0.9);
+    expect(s.componentCount).toBe(2);
+    expect(s.heightExtentRatio).toBeGreaterThan(0.6);
+    expect(figureSignalWarning(g, "blue background with white snowflakes")).toContain("single figure");
+    // Same grid must stay silent for a single-subject prompt.
+    expect(figureSignalWarning(g, "teddy bear")).toBeNull();
   });
 });
