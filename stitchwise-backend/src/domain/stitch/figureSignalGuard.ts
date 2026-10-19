@@ -49,9 +49,26 @@ import type { StitchCell } from "./types";
 const SCATTER_SUBJECT_REGEX =
   /\b(snowflakes?|snow flakes|flakes?|stars|dots|polka|candy canes|snowmen|confetti|bunting|sparkles|motifs?|chevrons|sprinkles|scatter|scattered|repeating|repeated|repeats?|pattern|patterns|many small|all over|patchwork of|field of|swarm of|banner of)\b/i;
 
+/**
+ * PRIMARY-SUBJECT nouns (owner 10-19 P0 1c6d2de8, Appendix B). The scatter
+ * gate was built for pure repeated-motif prompts ("snowflakes on a blue
+ * stocking") but HIJACKS compound prompts with a main subject + a decorative
+ * noun: "Red background with a christmas tree and snowflakes" matched
+ * "snowflakes?" → scatter sentence "no single large object" FORBADE the tree
+ * and the per-noun color scope dropped green. When a primary subject noun is
+ * present the prompt is NOT a pure repetitive pattern — the motif becomes an
+ * accent AROUND the main subject, so the gate must not fire.
+ */
+const PRIMARY_SUBJECT_REGEX =
+  /\b(christmas\s+trees?|xmas\s+trees?|holiday\s+trees?|teddy\s+bears?|bears?|snowmen?|santas?|santa\s+claus|reindeers?|elves?|penguins?|owls?|bunnies?|rabbits?|puppies?|kittens?|puppy|kitten|foxes?|deer|hedgehogs?|horses?|lambs?|chicks?|ducklings?|angels?|nutcrackers?|gingerbread\s+(men|people|houses?)|snow\s+globes?)\b/i;
+
 /** True when the prompt asks for a scattered / repeating pattern (not a single object). */
 export function isScatterPatternPrompt(prompt: string): boolean {
   if (!prompt) return false;
+  // A primary subject noun means the prompt is NOT a pure repeated motif —
+  // decorative nouns become accents around the main subject, never a
+  // scatter-only rewrite that forbids the subject itself.
+  if (PRIMARY_SUBJECT_REGEX.test(prompt)) return false;
   return SCATTER_SUBJECT_REGEX.test(prompt);
 }
 /**
