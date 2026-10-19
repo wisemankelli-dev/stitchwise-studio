@@ -4,7 +4,7 @@
  * model must be forced to the subject's canonical natural colors).
  */
 import { describe, it, expect } from "@jest/globals";
-import { naturalColorDirective, naturalColorDirectives, promptNamesAnyColor } from "../domain/stitch/naturalColorDirective";
+import { naturalColorDirective, naturalColorDirectives, promptNamesAnyColor, stockingBodyDirective } from "../domain/stitch/naturalColorDirective";
 
 describe("naturalColorDirective", () => {
   it("OWNER 10-09 charm: 'teddy bear' (no color) → brown and tan, no red/orange/pink", () => {
@@ -99,5 +99,34 @@ describe("naturalColorDirective", () => {
   it("empty/null prompt → null", () => {
     expect(naturalColorDirective("")).toBeNull();
     expect(naturalColorDirective(null as unknown as string)).toBeNull();
+  });
+});
+
+describe("stockingBodyDirective (owner 10-09 17:30Z verdict #2 — 'blue background ... white top and white toe' paints a WHITE stocking)", () => {
+  const DIRECTIVE_SUBSTRINGS = ["STOCKING BODY itself is deep blue", "snowflakes WHITE directly ON the blue stocking body", "cuff at the top and the toe at the bottom are white"];
+  const hasAll = (d: string | null) => d !== null && DIRECTIVE_SUBSTRINGS.every((sub) => d.includes(sub));
+  it("fires for her exact prompt (color attached to BACKGROUND, body uncolored)", () => {
+    const d = stockingBodyDirective("blue background with white top and white toe. Add white snowflakes to the design.", "stocking");
+    expect(hasAll(d)).toBe(true);
+  });
+  it("fires for a background-agnostic uncolored body ('snowflake stocking')", () => {
+    expect(hasAll(stockingBodyDirective("snowflake stocking", "stocking"))).toBe(true);
+  });
+  it("fires when ONLY the top/toe are colored (white top, white toe — body uncolored)", () => {
+    expect(hasAll(stockingBodyDirective("white top and white toe with snowflakes", "stocking"))).toBe(true);
+  });
+  it("does NOT fire when the user colored the stocking itself (their color wins)", () => {
+    expect(stockingBodyDirective("a red stocking with white snowflakes", "stocking")).toBeNull();
+    expect(stockingBodyDirective("white stocking with blue snowflakes", "stocking")).toBeNull();
+    expect(stockingBodyDirective("green stocking on a red background", "stocking")).toBeNull();
+  });
+  it("does NOT fire for non-stocking shapes (charm paths byte-identical)", () => {
+    expect(stockingBodyDirective("blue background with white top and white toe. Add white snowflakes to the design.", "ornament")).toBeNull();
+    expect(stockingBodyDirective("blue background with white top and white toe. Add white snowflakes to the design.", undefined)).toBeNull();
+  });
+  it("returns null for empty prompts and case-insensitively matches nouns", () => {
+    expect(stockingBodyDirective("", "stocking")).toBeNull();
+    expect(hasAll(stockingBodyDirective("BLUE BACKGROUND WITH WHITE TOP AND WHITE TOE. ADD WHITE SNOWFLAKES.", "stocking"))).toBe(true);
+    expect(hasAll(stockingBodyDirective("sock with snowflakes", "stocking"))).toBe(true);
   });
 });
