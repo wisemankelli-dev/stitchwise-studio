@@ -113,6 +113,58 @@ describe("bearColorRescue — rust→brown (charm-sweeper-facts acceptance A)", 
     expect(totalAfter).toBe(totalBefore);
     expect(rescued.dmcColors.every((d) => d.symbol)).toBe(true);
   });
+  it("rescues f2a09e8e EXACTLY: blue sweater present still fires the rust→brown rescue and blue stays byte-identical (lead 10-19 review)", () => {
+    // Faithful replica of the owner's real pre-#191 save "bag charm update"
+    // (f2a09e8e, 28x28, from the 175412Z snapshot): blue sweater band 128
+    // (#6c95c4 85 + #2e609d 43), orange bear 142 (#e27323), brown-ish 15,
+    // white 300, dark face 31, empty 168. Pre-fix: blue counted as "other",
+    // orange 142 < neutral 31 + other 128 -> rescue never fired, red bear
+    // shipped (the exact "bear came out red" complaint the owner saved).
+    const f2a: Array<[number, number, string]> = [];
+    let cursor = 0;
+    const fillNext = (hex: string, count: number) => {
+      for (let k = 0; k < count; k++) {
+        const r = Math.floor((cursor + k) / 28);
+        const c = (cursor + k) % 28;
+        f2a.push([r, c, hex]);
+      }
+      cursor += count;
+    };
+    fillNext("#ffffff", 300);   // rows 0-10 (charm background)
+    fillNext(LIGHT_BLUE, 85);   // blue band rows 10-14
+    fillNext(BLUE, 43);         // band rows 14-15
+    fillNext(ORANGE, 142);      // bear body rows 15-20
+    fillNext("#3c3c3c", 31);    // gray -> neutral rows 21-22
+    fillNext(BROWN, 15);        // rows 23
+    const grid = makeGrid(f2a, 28);
+    const dmc = paletteOf(grid);
+    // THE regression: a prompt-named NON-subject color (blue sweater) must not
+    // block the rescue — rescue only recolors orange cells, blue is untouched.
+    expect(needsBearColorRescue(grid, "teddy bear with blue sweater")).toBe(true);
+    // Guard: without the named color, the same grid legitimately does NOT fire
+    // (blue would be an unprompted "other" — no over-firing).
+    expect(needsBearColorRescue(grid, "teddy bear")).toBe(false);
+    const rescued = applyBearColorRescue(grid, dmc, "teddy bear with blue sweater");
+    // Blue byte-identical BEFORE == AFTER (the lead's acceptance: blue 128 -> 128).
+    expect(countColorFamily(grid, "blue")).toBe(128);
+    expect(countColorFamily(rescued.grid, "blue")).toBe(128);
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        const before = (grid[r][c]?.color || "").toLowerCase();
+        if (before === BLUE || before === LIGHT_BLUE) {
+          expect(rescued.grid[r][c]?.color?.toLowerCase()).toBe(before);
+        }
+      }
+    }
+    // Orange gone, brown dominant, dark face + stitch total preserved.
+    expect(countColorFamily(rescued.grid, "orange")).toBe(0);
+    expect(countColorFamily(rescued.grid, "brown")).toBeGreaterThanOrEqual(142);
+    expect(countColorFamily(rescued.grid, "gray")).toBe(31);
+    const totalBefore = dmc.reduce((a, d) => a + d.count, 0);
+    const totalAfter = rescued.dmcColors.reduce((a, d) => a + d.count, 0);
+    expect(totalAfter).toBe(totalBefore);
+    expect(rescued.dmcColors.every((d) => d.symbol)).toBe(true);
+  });
   it("no-ops (same references) when brown/tan already dominates", () => {
     const grid = makeGrid(
       [

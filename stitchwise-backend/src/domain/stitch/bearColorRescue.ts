@@ -59,8 +59,19 @@ export function teddyBearDirectiveFires(prompt: string): boolean {
 /** True when the grid prints a rust/orange-dominant bear with no brown/tan
  *  fallback — the exact failure the owner keeps saving (aba0bd27: orange 182,
  *  brown/tan 0; f2a09e8e: orange 142, brown/tan 6). Background cells (color "")
- *  never count. */
-export function isRustDominantBear(grid: StitchGrid): boolean {
+ *  and white cells (the charm's blank background) never count.
+ *
+ *  namedOtherFamilies: hue families of colors the PROMPT attaches to a
+ *  NON-subject noun (e.g. blue for "blue sweater"). Those cells are
+ *  legitimate user-chosen accents — the rescue only ever recolors orange
+ *  cells, so they must NOT count as "other" and block it. Without this, the
+ *  owner's real f2a09e8e (blue 128 + orange bear 142) fails the gate (orange
+ *  142 < neutral 31 + other 128) and the red bear ships again (lead review
+ *  10-19). aba0bd27 has no named other color → unchanged. */
+export function isRustDominantBear(
+  grid: StitchGrid,
+  namedOtherFamilies?: ReadonlySet<ColorFamily>,
+): boolean {
   let orange = 0;
   let brownTan = 0;
   let neutral = 0;
@@ -72,7 +83,9 @@ export function isRustDominantBear(grid: StitchGrid): boolean {
       if (RUST_FAMILIES.has(fam)) orange++;
       else if (BROWN_TAN_FAMILIES.has(fam)) brownTan++;
       else if (fam === "gray" || fam === "black" || fam === "white") neutral++;
-      else other++;
+      else if (!namedOtherFamilies?.has(fam)) other++;
+      // else: family of a user-named other-noun color (blue sweater) — keep it
+      // out of `other` so it can't block the rust rescue.
     }
   }
   if (orange <= 8) return false; // a speckle of orange is not a rust bear
@@ -81,7 +94,13 @@ export function isRustDominantBear(grid: StitchGrid): boolean {
 
 /** True when the charm needs the deterministic rust→brown recolor. */
 export function needsBearColorRescue(grid: StitchGrid, prompt: string): boolean {
-  return teddyBearDirectiveFires(prompt) && isRustDominantBear(grid);
+  if (!teddyBearDirectiveFires(prompt)) return false;
+  const namedOtherFamilies = new Set<ColorFamily>();
+  for (const p of otherNounColorPairs(prompt || "")) {
+    const fam = familyOfNamedColor(p.color);
+    if (fam) namedOtherFamilies.add(fam);
+  }
+  return isRustDominantBear(grid, namedOtherFamilies);
 }
 
 /** Deterministic rust→brown recolor for a rust-dominant teddy bear on the
