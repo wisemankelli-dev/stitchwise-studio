@@ -178,6 +178,24 @@ export async function subjectFitToCanvas(
     }
   }
   if (top >= ph) return imageBuffer; // nothing but background
+  // Natural-margin guard (owner P0 1c6d2de8 / orn3 09-11 regression): zooming
+  // pushes the subject into the source's own BLANK top rows. A subject that
+  // truly reaches the canvas top has light pixels (crown/ears/halo) ABOVE the
+  // dark-pixel bbox; a source with a real margin has pure background there.
+  // Scan rows [0, top) for any non-background pixel — none means the source
+  // already keeps a margin, so leave the buffer untouched (no upscale).
+  let lightAbove = false;
+  if (top > 0) {
+    for (let y = 0; y < top && !lightAbove; y++) {
+      const rowBase = y * pw * nch;
+      for (let x = 0; x < pw; x++) {
+        const i = rowBase + x * nch;
+        const dr = Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]);
+        if (dr > SUBJECT_FIT_BG_DIFF * 2) { lightAbove = true; break; }
+      }
+    }
+  }
+  if (!lightAbove) return imageBuffer; // real top margin — keep it
   const bboxW = right - left + 1;
   const bboxH = bottom - top + 1;
   const fill = (bboxW * bboxH) / (pw * ph);
@@ -373,16 +391,28 @@ export async function imageBufferToStitchGrid(
     position: "centre",
     kernel: sharp.kernel.lanczos3,
   });
-  if (Math.min(outW, outH) > SMALL_OUTLINE_MAX_DIM) posterize.median(3);
+  // Skip median(3) ONLY on the outlinePreserve product path (see comment
+  // above). Plain uploads (no outlinePreserve) keep median(3) exactly as
+  // main so the documented small-grid solid-block path is unchanged.
+  if (!skipTrimForSmallAI) posterize.median(3);
   // SMALL grids (≤60 cells): a 22-color palette on a 28×28 charm gives the
   // light beige crown/ears NO entry of their own — they merge into the
   // dominant white/red (e5f979cf: 503/784 cells white post-posterize, ears
   // lose their hue). Keeep the requested palette size for larger grids, but
   // floor the small-grid palette at 40 so light fur/white-detail colors get
   // their own slot before DMC mapping (owner P0 1c6d2de8).
+  // Floor the small-grid palette only on the outlinePreserve product path
+  // (bag charm / ornament / pillow): 22 colors on a 28x28 charm leaves the
+  // light beige crown/ears no entry (owner P0 1c6d2de8 e5f979cf). The plain
+  // small-grid path keeps the documented behavior (test asserts the solid
+  // block WITHOUT outlinePreserve).
   const smallGrid = Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
   const posterizedPng = await posterize
-    .png({ palette: true, colours: smallGrid ? Math.max(maxColors, 40) : maxColors, dither: 0 })
+    .png({
+      palette: true,
+      colours: skipTrimForSmallAI ? Math.max(maxColors, 40) : maxColors,
+      dither: 0,
+    })
     .toBuffer();
 
   const { data, info } = await sharp(posterizedPng)
