@@ -29,6 +29,7 @@ import {
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
+import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
@@ -860,6 +861,13 @@ export function createAIEmbroideryRouter(): Router {
         }
 
         const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches, premiumModel, canvasWidth, canvasHeight, aspectRatio: aspectRatioOpt, shape } = parsed.data;
+        // Prompt-driven shape (owner 10-19 P0 c9f3e630): an explicit shape
+        // always wins; when the client sent NONE (custom canvas — no preset
+        // guide), the product noun in the prompt decides. This is the server
+        // safety net: a broken/forgotten client can never produce an unmasked
+        // stocking again, because inferShapeFromPrompt feeds EVERY downstream
+        // consumer (isFrameCanvas, enrichAIPrompt, applyProductShapeMask).
+        const effectiveShape = resolveEffectiveShape(shape, prompt);
         const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
         // Resolve fabric-aware grid size and color limit
@@ -898,17 +906,17 @@ export function createAIEmbroideryRouter(): Router {
           // Explicit product shapes (shoes/ornament/pillow) are NEVER frames
           // even on square canvases — they fill edge-to-edge (owner 09-03 #4:
           // the 42×42 ornament was wrongly framed → blob after circle clip).
-          const isFrameCanvasResult = isFrameCanvas(shape, genW, genH);
+          const isFrameCanvasResult = isFrameCanvas(effectiveShape, genW, genH);
           const { prompt: finalPrompt, sceneGuardApplied, shapeHintApplied, smallGrid } = enrichAIPrompt(
             prompt,
-            shape,
+            effectiveShape,
             { canvasWidth: genW, canvasHeight: genH },
           );
           console.error(JSON.stringify({
             event: "ai_prompt_sent",
             originalPrompt: prompt,
             finalPrompt,
-            enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, shape, aspect, frame: isFrameCanvasResult, underSpecified },
+            enrichment: { sceneGuardApplied, shapeHintApplied, smallGrid, requestShape: shape, shape: effectiveShape, aspect, frame: isFrameCanvasResult, underSpecified },
           }));
           // Full conversion pipeline (image → grid → mask → halo → guards →
           // deterministic color rescue). Extracted so a MISSING-NAMED-COLOR
@@ -959,8 +967,8 @@ export function createAIEmbroideryRouter(): Router {
             // enclosed background holes with the nearest subject color for a
             // coherent solid subject with true cut-out edges.
             const masked =
-              shape === "stocking" || shape === "ornament" || shape === "pillow"
-                ? applyProductShapeMask(recentered, shape, genW, genH)
+              effectiveShape === "stocking" || effectiveShape === "ornament" || effectiveShape === "pillow"
+                ? applyProductShapeMask(recentered, effectiveShape, genW, genH)
                 : recentered;
             // Edge-halo fill (owner 10-09 retest #4 — "odd white lip edge around
             // the entire stocking edge"): the AI image's white transition band
@@ -980,10 +988,10 @@ export function createAIEmbroideryRouter(): Router {
             // around the blue core — the body must read edge-to-edge. Isolated
             // interior flakes (the snowflake detail ON the blue body) survive the
             // rim-connectivity flood.
-            const bodyDirective = stockingBodyDirective(prompt, shape);
+            const bodyDirective = stockingBodyDirective(prompt, effectiveShape);
             const haloFilled =
-              shape === "stocking" && !isSmallGrid(genW, genH)
-                ? edgeHaloFill(masked, shape, genW, genH, { trimLegWhites: !!bodyDirective })
+              effectiveShape === "stocking" && !isSmallGrid(genW, genH)
+                ? edgeHaloFill(masked, effectiveShape, genW, genH, { trimLegWhites: !!bodyDirective })
                 : masked;
             // Deterministic face-feature guard (owner 09-15, 3rd report: bag
             // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark

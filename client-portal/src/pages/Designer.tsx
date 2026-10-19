@@ -666,6 +666,35 @@ export function aiShapeForGuide(
   if (guide === 'roundedRect') return 'pillow';
   return guide; // 'rect' | 'stocking' | undefined
 }
+/** Inverse of aiShapeForGuide: inferred backend shape -> dashed-overlay guide
+ *  type. Used to BUILD a guide at the canvas dims when no preset is active but
+ *  the prompt names a product shape (owner 10-19 P0 c9f3e630). */
+export function guideTypeForShape(shape: 'stocking' | 'ornament' | 'pillow'): ProductGuideType {
+  if (shape === 'ornament') return 'circle';
+  if (shape === 'pillow') return 'roundedRect';
+  return 'stocking';
+}
+const STOCKING_EXPLICIT = /\bstockings?\b/i;
+// Bare "stock" only counts as a stocking when a stocking-part/holiday noun is
+// nearby (toe/top/cuff/sock/snowflake/Christmas...) - "stock market" must not
+// fire a geometric mask on a square canvas.
+const STOCKING_BARE = /\bstock\b/i;
+const STOCKING_CONTEXT = /\b(toes?|tops?|cuffs?|socks?|snowflakes?|christmas|holiday|xmas)\b/i;
+const ORNAMENT_RE = /\b(ornaments?|baubles?|bag\s+charms?)\b/i;
+const PILLOW_RE = /\b(pillows?|cushions?)\b/i;
+/**
+ * Prompt->product-shape inference (owner 10-19 P0 c9f3e630). Mirrors the
+ * server's src/domain/ai/shapeInference.ts so the client-side clip + dashed
+ * overlay agree with the backend mask. Conservative: false positives are
+ * worse than none.
+ */
+export function inferShapeFromPrompt(prompt: string): 'stocking' | 'ornament' | 'pillow' | undefined {
+  if (!prompt) return undefined;
+  if (STOCKING_EXPLICIT.test(prompt) || (STOCKING_BARE.test(prompt) && STOCKING_CONTEXT.test(prompt))) return 'stocking';
+  if (ORNAMENT_RE.test(prompt)) return 'ornament';
+  if (PILLOW_RE.test(prompt)) return 'pillow';
+  return undefined;
+}
 export const CANVAS_PRESETS: CanvasPreset[] = [
   // Bag Charm is a 2″ circle — owner P0 (10-08): it generated a SQUARE with
   // no detail because the preset had no `guide`. Wiring 'circle' gives the dashed
@@ -944,6 +973,20 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       rowH: inchesToStitches(activePreset.inchH, fabricCount),
     };
   }, [activePreset, fabricCount]);
+  // Prompt-driven product shape (owner 10-19 P0 c9f3e630): on a CUSTOM
+  // canvas (no active preset guide) a prompt that plainly names a product
+  // shape must still be masked to that shape AND show its dashed overlay -
+  // otherwise the server treats the canvas as a FRAME and the art bleeds
+  // full-bleed square (her 100x100 "Red stock with snowflakes" save: 10000
+  // cells colored, 3324 non-white cells outside the stocking silhouette).
+  // The explicit preset guide always wins; the inferred guide is built AT
+  // the canvas dims so mask + overlay line up.
+  const inferredShape = React.useMemo(() => inferShapeFromPrompt(aiPrompt), [aiPrompt]);
+  const effectiveGuide: ProductGuide | null = React.useMemo(() => {
+    if (activeGuide) return activeGuide;
+    if (!inferredShape) return null;
+    return { type: guideTypeForShape(inferredShape), colW: gridWidth, rowH: gridHeight };
+  }, [activeGuide, inferredShape, gridWidth, gridHeight]);
 
   // Keep the whole canvas visible when the panel resizes (owner report 08-17:
   // shrinking the window after picking the Stocking cut the toe off). Only ever
@@ -1601,7 +1644,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // Map the preset guide type to the backend's accepted shape enum
       // (see aiShapeForGuide). Sending the raw guide type (e.g. 'circle') would
       // 400 the schema and fail AI generation (owner test 09-03).
-      const aiShape = aiShapeForGuide(activeGuide?.type);
+      const aiShape = aiShapeForGuide(effectiveGuide?.type);
       const data = await api.generatePatternFromText(aiPrompt.trim(), {
         gridSize,
         fabricCount,
@@ -1668,22 +1711,24 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         }
       }
 
-      // Mask generated art to the ACTIVE PRODUCT-SHAPE GUIDE (owner request:
-      // any preset mask must contain the AI image) — circle (ornament),
-      // rounded rect (pillow), stocking silhouette. Frames are the full canvas.
-      if (activeGuide && targetW > 0) {
+      // Mask generated art to the ACTIVE/EFFECTIVE PRODUCT-SHAPE GUIDE (owner
+      // request: any preset mask must contain the AI image) — circle
+      // (ornament), rounded rect (pillow), stocking silhouette. On custom
+      // canvases the prompt-inferred guide (owner 10-19 P0) clips the same
+      // way. Frames are the full canvas.
+      if (effectiveGuide && targetW > 0) {
         // Clamp the mask guide to the canvas — identical clamp to drawGuide in
         // StitchGrid.tsx, so the mask and the visibly drawn guide are always the
         // same canvas-tangent shape. Without this, a fabric-count change that
         // resized the guide memo but not the canvas (declined resize) made the
         // mask and the drawn circle disagree, and generated art appeared outside
         // the visible circle (owner 08-18: "did not stay in the circle").
-        const maskGuide = activeGuide.type === 'rect'
-          ? activeGuide
+        const maskGuide = effectiveGuide.type === 'rect'
+          ? effectiveGuide
           : {
-              ...activeGuide,
-              colW: Math.min(activeGuide.colW, targetW),
-              rowH: Math.min(activeGuide.rowH, targetH),
+              ...effectiveGuide,
+              colW: Math.min(effectiveGuide.colW, targetW),
+              rowH: Math.min(effectiveGuide.rowH, targetH),
             };
         const masked = maskGridToGuide(maskGuide, finalGrid, finalStitchTypes, targetW, targetH);
         finalGrid = masked.grid;
@@ -1749,7 +1794,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, activeGuide]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -2706,7 +2751,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                       referenceImage={referenceImage}
                       showReference={showReference}
                       referenceOpacity={referenceOpacity}
-                      guide={activeGuide}
+                      guide={effectiveGuide}
                     />
                 </div>
               </div>
