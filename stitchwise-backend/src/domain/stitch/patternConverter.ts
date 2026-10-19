@@ -374,8 +374,15 @@ export async function imageBufferToStitchGrid(
     kernel: sharp.kernel.lanczos3,
   });
   if (Math.min(outW, outH) > SMALL_OUTLINE_MAX_DIM) posterize.median(3);
+  // SMALL grids (≤60 cells): a 22-color palette on a 28×28 charm gives the
+  // light beige crown/ears NO entry of their own — they merge into the
+  // dominant white/red (e5f979cf: 503/784 cells white post-posterize, ears
+  // lose their hue). Keeep the requested palette size for larger grids, but
+  // floor the small-grid palette at 40 so light fur/white-detail colors get
+  // their own slot before DMC mapping (owner P0 1c6d2de8).
+  const smallGrid = Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
   const posterizedPng = await posterize
-    .png({ palette: true, colours: maxColors, dither: 0 })
+    .png({ palette: true, colours: smallGrid ? Math.max(maxColors, 40) : maxColors, dither: 0 })
     .toBuffer();
 
   const { data, info } = await sharp(posterizedPng)

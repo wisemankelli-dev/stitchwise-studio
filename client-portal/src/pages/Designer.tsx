@@ -680,7 +680,8 @@ const STOCKING_EXPLICIT = /\bstockings?\b/i;
 // fire a geometric mask on a square canvas.
 const STOCKING_BARE = /\bstock\b/i;
 const STOCKING_CONTEXT = /\b(toes?|tops?|cuffs?|socks?|snowflakes?|christmas|holiday|xmas)\b/i;
-const ORNAMENT_RE = /\b(ornaments?|baubles?|bag\s+charms?)\b/i;
+const ORNAMENT_RE =
+  /\b(ornaments?|baubles?|bag\s+charms?|christmas\s+trees?|xmas\s+trees?|holiday\s+trees?|snow\s?flakes?|holiday\s+decorations?|christmas\s+decorations?)\b/i;
 const PILLOW_RE = /\b(pillows?|cushions?)\b/i;
 /**
  * Prompt->product-shape inference (owner 10-19 P0 c9f3e630). Mirrors the

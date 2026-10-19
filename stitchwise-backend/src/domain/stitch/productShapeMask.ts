@@ -215,7 +215,10 @@ export function magnifyToFillShape(
   // Zoom to FILL the shape's inscribed box — for a tall-narrow subject in a
   // circle this pushes width (and with it the face) outward; any overflow past
   // the silhouette is clipped by the re-mask below. Never downscale.
-  const k = Math.max(1, Math.min(availW / bboxW, availH / bboxH));
+  // cover-fit (Math.max) — contain-fit (min) kept a tall-narrow teddy narrow
+  // (owner P0 1c6d2de8 e5f979cf: fill stuck at 58% because availW/bboxW never
+  // applied when the height ratio was smaller).
+  const k = Math.max(1, Math.max(availW / bboxW, availH / bboxH));
   const scaledW = Math.max(bboxW, Math.round(bboxW * k));
   const scaledH = Math.max(bboxH, Math.round(bboxH * k));
   const destLeft = Math.max(0, Math.round((targetW - scaledW) / 2));
