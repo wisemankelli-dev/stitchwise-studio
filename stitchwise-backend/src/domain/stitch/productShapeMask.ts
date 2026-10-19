@@ -163,6 +163,80 @@ export function buildProductSilhouette(
  * Idempotent: running twice produces the same grid (outside already cleared,
  * interior holes already filled, nearest-color source unchanged).
  */
+/**
+ * Small-grid subject-fit (owner 10-19 P0 c9f3e630-charm, e5f979cf).
+ *
+ * The 28×28 Bag Charm teddy uses only ~50% of the circle (white background
+ * inside the mask) and its crown/ears rows 0-4 quantize into white — the
+ * charm reads "cut-off head, no details". When the non-background subject
+ * fills < 55% of the shape interior, crop to the subject's content bbox and
+ * nearest-neighbor upscale it to fill the shape's bounding region (2-cell
+ * inset so the flat-sticker outline + circle clip still read), then re-apply
+ * the shape mask so the clip is preserved. Deterministic (existing palette
+ * only — nearest-neighbor resample, no invented colors). Runs BEFORE the
+ * face-feature and bear-color guards so the magnified subject still gets
+ * eyes/nose + fur rescue. Idempotent for already-dense grids (>= 55%).
+ */
+export function magnifyToFillShape(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const silhouette = buildProductSilhouette(shape, targetW || width, targetH || height);
+  let interior = 0, fg = 0;
+  let top = height, bottom = -1, left = width, right = -1;
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      interior++;
+      const cell = grid[r]?.[c];
+      if (!cell || isBackgroundCell(cell)) continue;
+      fg++;
+      if (r < top) top = r;
+      if (r > bottom) bottom = r;
+      if (c < left) left = c;
+      if (c > right) right = c;
+    }
+  }
+  if (interior === 0 || top >= height) return grid;
+  const fill = fg / interior;
+  if (fill >= 0.55) return grid; // already dense — keep the drawing as-is
+  const bboxW = right - left + 1;
+  const bboxH = bottom - top + 1;
+  if (bboxW <= 0 || bboxH <= 0) return grid;
+  // Target: edge-to-edge within the mask's bounding box (2-cell inset so the
+  // dark-outline/face-guard pass has room and the circle clip reads).
+  const availW = targetW - 2;
+  const availH = targetH - 2;
+  // Zoom to FILL the shape's inscribed box — for a tall-narrow subject in a
+  // circle this pushes width (and with it the face) outward; any overflow past
+  // the silhouette is clipped by the re-mask below. Never downscale.
+  const k = Math.max(1, Math.min(availW / bboxW, availH / bboxH));
+  const scaledW = Math.max(bboxW, Math.round(bboxW * k));
+  const scaledH = Math.max(bboxH, Math.round(bboxH * k));
+  const destLeft = Math.max(0, Math.round((targetW - scaledW) / 2));
+  const destTop = Math.max(0, Math.round((targetH - scaledH) / 2));
+  const out: StitchGrid = Array.from({ length: height }, () =>
+    Array.from({ length: width }, () => ({ ...BACKGROUND_CELL }) as StitchCell),
+  );
+  for (let dy = 0; dy < scaledH; dy++) {
+    const srcY = Math.min(Math.floor((dy * bboxH) / scaledH), bboxH - 1);
+    for (let dx = 0; dx < scaledW; dx++) {
+      const srcX = Math.min(Math.floor((dx * bboxW) / scaledW), bboxW - 1);
+      const cell = grid[top + srcY]?.[left + srcX];
+      if (cell && !isBackgroundCell(cell)) {
+        out[destTop + dy][destLeft + dx] = { ...cell };
+      }
+    }
+  }
+  // Preserve the shape clip after magnification.
+  return applyProductShapeMask(out, shape, targetW, targetH);
+}
+
 export function applyProductShapeMask(
   grid: StitchGrid,
   shape: ProductMaskShape,

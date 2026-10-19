@@ -28,7 +28,7 @@ import {
   frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
-import { applyProductShapeMask } from "../../domain/stitch/productShapeMask";
+import { applyProductShapeMask, magnifyToFillShape } from "../../domain/stitch/productShapeMask";
 import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
@@ -970,6 +970,20 @@ export function createAIEmbroideryRouter(): Router {
               effectiveShape === "stocking" || effectiveShape === "ornament" || effectiveShape === "pillow"
                 ? applyProductShapeMask(recentered, effectiveShape, genW, genH)
                 : recentered;
+            // Small-grid subject-fit (owner 10-19 P0 c9f3e630-charm e5f979cf
+            // "cut off part of the head ... no details"): a 28×28 charm whose
+            // subject fills < 55% of the shape interior spends its cell budget
+            // on white background — the crown/ears rows 0-4 were quantized
+            // into white and the face collapses. Magnify the content bbox up
+            // to fill the shape (deterministic nearest-neighbor, mask clip
+            // preserved by re-masking) so the head starts at the top rows and
+            // the features have cells. Falls through in one code path: dense
+            // grids (>= 55%) return the same grid untouched.
+            const magnified =
+              isSmallGrid(genW, genH) &&
+              (effectiveShape === "stocking" || effectiveShape === "ornament" || effectiveShape === "pillow")
+                ? magnifyToFillShape(masked, effectiveShape, genW, genH)
+                : masked;
             // Edge-halo fill (owner 10-09 retest #4 — "odd white lip edge around
             // the entire stocking edge"): the AI image's white transition band
             // survives inside the masked silhouette, so the stitched body reads a
@@ -1002,8 +1016,8 @@ export function createAIEmbroideryRouter(): Router {
             // subject, plus eyes+nose for animal/face prompts. Runs AFTER the
             // shape mask, so synthesized eyes land inside the silhouette.
             const guarded = isSmallGrid(genW, genH)
-              ? applyFaceFeatureGuard(haloFilled, grid.dmcColors, prompt)
-              : { grid: haloFilled, dmcColors: grid.dmcColors };
+              ? applyFaceFeatureGuard(magnified, grid.dmcColors, prompt)
+              : { grid: magnified, dmcColors: grid.dmcColors };
             // Deterministic bear-fur color rescue (owner 10-09 17:40Z charm
             // verdict #2 — "blue sweater" charm shipped rust #bf5816 / orange
             // #e27323 in EVERY round; the directive is advisory, the prompt
