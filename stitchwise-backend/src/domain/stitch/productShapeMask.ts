@@ -96,6 +96,334 @@ function rimInset(w: number, h: number): number {
   return Math.max(1, Math.round(0.03 * Math.min(w, h)));
 }
 
+/** Corner-convention final clip (owner 10-20 P0 4dfb1359). buildProductSilhouette
+ *  keeps cells whose CENTER (c+0.5 convention) is within the radius, but the
+ *  visible dashed guide circle is inscribed in the guide box and runs through
+ *  cell CORNERS — so the outermost ring of cells (center-distance == r) straddles
+ *  the drawn circle and reads as "color outside the charm" (13 #ffffff ring
+ *  cells on the stored 28×28 a4c16a62). Keep a cell only when ALL FOUR corners
+ *  are within the radius (circumscribed clip = nothing stitched outside the
+ *  drawn guide). Ornament (circle) only for now; other shapes return unchanged. */
+export function clipShapeEdge(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  if (shape !== "ornament") return grid;
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const inset = rimInset(width, height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const r = Math.min(width, height) / 2 - inset;
+  const out: StitchGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+  for (let rw = 0; rw < height; rw++) {
+    const dyMax = Math.max(Math.abs(rw - 0.5 - cy), Math.abs(rw + 0.5 - cy));
+    for (let c = 0; c < width; c++) {
+      const dxMax = Math.max(Math.abs(c - 0.5 - cx), Math.abs(c + 0.5 - cx));
+      if (dxMax * dxMax + dyMax * dyMax > r * r) {
+        out[rw][c] = { ...EMPTY_CELL };
+      }
+    }
+  }
+  return out;
+}
+
+/** Deterministic snowflake DEFINITION pass (owner 10-20 P0 a9db240b: blue
+ *  stocking flakes are "blobs ... no definition"). Runs AFTER preserveWhiteDetail
+ *  (large stocking/ornament grids whose prompt asks for snowflakes). The AI's
+ *  soft little flakes quantize into dense white blobs (fill ~0.70, 4 arms);
+ *  this pass rewrites each blob that does NOT read as a star into a crisp
+ *  6-arm snowflake: hub + 6 arms at exact 60° (min arm length 4 cells so the
+ *  star reads at 14ct) + 2 branch tips per arm at 62% ±20°, dominant-angle
+ *  snap, bbox wiped to the modal body color so blue gaps open between arms.
+ *  Tiny components (< 7 cells) merge into neighbors (erased; the nearest
+ *  flake's bbox rewrite absorbs them). Deterministic, palette-only (white +
+ *  existing body color). Idempotent via audit: any drawn flake that still
+ *  fails the star test is redrawn once rotated 30° with armLen+1. */
+const SNOWFLAKE_PROMPT_RE = /\bsnowflakes?\b|\bsnow[- ]flakes?\b/i;
+
+function isWhiteStitchCell(cell: StitchCell | undefined): boolean {
+  if (!cell || !cell.color) return false;
+  if (cell.color.toLowerCase() === "#ffffff") return true;
+  if (cell.color.length !== 7) return false;
+  const r = parseInt(cell.color.slice(1, 3), 16);
+  const g = parseInt(cell.color.slice(3, 5), 16);
+  const b = parseInt(cell.color.slice(5, 7), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 200 && r > 235;
+}
+
+export function enforceSnowflakeDefinition(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  width: number,
+  height: number,
+  prompt: string,
+): StitchGrid {
+  if (shape !== "stocking" && shape !== "ornament") return grid;
+  if (!SNOWFLAKE_PROMPT_RE.test((prompt || "").toLowerCase())) return grid;
+  const gs = Math.min(width, height);
+  const silhouette = buildProductSilhouette(shape, width, height);
+  const out: StitchGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Flake band: stocking body (cuff top 16% / toe bottom 22% are legit big
+  // whites); ornament: in-circle minus the 2-cell rim ring (field whites).
+  const inBand = (r: number, c: number): boolean => {
+    if (!silhouette[r]?.[c]) return false;
+    if (shape === "stocking") return r >= 0.16 * gs && r <= 0.78 * gs;
+    const inset = rimInset(gs, gs);
+    const cx = (width - 1) / 2;
+    const cy = (height - 1) / 2;
+    const rr = gs / 2 - inset;
+    const dx = c + 0.5 - cx;
+    const dy = r + 0.5 - cy;
+    return dx * dx + dy * dy <= (rr - 2) * (rr - 2);
+  };
+
+  // Body modal (non-white, non-background) color inside the shape.
+  const counts: Record<string, number> = {};
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      const cell = out[r]?.[c];
+      if (!cell || isBackgroundCell(cell) || isWhiteStitchCell(cell)) continue;
+      counts[cell.color] = (counts[cell.color] ?? 0) + 1;
+    }
+  }
+  const body = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "#2e609d";
+
+  // 4-connected white components inside the band.
+  const seen = Array.from({ length: height }, () => new Array<boolean>(width).fill(false));
+  const comps: Array<Array<[number, number]>> = [];
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (seen[r][c] || !inBand(r, c) || !isWhiteStitchCell(out[r]?.[c])) continue;
+      const q: Array<[number, number]> = [[r, c]];
+      seen[r][c] = true;
+      const comp: Array<[number, number]> = [];
+      while (q.length) {
+        const [rr, cc] = q.pop()!;
+        comp.push([rr, cc]);
+        for (const [dr2, dc2] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nr = rr + dr2, nc = cc + dc2;
+          if (nr >= 0 && nr < height && nc >= 0 && nc < width && !seen[nr][nc] && inBand(nr, nc) && isWhiteStitchCell(out[nr]?.[nc])) {
+            seen[nr][nc] = true;
+            q.push([nr, nc]);
+          }
+        }
+      }
+      if (comp.length >= 2) comps.push(comp);
+    }
+  }
+
+  const sectorArmCount = (comp: Array<[number, number]>, cr: number, cc: number, R: number): number => {
+    const sectorBest = [0, 0, 0, 0, 0, 0];
+    for (const [r, c] of comp) {
+      const dr = r - cr, dc = c - cc;
+      const rad = Math.sqrt(dr * dr + dc * dc);
+      if (rad < R * 0.45) continue;
+      let ang = (Math.atan2(dr, dc) * 180) / Math.PI;
+      ang = ((ang % 360) + 360) % 360;
+      const sect = Math.min(5, Math.floor(ang / 60));
+      sectorBest[sect] = Math.max(sectorBest[sect], rad);
+    }
+    return sectorBest.filter((v) => v >= R * 0.5).length;
+  };
+
+  const drawFlake = (comp: Array<[number, number]>, baseAng: number, armLen: number): void => {
+    let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
+    for (const [r, c] of comp) {
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (c < minC) minC = c;
+      if (c > maxC) maxC = c;
+    }
+    const cr = Math.round((minR + maxR) / 2);
+    const cc = Math.round((minC + maxC) / 2);
+    let R2 = 0;
+    for (const [r, c] of comp) {
+      const d = (r - cr) * (r - cr) + (c - cc) * (c - cc);
+      if (d > R2) R2 = d;
+    }
+    const R = Math.sqrt(R2);
+    const hubR = Math.max(1, Math.round(armLen * 0.22));
+    for (let r = minR; r <= maxR; r++) {
+      for (let c = minC; c <= maxC; c++) {
+        const cell = out[r]?.[c];
+        if (!cell || !isWhiteStitchCell(cell)) continue;
+        cell.color = body; // wipe blob to body blue (opens gaps between arms)
+        if (silhouette[r]?.[c] && inBand(r, c) && (r - cr) * (r - cr) + (c - cc) * (c - cc) <= hubR * hubR) {
+          cell.color = "#ffffff"; // hub overlay
+        }
+      }
+    }
+    for (let k = 0; k < 6; k++) {
+      const dirR = Math.sin(((baseAng + k * 60) * Math.PI) / 180);
+      const dirC = Math.cos(((baseAng + k * 60) * Math.PI) / 180);
+      for (let t = 0; t <= armLen; t++) {
+        const rr = Math.round(cr + dirR * t);
+        const cc2 = Math.round(cc + dirC * t);
+        if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue; // arms stay in the flake band (cuff/toe/rim untouched)
+        const cell = out[rr]?.[cc2];
+        if (cell) cell.color = "#ffffff";
+      }
+      for (const ofs of [-20, 20]) {
+        const bA = ((baseAng + k * 60 + ofs) * Math.PI) / 180;
+        const bt = Math.round(armLen * 0.62);
+        const rr = Math.round(cr + Math.sin(bA) * bt);
+        const cc2 = Math.round(cc + Math.cos(bA) * bt);
+        if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue;
+        const cell = out[rr]?.[cc2];
+        if (cell) cell.color = "#ffffff";
+      }
+    }
+  };
+
+  for (const comp of comps) {
+    if (comp.length < 7) {
+      // merge tiny specks into neighbors: erase to body
+      for (const [r, c] of comp) {
+        const cell = out[r]?.[c];
+        if (cell) cell.color = body;
+      }
+      continue;
+    }
+    let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
+    for (const [r, c] of comp) {
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (c < minC) minC = c;
+      if (c > maxC) maxC = c;
+    }
+    const fillRatio = comp.length / ((maxR - minR + 1) * (maxC - minC + 1));
+    const cr = Math.round((minR + maxR) / 2);
+    const cc = Math.round((minC + maxC) / 2);
+    let R2 = 0;
+    for (const [r, c] of comp) {
+      const d = (r - cr) * (r - cr) + (c - cc) * (c - cc);
+      if (d > R2) R2 = d;
+    }
+    const R = Math.sqrt(R2);
+    // Dominant-angle snap to the nearest 60° grid so arms align.
+    let baseAng = 0, bestD = -1;
+    for (const [r, c] of comp) {
+      const d = (r - cr) * (r - cr) + (c - cc) * (c - cc);
+      if (d > bestD) { bestD = d; baseAng = (Math.atan2(r - cr, c - cc) * 180) / Math.PI; }
+    }
+    baseAng = Math.round(baseAng / 60) * 60;
+    const drawAndAudit = (ang: number, armLen: number): boolean => {
+      drawFlake(comp, ang, armLen);
+      // Audit on the DRAWN white cells within the flake bbox (silhouette-clipped).
+      const drawn: Array<[number, number]> = [];
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          if (silhouette[r]?.[c] && isWhiteStitchCell(out[r]?.[c])) drawn.push([r, c]);
+        }
+      }
+      if (drawn.length < 7) return false;
+      let dR2 = 0;
+      for (const [r, c] of drawn) {
+        const d = (r - cr) * (r - cr) + (c - cc) * (c - cc);
+        if (d > dR2) dR2 = d;
+      }
+      const fill2 = drawn.length / ((maxR - minR + 1) * (maxC - minC + 1));
+      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 5 && fill2 <= 0.62;
+    };
+    if (fillRatio <= 0.62 && sectorArmCount(comp, cr, cc, R) >= 5) continue; // already a star
+    const armLen = Math.max(4, Math.round(R * 0.85));
+    if (!drawAndAudit(baseAng, armLen)) {
+      // Second deterministic attempt: rotate 30°, one cell longer.
+      drawAndAudit(baseAng + 30, armLen + 1);
+    }
+  }
+  // Final sweep: erase any leftover band specks (< 3 cells) to body so the
+  // design reads clean stars, not noise dots.
+  const seen2 = Array.from({ length: height }, () => new Array<boolean>(width).fill(false));
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (seen2[r][c] || !inBand(r, c) || !isWhiteStitchCell(out[r]?.[c])) continue;
+      const q: Array<[number, number]> = [[r, c]];
+      seen2[r][c] = true;
+      const comp: Array<[number, number]> = [];
+      while (q.length) {
+        const [srr, scc] = q.pop()!;
+        comp.push([srr, scc]);
+        for (const [d1, d2] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nr = srr + d1, nc = scc + d2;
+          if (nr >= 0 && nr < height && nc >= 0 && nc < width && !seen2[nr][nc] && inBand(nr, nc) && isWhiteStitchCell(out[nr]?.[nc])) {
+            seen2[nr][nc] = true;
+            q.push([nr, nc]);
+          }
+        }
+      }
+      if (comp.length < 3) {
+        for (const [srr, scc] of comp) {
+          const cell = out[srr]?.[scc];
+          if (cell) cell.color = body;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Charm crown fill — REMOVED from the chain 10-20 (b131): rows 0-1 are NEVER
+ *  inside the visible corner-convention circle at any grid size (a row-1 cell's
+ *  top corner is gs/2 from center > radius by construction), so this pass is
+ *  dead code; the white cap the owner saw sat OUTSIDE the drawn guide and is
+ *  removed by clipShapeEdge. Kept only as documentation/reference. */
+export function crownFillToPole(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  width: number,
+  height: number,
+): StitchGrid {
+  if (shape !== "ornament") return grid;
+  const out: StitchGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+  const gs = Math.min(width, height);
+  const inset = rimInset(gs, gs);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const r = gs / 2 - inset;
+  for (let rw = 0; rw <= 1; rw++) {
+    for (let c = 0; c < width; c++) {
+      const dx = c + 0.5 - cx;
+      const dy = rw + 0.5 - cy;
+      if (dx * dx + dy * dy > r * r) continue; // inside the center circle
+      // ALSO require corner-inside (clipShapeEdge convention): never paint
+      // a cell that the visible guide excludes (owner P0 4dfb1359 — crown
+      // must not re-create spill at the pole).
+      const dxMax = Math.max(Math.abs(c - 0.5 - cx), Math.abs(c + 0.5 - cx));
+      const dyMax = Math.max(Math.abs(rw - 0.5 - cy), Math.abs(rw + 0.5 - cy));
+      if (dxMax * dxMax + dyMax * dyMax > r * r) continue;
+      const cell = out[rw]?.[c];
+      if (!cell) continue;
+      const isW = isWhiteStitchCell(cell);
+      const isBg = isBackgroundCell(cell);
+      if (!isW && !isBg) continue; // already subject-colored
+      // Fill EMPTY as well as white pole cells: for a charm the pole is often
+      // already background (recenter pushed the subject down) and reads as the
+      // same white cap. Only paint when a subject color exists below so we
+      // never invent content on an empty design.
+      for (let sr = rw + 1; sr <= rw + 4; sr++) {
+        let found = "";
+        for (const dc of [-1, 0, 1]) {
+          const src = out[sr]?.[c + dc];
+          if (src && !isBackgroundCell(src) && !isWhiteStitchCell(src)) { found = src.color; break; }
+        }
+        if (found) {
+          if (isBg) cell.color = found;
+          else cell.color = found;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Build a boolean silhouette mask (true = inside the shape). */
 export function buildProductSilhouette(
   shape: ProductMaskShape,
@@ -204,7 +532,13 @@ export function magnifyToFillShape(
   }
   if (interior === 0 || top >= height) return grid;
   const fill = fg / interior;
-  if (fill >= 0.55) return grid; // already dense — keep the drawing as-is
+  // Dense AND already at the shape top — keep the drawing as-is. A dense
+  // subject that is stranded >= 2 rows below the shape top (owner 10-20 P0
+  // 4dfb1359: charm head cut off because the white sky cap made top=3 but
+  // fill was 67.5% >= 55%) still magnifies — the bbox cover-fit lands the
+  // head near row 1 and the cap rows become background by construction
+  // (dest only writes non-background cells).
+  if (fill >= 0.55 && top <= 1) return grid;
   const bboxW = right - left + 1;
   const bboxH = bottom - top + 1;
   if (bboxW <= 0 || bboxH <= 0) return grid;
