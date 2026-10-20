@@ -7,7 +7,7 @@
  * saves (7309c725 tree: green rows 1-67, 583 grey cells #b2b2b2/#3c3c3c,
  * 1168 white field; 4e3c90e7 snowflake: white detail collapsing to red).
  */
-import { containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, EMPTY_CELL } from "../domain/stitch/productShapeMask";
+import { containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, preserveWhiteDetail, buildProductSilhouette, EMPTY_CELL } from "../domain/stitch/productShapeMask";
 import type { StitchGrid } from "../domain/stitch/types";
 
 const GREEN = { color: "#1f7a33", dmcCode: "895", dmcName: "Dark Green" };
@@ -152,5 +152,43 @@ describe("snapGreyMushToPalette (mid-grey band -> real color)", () => {
     expect(out[10][10]).toEqual(EMPTY_CELL);
     expect(out[11][11]).toEqual(WHITE);
     expect(out[12][12]).toEqual(RED);
+  });
+});
+describe("preserveWhiteDetail", () => {
+  const W = 70, H = 70;
+  const empty = (): StitchCell => ({ ...EMPTY_CELL });
+  const cell = (c: string): StitchCell => ({ ...EMPTY_CELL, color: c });
+
+  it("converts light-wash detail (#ec8d94 flake) back to #ffffff, keeps counts", () => {
+    const g: StitchGrid = Array.from({ length: H }, () => Array.from({ length: W }, () => empty()));
+    const sil = buildProductSilhouette("ornament", W, H);
+    const centerR = Math.floor(H / 2), centerC = Math.floor(W / 2);
+    const offs = [[0, 0], [0, 1], [1, 0], [1, 1], [-1, 0], [0, -1], [-1, -1], [1, -1], [-1, 1]] as const;
+    let placed = 0;
+    for (const [dr, dc] of offs) {
+      const r = centerR + dr, c = centerC + dc;
+      if (sil[r]?.[c]) { g[r][c] = cell("#ec8d94"); placed++; }
+    }
+    const out = preserveWhiteDetail(g, "ornament", W, H);
+    let white = 0;
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+      if (sil[r]?.[c] && out[r]?.[c]?.color === "#ffffff") white++;
+    }
+    expect(white).toBe(placed);
+  });
+
+  it("leaves saturated pinks/reds (#d7525f, #c9262d) untouched", () => {
+    const g: StitchGrid = Array.from({ length: H }, () => Array.from({ length: W }, () => empty()));
+    const sil = buildProductSilhouette("ornament", W, H);
+    g[35][35] = cell("#d7525f"); g[35][36] = cell("#c9262d");
+    const out = preserveWhiteDetail(g, "ornament", W, H);
+    expect(out[35][35]?.color).toBe("#d7525f");
+    expect(out[35][36]?.color).toBe("#c9262d");
+  });
+
+  it("never converts background/EMPTY cells", () => {
+    const g: StitchGrid = Array.from({ length: H }, () => Array.from({ length: W }, () => empty()));
+    const out = preserveWhiteDetail(g, "ornament", W, H);
+    expect(out[0][0]).toEqual(EMPTY_CELL);
   });
 });

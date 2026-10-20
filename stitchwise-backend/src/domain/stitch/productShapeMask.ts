@@ -588,3 +588,50 @@ export function recountDmcFromGrid(grid: StitchGrid, dmcColors: Array<{ code: st
   next.sort((a, b) => b.count - a.count);
   return next;
 }
+
+/**
+ * preserveWhiteDetail — convert near-white "wash" detail cells back to pure
+ * white (#ffffff) so snowflakes/star light detail survives 30-color
+ * quantization (which merges flake-white toward a chromatic neighbor, e.g.
+ * #ec8d94).  Only cells that survive reclassFieldWhite (i.e. are NOT field
+ * background) and that are light/low-contrast washes match; saturated
+ * shading (pinks/reds/greens) and dark outlines never match.  Runs AFTER
+ * snapGreyMushToPalette so #ffffff cannot become a grey-snap candidate.
+ */
+export function preserveWhiteDetail(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const silhouette = buildProductSilhouette(shape, targetW || width, targetH || height);
+  const out = grid.map(row => row.map(cell => ({ ...cell })));
+  let preserved = 0;
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      const cell = grid[r]?.[c];
+      if (!cell || isBackgroundCell(cell)) continue;
+      const hex = cell.color;
+      if (!hex || hex.length !== 7) continue;
+      const rr = parseInt(hex.slice(1, 3), 16);
+      const gg = parseInt(hex.slice(3, 5), 16);
+      const bb = parseInt(hex.slice(5, 7), 16);
+      if ([rr, gg, bb].some(Number.isNaN)) continue;
+      const max = Math.max(rr, gg, bb);
+      const min = Math.min(rr, gg, bb);
+      const luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+      // Light wash: bright, low-contrast, none of the channels dark.
+      // #ec8d94 flake-wash: luma 170, max-min 95, min 141 -> matches.
+      // True pinks/reds (luma < ~130), browns, greens -> no match.
+      if (luma >= 155 && max - min <= 100 && min >= 120) {
+        out[r][c] = { ...cell, color: "#ffffff" };
+        preserved++;
+      }
+    }
+  }
+  return out;
+}

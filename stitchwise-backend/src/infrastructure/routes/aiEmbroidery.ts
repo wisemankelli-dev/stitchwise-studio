@@ -28,7 +28,7 @@ import {
   frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
-import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, recountDmcFromGrid } from "../../domain/stitch/productShapeMask";
+import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, preserveWhiteDetail, recountDmcFromGrid } from "../../domain/stitch/productShapeMask";
 import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
@@ -1026,8 +1026,8 @@ export function createAIEmbroideryRouter(): Router {
               !isSmallGrid(genW, genH) &&
               (effectiveShape === "stocking" || effectiveShape === "ornament" || effectiveShape === "pillow")
                 ? (effectiveShape === "ornament" || effectiveShape === "pillow"
-                    ? snapGreyMushToPalette(reclassFieldWhite(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH), effectiveShape, genW, genH)
-                    : snapGreyMushToPalette(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH))
+                    ? preserveWhiteDetail(snapGreyMushToPalette(reclassFieldWhite(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH), effectiveShape, genW, genH), effectiveShape, genW, genH)
+                    : preserveWhiteDetail(snapGreyMushToPalette(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH), effectiveShape, genW, genH))
                 : haloFilled;
             // Deterministic face-feature guard (owner 09-15, 3rd report: bag
             // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
