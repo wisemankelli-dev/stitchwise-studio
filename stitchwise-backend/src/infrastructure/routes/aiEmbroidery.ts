@@ -1098,7 +1098,13 @@ export function createAIEmbroideryRouter(): Router {
               canvasWidth: genW,
               canvasHeight: genH,
             });
-            return { grid, guarded: { grid: rescuedEdged, dmcColors: recalcDmc }, preview, qualityWarning };
+            // guarded.grid is what buildPatternResponse SAVES — it must be the
+            // FINAL stage (faced), not the pre-face clip output: the face
+            // guarantee is dead code unless the injected eyes/nose reach the
+            // saved pattern (lead 18:15: make failure structurally impossible;
+            // verified 10-20: returning rescuedEdged here dropped the guard at
+            // save time). faced === rescuedEdged on every non-charm path.
+            return { grid, guarded: { grid: faced, dmcColors: recalcDmc }, preview, qualityWarning };
           };
           // Run the pipeline once; if a prompt-named NON-subject color ("blue
           // sweater") is ABSENT from the final grid, re-roll ONCE with a
