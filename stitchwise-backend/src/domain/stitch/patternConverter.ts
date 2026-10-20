@@ -90,6 +90,171 @@ export async function imageUrlToStitchGrid(
   }
 }
 
+/** V2 truth threshold — subject = DARK pixels only (owner 10-19 P0 e5f979cf).
+ * V1 used a 192px preview + ">=240 near-white is canvas" test; the AI
+ * source's studio background is NOT pure white, so almost every pixel counted
+ * as subject -> bbox = whole canvas -> the 0.82 fill gate always skipped ->
+ * the crop/upscale never ran and the light beige crown/ears still quantized to
+ * white in the 28x28 grid. Dark pixels (luminance < 185) are what survives
+ * small-grid quantize (outline/eyes/sweater), so their bbox IS the teddy —
+ * crown + ears included, regardless of fur tone. */
+const SUBJECT_FIT_LUM = 185;
+
+/**
+ * Subject-fit for SMALL AI product grids (owner 10-19 P0 c9f3e630-charm).
+ *
+ * The Bag Charm path (≤60 cells, outlinePreserve) skips the auto-trim to
+ * protect ear/crown margins, but lanczos+posterize at 28×28 then thins the
+ * subject's LIGHT parts into the background DMC — the teddy's crown+ears
+ * vanish (rows 0-4 white) and the subject uses only ~52% of the circle
+ * (e5f979cf: 342/616 cells white). This crops the full-res source to the
+ * dark-pixel subject bbox (see SUBJECT_FIT_LUM) and zooms it up to fill ~92%
+ * of the output canvas BEFORE the small-grid downscale, so the crown occupies
+ * a big pixel block, survives quantize, and the charm uses its cell budget on
+ * the bear, not on background. Idempotent: subjects already filling >= 82%
+ * (area) are returned unchanged — and 0.82 is a HARD gate, so a tight bbox is
+ * essential (V1's whole-canvas bbox always skipped). Deterministic —
+ * nearest-neighbor repaint from the existing pixels, no invented colors.
+ *
+ * V3 (owner 10-19 round-2 pre-publish review of e5f979cf at 28×28): the V2
+ * dark-only bbox + upscale still left rows 0-1 white because the crown/ears
+ * are LIGHT beige (full-res diff-from-white < 24 — the LANCZOS 28×28 map shows
+ * them as `o`, but the posterize pipeline's median(3) + 22-color palette merge
+ * them into White 520). So V3 adds a LIGHT-SUBJECT DARKEN to the fitted output:
+ * any non-background pixel (diff from the modal border color > 24) brighter
+ * than the palette's light-fabric floor gets multiplied toward mid-tone, which
+ * the dark outline/face already sit at — the crown/ears then keep their own
+ * palette entry instead of collapsing into white. Idempotent at 0.82 like V2.
+ */
+const SUBJECT_FIT_BG_DIFF = 12; // <= = background (only near-exact border color)
+const SUBJECT_FIT_LIGHT_DARKEN = 0.55; // near-white halo -> mid-tone tan
+const SUBJECT_FIT_MID_DARKEN = 0.72; // light beige fur -> mid tan
+const SUBJECT_FIT_DARK_MIN_LUM = 160; // already-dark pixels stay untouched
+const SUBJECT_FIT_DARK_MAX_LUM = 232; // above = near-white halo (stronger)
+
+export async function subjectFitToCanvas(
+  imageBuffer: Buffer,
+  outW: number,
+  outH: number,
+): Promise<Buffer> {
+  const meta = await sharp(imageBuffer).metadata();
+  const W = meta.width || outW;
+  const H = meta.height || outH;
+  if (W <= 0 || H <= 0) return imageBuffer;
+  // V2: bbox at FULL image resolution (no preview resize — the 1024² AI source
+  // must be measured exactly) of DARK pixels only (luminance < SUBJECT_FIT_LUM).
+  const { data, info } = await sharp(imageBuffer)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pw = info.width;
+  const ph = info.height;
+  if (pw <= 0 || ph <= 0 || pw * ph > 8192 * 8192) return imageBuffer; // sanity
+  const nch = info.channels || 3;
+  // Modal background color from the outer border (the AI studio field).
+  const borderHist = new Map<string, number>();
+  const bband = Math.max(1, Math.floor(Math.min(pw, ph) / 8));
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) {
+      if (x > bband && x < pw - bband && y > bband && y < ph - bband) continue;
+      const i = (y * pw + x) * nch;
+      const k = `${data[i]},${data[i + 1]},${data[i + 2]}`;
+      borderHist.set(k, (borderHist.get(k) ?? 0) + 1);
+    }
+  }
+  const bgStr = [...borderHist.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "255,255,255";
+  const bg = bgStr.split(",").map(Number);
+  let top = ph, bottom = -1, left = pw, right = -1;
+  for (let y = 0; y < ph; y++) {
+    const rowBase = y * pw * nch;
+    for (let x = 0; x < pw; x++) {
+      const i = rowBase + x * nch;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (0.299 * r + 0.587 * g + 0.114 * b >= SUBJECT_FIT_LUM) continue;
+      if (y < top) top = y;
+      if (y > bottom) bottom = y;
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+  }
+  if (top >= ph) return imageBuffer; // nothing but background
+  // Natural-margin guard (owner P0 1c6d2de8 / orn3 09-11 regression): zooming
+  // pushes the subject into the source's own BLANK top rows. A subject that
+  // truly reaches the canvas top has light pixels (crown/ears/halo) ABOVE the
+  // dark-pixel bbox; a source with a real margin has pure background there.
+  // Scan rows [0, top) for any non-background pixel — none means the source
+  // already keeps a margin, so leave the buffer untouched (no upscale).
+  let lightAbove = false;
+  if (top > 0) {
+    for (let y = 0; y < top && !lightAbove; y++) {
+      const rowBase = y * pw * nch;
+      for (let x = 0; x < pw; x++) {
+        const i = rowBase + x * nch;
+        const dr = Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]);
+        if (dr > SUBJECT_FIT_BG_DIFF * 2) { lightAbove = true; break; }
+      }
+    }
+  }
+  if (!lightAbove) return imageBuffer; // real top margin — keep it
+  const bboxW = right - left + 1;
+  const bboxH = bottom - top + 1;
+  const fill = (bboxW * bboxH) / (pw * ph);
+  if (fill >= 0.82) return imageBuffer; // already fills — keep margins
+  // Full-res bbox is already exact; a 2% safety pad keeps the outline intact.
+  const sx = 1, sy = 1;
+  const l = Math.max(0, Math.floor(left * sx - W * 0.02));
+  const t = Math.max(0, Math.floor(top * sy - H * 0.02));
+  const rr = Math.min(W - 1, Math.ceil((right + 1) * sx + W * 0.02));
+  const bb = Math.min(H - 1, Math.ceil((bottom + 1) * sy + H * 0.02));
+  const cw = rr - l + 1;
+  const ch = bb - t + 1;
+  // Target: fill ~92% of the output canvas (room for the circle clip + dark
+  // outline), preserving aspect.
+  const k = (Math.min(outW, outH) * 0.92) / Math.max(cw, ch);
+  const scaledW = Math.max(2, Math.round(cw * k));
+  const scaledH = Math.max(2, Math.round(ch * k));
+  const destLeft = Math.max(0, Math.round((outW - scaledW) / 2));
+  const destTop = Math.max(0, Math.round((outH - scaledH) / 2));
+  const crop = await sharp(imageBuffer)
+    .extract({ left: l, top: t, width: cw, height: ch })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const out = Buffer.alloc(outW * outH * 4, 255); // white canvas
+  for (let dy = 0; dy < scaledH; dy++) {
+    const srcY = Math.min(Math.floor((dy * ch) / scaledH), ch - 1);
+    for (let dx = 0; dx < scaledW; dx++) {
+      const srcX = Math.min(Math.floor((dx * cw) / scaledW), cw - 1);
+      const si = (srcY * cw + srcX) * (crop.info.channels || 3);
+      const di = ((destTop + dy) * outW + (destLeft + dx)) * 4;
+      out[di] = crop.data[si];
+      out[di + 1] = crop.data[si + 1];
+      out[di + 2] = crop.data[si + 2];
+      out[di + 3] = crop.info.channels === 4 ? crop.data[si + 3] : 255;
+    }
+  }
+  // V3 light-subject darken: the crown/ears are light beige that the 22-color
+  // palette + median(3) posterize merges into White 520 (e5f979cf grid rows
+  // 0-4 blank even after V2's upscale — measured: source crown lum 190-230,
+  // diff-from-white < 24 at full res). Push non-background pixels that are
+  // brighter than the outline's mid-tone toward mid-tone (nearest-neighbor
+  // floors), so the palette allocates them their own entry. Pure background
+  // (diff <= SUBJECT_FIT_BG_DIFF from the border color) stays untouched.
+  for (let i = 0; i < out.length; i += 4) {
+    const r = out[i], g = out[i + 1], b = out[i + 2];
+    const bgDiff = Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]);
+    if (bgDiff <= SUBJECT_FIT_BG_DIFF) continue; // background
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum < SUBJECT_FIT_DARK_MIN_LUM) continue; // already dark enough
+    const f = lum > SUBJECT_FIT_DARK_MAX_LUM ? SUBJECT_FIT_LIGHT_DARKEN : SUBJECT_FIT_MID_DARKEN;
+    out[i] = Math.max(0, Math.round(r * f));
+    out[i + 1] = Math.max(0, Math.round(g * f));
+    out[i + 2] = Math.max(0, Math.round(b * f));
+  }
+  return sharp(out, { raw: { width: outW, height: outH, channels: 4 } })
+    .png()
+    .toBuffer();
+}
+
 /**
  * Convert an image buffer to a stitch grid.
  *
@@ -166,9 +331,15 @@ export async function imageBufferToStitchGrid(
     // still applied so colors separate exactly like the trimmed path.
     try {
       if (skipTrimForSmallAI) {
+        // Owner 10-19 (e5f979cf charm head cut + 52% fill): subject-fit the
+        // small AI product grid so the light crown/ears survive quantize and
+        // the bear uses its cell budget instead of white background. Still
+        // boosts saturation exactly like the trimmed path.
         workingBuffer = await sharp(imageBuffer)
           .modulate({ saturation: 1.4 })
           .toBuffer();
+        const fitted = await subjectFitToCanvas(workingBuffer, outW, outH);
+        if (fitted && fitted !== workingBuffer) workingBuffer = fitted;
       } else {
         const meta = await sharp(imageBuffer).metadata();
         const trimmed = await sharp(imageBuffer)
@@ -209,14 +380,39 @@ export async function imageBufferToStitchGrid(
   //   map to random/wrong DMC threads (e.g. violet edge pixels on yellow petals).
   //   No dithering — every pixel is forced into one of maxColors solid regions.
   // Step 3: Extract raw pixels from the posterized image for DMC mapping.
-  const posterizedPng = await sharp(workingBuffer)
-    .resize(outW, outH, {
-      fit: "cover",
-      position: "centre",
-      kernel: sharp.kernel.lanczos3,
+  // Posterize to a clean palette before DMC mapping. SMALL grids (≤60 cells,
+  // the outlinePreserve product path — bag charm/ornament/pillow at 28×28)
+  // SKIP the median(3) noise filter: a 3×3 median on a 28×28 image erodes the
+  // 1-2-cell crown/ears the subject-fit just created (e5f979cf t12→t13: fitted
+  // buffer dense from row 2, posterized rows 0-4 blank again). The subject-fit
+  // output is already clean artwork; median is for camera-noise uploads.
+  const posterize = sharp(workingBuffer).resize(outW, outH, {
+    fit: "cover",
+    position: "centre",
+    kernel: sharp.kernel.lanczos3,
+  });
+  // Skip median(3) ONLY on the outlinePreserve product path (see comment
+  // above). Plain uploads (no outlinePreserve) keep median(3) exactly as
+  // main so the documented small-grid solid-block path is unchanged.
+  if (!skipTrimForSmallAI) posterize.median(3);
+  // SMALL grids (≤60 cells): a 22-color palette on a 28×28 charm gives the
+  // light beige crown/ears NO entry of their own — they merge into the
+  // dominant white/red (e5f979cf: 503/784 cells white post-posterize, ears
+  // lose their hue). Keeep the requested palette size for larger grids, but
+  // floor the small-grid palette at 40 so light fur/white-detail colors get
+  // their own slot before DMC mapping (owner P0 1c6d2de8).
+  // Floor the small-grid palette only on the outlinePreserve product path
+  // (bag charm / ornament / pillow): 22 colors on a 28x28 charm leaves the
+  // light beige crown/ears no entry (owner P0 1c6d2de8 e5f979cf). The plain
+  // small-grid path keeps the documented behavior (test asserts the solid
+  // block WITHOUT outlinePreserve).
+  const smallGrid = Math.min(outW, outH) <= SMALL_OUTLINE_MAX_DIM;
+  const posterizedPng = await posterize
+    .png({
+      palette: true,
+      colours: skipTrimForSmallAI ? Math.max(maxColors, 40) : maxColors,
+      dither: 0,
     })
-    .median(3) // stronger noise reduction before posterization
-    .png({ palette: true, colours: maxColors, dither: 0 })
     .toBuffer();
 
   const { data, info } = await sharp(posterizedPng)
