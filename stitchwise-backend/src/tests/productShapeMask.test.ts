@@ -1,4 +1,4 @@
-import { applyProductShapeMask, buildProductSilhouette } from "../domain/stitch/productShapeMask";
+import { applyProductShapeMask, buildProductSilhouette, magnifyToFillShape, clipShapeEdge, enforceSnowflakeDefinition } from "../domain/stitch/productShapeMask";
 import { recenterGrid } from "../domain/stitch/recenterGrid";
 import type { StitchCell } from "../domain/stitch/types";
 
@@ -8,6 +8,14 @@ const WHITE: StitchCell = { color: "#ffffff", dmcCode: "520", dmcName: "White" }
 
 function makeGrid(w: number, h: number, fill: StitchCell): StitchCell[][] {
   return Array.from({ length: h }, () => Array.from({ length: w }, () => ({ ...fill })));
+}
+function nonEmptyRowTop(grid: StitchCell[][]): number {
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c]?.color && grid[r][c].color !== "#ffffff") return r;
+    }
+  }
+  return -1;
 }
 
 describe("buildProductSilhouette", () => {
@@ -108,5 +116,86 @@ describe("applyProductShapeMask", () => {
     const snapshot = JSON.stringify(grid);
     applyProductShapeMask(grid, "ornament", 40, 40);
     expect(JSON.stringify(grid)).toBe(snapshot);
+  });
+});
+
+describe("magnifyToFillShape top-gap trigger (P0 4dfb1359)", () => {
+  it("does not touch a dense subject already at the shape top", () => {
+    // subject STARTS at row 0 (top<=1): rows 0-1 red, rows 2-3 white.
+    const atTop = makeGrid(28, 28, RED);
+    for (let r0 = 2; r0 <= 3; r0++) for (let c = 0; c < 28; c++) atTop[r0][c] = { ...WHITE };
+    const snapshot = JSON.stringify(atTop);
+    const out = magnifyToFillShape(atTop, "ornament", 28, 28);
+    expect(JSON.stringify(out)).toBe(snapshot); // dense AND top<=1 → skip
+  });
+
+  it("magnifies a dense subject stranded below a white cap", () => {
+    const grid = makeGrid(28, 28, RED);
+    // full-width white sky rows 0-2 → subject starts at row 3
+    for (let r0 = 0; r0 <= 2; r0++) for (let c = 0; c < 28; c++) grid[r0][c] = { ...WHITE };
+    const out = magnifyToFillShape(grid, "ornament", 28, 28);
+    expect(JSON.stringify(out)).not.toBe(JSON.stringify(grid));
+    // content must have moved UP: first non-white row strictly less than before
+    const beforeTop = nonEmptyRowTop(grid);
+    const afterTop = nonEmptyRowTop(out);
+    expect(afterTop).toBeLessThan(beforeTop);
+  });
+});
+
+describe("clipShapeEdge corner-convention clip (P0 4dfb1359)", () => {
+  it("empties the corner-straddling ring but keeps interior geometry", () => {
+    const grid = makeGrid(28, 28, BLUE);
+    const out = clipShapeEdge(grid, "ornament", 28, 28);
+    // (13,0) has corner-d ~14.04 > r13 → emptied
+    expect(out[0][13]?.color).toBe("");
+    // (13,2) corner-d ~12.04 <= 13 → kept
+    expect(out[2][13]?.color).toBe(BLUE.color);
+    // center kept
+    expect(out[13][13]?.color).toBe(BLUE.color);
+  });
+
+  it("returns non-ornament shapes unchanged", () => {
+    const grid = makeGrid(28, 28, BLUE);
+    const out = clipShapeEdge(grid, "pillow", 28, 28);
+    expect(JSON.stringify(out)).toBe(JSON.stringify(grid));
+  });
+
+  it("keeps rows 0-1 empty (geometry fact: they are never inside the corner circle)", () => {
+    const grid = makeGrid(28, 28, BLUE);
+    const out = clipShapeEdge(grid, "ornament", 28, 28);
+    expect(out[0][13]?.color || "").toBe("");
+    expect(out[1][13]?.color || "").toBe("");
+  });
+});
+
+describe("enforceSnowflakeDefinition (P0 a9db240b)", () => {
+  const gs = 100;
+  function stockingBlobGrid(): StitchCell[][] {
+    const grid = makeGrid(gs, gs, BLUE);
+    // a dense white blob in the body band (rows 38..78 band window at 100)
+    for (let r0 = 44; r0 <= 53; r0++) for (let c = 44; c <= 53; c++) grid[r0][c] = { ...WHITE };
+    return grid;
+  }
+  it("is a no-op without a snowflake prompt", () => {
+    const grid = stockingBlobGrid();
+    const out = enforceSnowflakeDefinition(grid, "stocking", gs, gs, "a blue stocking");
+    expect(JSON.stringify(out)).toBe(JSON.stringify(grid));
+  });
+  it("rewrites the blob into a star with blue gaps and leaves cuff/toe untouched", () => {
+    const grid = stockingBlobGrid();
+    const before = JSON.stringify(grid);
+    const out = enforceSnowflakeDefinition(grid, "stocking", gs, gs, "blue stocking with white snowflakes");
+    // cuff (r<16) and toe (r>78) rows are byte-identical
+    expect(JSON.stringify(out.slice(0, 16))).toBe(JSON.stringify(grid.slice(0, 16)));
+    expect(JSON.stringify(out.slice(79))).toBe(JSON.stringify(grid.slice(79)));
+    // blue gaps opened inside the old blob bbox
+    let gaps = 0;
+    for (let r0 = 44; r0 <= 53; r0++) for (let c = 44; c <= 53; c++) if (out[r0][c]?.color === BLUE.color) gaps++;
+    expect(gaps).toBeGreaterThan(0);
+    // and the design is sparser (fewer white cells than the full blob)
+    const whiteOut = out.flat().filter((c) => c?.color === WHITE.color).length;
+    const whiteIn = grid.flat().filter((c) => c?.color === WHITE.color).length;
+    expect(whiteOut).toBeLessThan(whiteIn);
+    expect(before).toBe(JSON.stringify(grid));
   });
 });

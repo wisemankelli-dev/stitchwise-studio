@@ -369,13 +369,11 @@ export function enforceSnowflakeDefinition(
   return out;
 }
 
-/** Charm crown fill (owner 10-20 P0 4dfb1359): on small-grid ornaments the
- *  source's teddy crown sits ~2 rows below the circle pole, so rows 0-1 read
- *  as a white cap. Fill each visible pole cell (rows 0-1) that is white with
- *  the nearest non-white subject color found in rows 2..4 directly below
- *  (|dc| <= 1). Deterministic, palette-only, no invented colors; harmless on
- *  designs with no content since only white/empty pole cells change. Runs
- *  AFTER clipShapeEdge so the corner-convention silhouette is already final. */
+/** Charm crown fill — REMOVED from the chain 10-20 (b131): rows 0-1 are NEVER
+ *  inside the visible corner-convention circle at any grid size (a row-1 cell's
+ *  top corner is gs/2 from center > radius by construction), so this pass is
+ *  dead code; the white cap the owner saw sat OUTSIDE the drawn guide and is
+ *  removed by clipShapeEdge. Kept only as documentation/reference. */
 export function crownFillToPole(
   grid: StitchGrid,
   shape: ProductMaskShape,
