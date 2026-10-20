@@ -285,13 +285,42 @@ export function applyProductShapeMask(
     push(r - 1, c); push(r + 1, c); push(r, c - 1); push(r, c + 1);
   }
 
-  // Fill any enclosed interior background cell with the nearest non-bg color.
+  // Fill any enclosed interior background region with the nearest non-bg color,
+  // but ONLY when the region is large enough to be a real hole (missing body),
+  // not a white-DETAIL island (snowflake arms, star, highlights — owner P0
+  // 1c6d2de8 Appendix C: 70x70 red-snowflake ornament lost 57% of source-white
+  // to RED/PINK because the mask nearest-filled the flake cells; a 1-2 cell
+  // enclosed white island on a saturated background must survive as detail).
+  const DETAIL_MAX_CELLS = 3;
+  const visitedFill = Array.from({ length: height }, () => Array(width).fill(false));
   for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) {
-      if (silhouette[r]?.[c] && isBackgroundCell(out[r][c]) && !reachable[r][c]) {
-        const near = nearestNonBackground(inside, r, c);
-        if (near) out[r][c] = near;
+      if (!silhouette[r]?.[c] || visitedFill[r][c]) continue;
+      if (!isBackgroundCell(out[r][c]) || reachable[r][c]) continue;
+      // Collect this enclosed background region (4-connected).
+      const region: Array<[number, number]> = [];
+      const q = [[r, c]];
+      visitedFill[r][c] = true;
+      let enclosed = true;
+      while (q.length) {
+        const [cr, cc] = q.shift()!;
+        region.push([cr, cc]);
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+          const nr = cr + dr, nc = cc + dc;
+          if (nr < 0 || nr >= height || nc < 0 || nc >= width) continue;
+          if (visitedFill[nr][nc]) continue;
+          if (silhouette[nr]?.[nc] && !reachable[nr][nc] && isBackgroundCell(out[nr][nc])) {
+            visitedFill[nr][nc] = true;
+            q.push([nr, nc]);
+          } else if (silhouette[nr]?.[nc] && isBackgroundCell(out[nr][nc]) && reachable[nr][nc]) {
+            enclosed = false; // touches a reachable field cell -> part of the field, not a hole
+          }
+        }
       }
+      if (!enclosed) continue;
+      if (region.length <= DETAIL_MAX_CELLS) continue; // white detail — leave it
+      const near = nearestNonBackground(inside, r, c);
+      if (near) for (const [fr, fc] of region) out[fr][fc] = near;
     }
   }
   return out;
@@ -320,4 +349,238 @@ function nearestNonBackground(
     }
   }
   return null;
+}
+
+// ─── Field-white reclass + inset-box containment + grey snap (owner P0 1c6d2de8) ───
+/** Truly empty cell — serializes as "" so the client drops it (no stitch = fabric). */
+export const EMPTY_CELL: StitchCell = { color: "", dmcCode: undefined, dmcName: undefined };
+
+/**
+ * Reclassify pure FIELD white (the AI's default canvas inside a product shape) to
+ * EMPTY so it is not stitched as white thread (owner P0 1c6d2de8 Appendix C:
+ * 70x70 tree save stitched 1168 white field cells = 30% of the canvas).
+ *
+ * Rule (4-connected, in-shape only): a white cell that is reachable from the
+ * silhouette rim through white AND has NO non-white 8-neighbor is pure canvas
+ * field -> EMPTY. White cells that touch a non-white cell (star, flakes, AA
+ * edges, stocking cuffs) are DETAIL and stay. Runs AFTER the hole-fill so the
+ * subject is already solid.
+ */
+export function reclassFieldWhite(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const silhouette = buildProductSilhouette(shape, targetW || width, targetH || height);
+  const reachable = Array.from({ length: height }, () => Array(width).fill(false));
+  const queue: Array<[number, number]> = [];
+  const push = (r: number, c: number) => {
+    if (r < 0 || r >= height || c < 0 || c >= width) return;
+    if (reachable[r][c]) return;
+    if (!silhouette[r]?.[c]) return;
+    if (!isBackgroundCell(grid[r]?.[c])) return;
+    reachable[r][c] = true;
+    queue.push([r, c]);
+  };
+  // Seed from the rim: any in-shape background cell adjacent (4-conn) to an
+  // out-of-shape cell is the field edge.
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      if (!isBackgroundCell(grid[r]?.[c])) continue;
+      const touchesRim =
+        (r > 0 && !silhouette[r - 1]?.[c]) ||
+        (r < height - 1 && !silhouette[r + 1]?.[c]) ||
+        (c > 0 && !silhouette[r]?.[c - 1]) ||
+        (c < width - 1 && !silhouette[r]?.[c + 1]);
+      if (touchesRim) push(r, c);
+    }
+  }
+  while (queue.length) {
+    const [r, c] = queue.shift()!;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      push(r + dr, c + dc);
+    }
+  }
+  const out = grid.map(row => row.map(cell => ({ ...cell })));
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c] || !reachable[r][c]) continue;
+      // Has any non-white 8-neighbor? -> detail, keep.
+      let touchesSubject = false;
+      for (let dr = -1; dr <= 1 && !touchesSubject; dr++) {
+        for (let dc = -1; dc <= 1 && !touchesSubject; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr < 0 || nr >= height || nc < 0 || nc >= width) continue;
+          if (!isBackgroundCell(grid[nr]?.[nc])) touchesSubject = true;
+        }
+      }
+      if (!touchesSubject) out[r][c] = { ...EMPTY_CELL };
+    }
+  }
+  return out;
+}
+
+/**
+ * Keep the subject inside the shape's rim inset box (owner P0 1c6d2de8
+ * Appendix C item 2 — "cut off the top of the tree"): the converter's
+ * auto-trim + cover-resize zoomed the 70x70 tree ~1.3x so green rows hit
+ * 1-67 and the star was clipped by the circle. Mirror of the frame-margin
+ * band's subject-aware scale-down: measure the in-shape subject bbox and,
+ * when it crosses the safe box [inset+1, W-2-inset] x [inset+1, H-2-inset],
+ * scale the whole content about the canvas center down to fit, then re-mask.
+ * Deterministic nearest-neighbor (no invented colors); never upscales.
+ */
+export function containSubjectToRim(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const silhouette = buildProductSilhouette(shape, targetW || width, targetH || height);
+  const inset = rimInset(targetW || width, targetH || height);
+  // Safe box: one cell of slack inside the rim inset.
+  const safeTop = inset + 1;
+  const safeBottom = (targetH || height) - 2 - inset;
+  const safeLeft = inset + 1;
+  const safeRight = (targetW || width) - 2 - inset;
+  let top = height, bottom = -1, left = width, right = -1;
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      if (isBackgroundCell(grid[r]?.[c])) continue;
+      if (r < top) top = r;
+      if (r > bottom) bottom = r;
+      if (c < left) left = c;
+      if (c > right) right = c;
+    }
+  }
+  if (top >= height || bottom < 0) return grid;
+  const crosses =
+    top < safeTop || bottom > safeBottom || left < safeLeft || right > safeRight;
+  if (!crosses) return grid;
+  const bboxW = right - left + 1;
+  const bboxH = bottom - top + 1;
+  const availW = Math.max(1, safeRight - safeLeft + 1);
+  const availH = Math.max(1, safeBottom - safeTop + 1);
+  const scale = Math.min(1, availW / bboxW, availH / bboxH);
+  if (scale >= 1) return grid;
+  const scaledW = Math.max(1, Math.round(bboxW * scale));
+  const scaledH = Math.max(1, Math.round(bboxH * scale));
+  const destLeft = Math.max(0, Math.round((width - scaledW) / 2));
+  const destTop = Math.max(0, Math.round((height - scaledH) / 2));
+  const out: StitchGrid = Array.from({ length: height }, () =>
+    Array.from({ length: width }, () => ({ ...EMPTY_CELL })),
+  );
+  for (let dy = 0; dy < scaledH; dy++) {
+    const srcY = Math.min(Math.floor((dy * bboxH) / scaledH), bboxH - 1);
+    for (let dx = 0; dx < scaledW; dx++) {
+      const srcX = Math.min(Math.floor((dx * bboxW) / scaledW), bboxW - 1);
+      const cell = grid[top + srcY]?.[left + srcX];
+      if (cell && !isBackgroundCell(cell)) {
+        out[destTop + dy][destLeft + dx] = { ...cell };
+      }
+    }
+  }
+  return applyProductShapeMask(out, shape, targetW, targetH);
+}
+
+/**
+ * Grey-mush coherence (owner P0 1c6d2de8 Appendix C item 4): anti-aliased
+ * mid-greys (#b2b2b2/#3c3c3c = 583 cells, 12% of the 70x70 tree canvas)
+ * survive the quantizer where branch detail should be. On product shapes,
+ * snap low-saturation mid-luma cells to the nearest NON-grey color already
+ * present in the in-shape grid (nearest RGB neighbor), so branch/star detail
+ * reads instead of a grey band. Never touches white/black (outline) or
+ * genuinely grey designs that have no chromatic neighbor (no-op then).
+ */
+export function snapGreyMushToPalette(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const silhouette = buildProductSilhouette(shape, targetW || width, targetH || height);
+  const parse = (hex: string): [number, number, number] | null => {
+    if (!hex || hex.length !== 7) return null;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return [r, g, b];
+  };
+  const isGrey = (rgb: [number, number, number]): boolean => {
+    const [r, g, b] = rgb;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    // Floor at 40 (not 70): her tree's dark branch grey #3c3c3c has luma 60
+    // and MUST be snapped; true black outlines (~#1a1a1a, luma 26) stay.
+    return max - min <= 24 && luma >= 40 && luma <= 235;
+  };
+  // Collect chromatic in-shape colors as nearest candidates (keep full cell
+  // metadata so the snapped cell carries the candidate's DMC code/name).
+  const palette = new Map<string, StitchCell>();
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      const cell = grid[r]?.[c];
+      if (!cell || isBackgroundCell(cell)) continue;
+      const rgb = parse(cell.color);
+      if (rgb && !isGrey(rgb)) palette.set(cell.color, cell);
+    }
+  }
+  if (palette.size === 0) return grid;
+  const candidates = Array.from(palette.entries());
+  const out = grid.map(row => row.map(cell => ({ ...cell })));
+  let greyCount = 0;
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!silhouette[r]?.[c]) continue;
+      const cell = grid[r]?.[c];
+      if (!cell || isBackgroundCell(cell)) continue;
+      const rgb = parse(cell.color);
+      if (!rgb || !isGrey(rgb)) continue;
+      greyCount++;
+      let bestCell: StitchCell = cell;
+      let bestDist = Infinity;
+      for (const [hex, cand] of candidates) {
+        const [pr, pg, pb] = parse(cand.color)!;
+        const d = (rgb[0] - pr) ** 2 + (rgb[1] - pg) ** 2 + (rgb[2] - pb) ** 2;
+        if (d < bestDist) { bestDist = d; bestCell = cand; }
+      }
+      out[r][c] = { ...bestCell };
+    }
+  }
+  return out;
+}
+
+/**
+ * Recompute dmcUsage counts from a grid after color passes (field-reclass /
+ * grey-snap change which colors exist). Mirrors patternConverter's recount.
+ * Splits on cell.color (hex) and re-assigns count per dmc entry.
+ */
+export function recountDmcFromGrid(grid: StitchGrid, dmcColors: Array<{ code: string; name: string; hex: string; count: number; symbol?: string }>): Array<{ code: string; name: string; hex: string; count: number; symbol?: string }> {
+  const counts = new Map<string, number>();
+  for (const row of grid) {
+    for (const cell of row) {
+      if (!cell || !cell.color) continue;
+      const key = cell.color.toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const next = dmcColors.map(d => ({ ...d, count: counts.get(d.hex.toLowerCase()) ?? 0 }));
+  next.sort((a, b) => b.count - a.count);
+  return next;
 }

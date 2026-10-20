@@ -413,7 +413,11 @@ function drawGuide(
   switch (guide.type) {
     case 'circle': {
       ctx.setLineDash([cellSize * 0.5, cellSize * 0.35]);
-      const radius = (Math.min(guide.colW, guide.rowH) / 2) * cellSize;
+      // Same rim inset as the server mask + client maskGridToGuide (3% of the
+      // min side, 2 cells at 70x70): the DRAWN circle is the effective hold-
+      // readable clip, so guide == mask geometry (owner P0 1c6d2de8 App C).
+      const inset = Math.max(1, Math.round(0.03 * Math.min(guide.colW, guide.rowH)));
+      const radius = (Math.min(guide.colW, guide.rowH) / 2 - inset) * cellSize;
       ctx.arc(cw / 2, ch / 2, radius, 0, Math.PI * 2);
       break;
     }

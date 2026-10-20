@@ -28,7 +28,7 @@ import {
   frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
-import { applyProductShapeMask, magnifyToFillShape } from "../../domain/stitch/productShapeMask";
+import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, recountDmcFromGrid } from "../../domain/stitch/productShapeMask";
 import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
@@ -1007,6 +1007,28 @@ export function createAIEmbroideryRouter(): Router {
               effectiveShape === "stocking" && !isSmallGrid(genW, genH)
                 ? edgeHaloFill(masked, effectiveShape, genW, genH, { trimLegWhites: !!bodyDirective })
                 : masked;
+            // Large product-shape detail pass (owner P0 1c6d2de8 App C):
+            //  (a) containSubjectToRim — the converter's auto-trim + cover-resize
+            //      zoomed the 70x70 tree ~1.3x (green rows 1-67, star clipped);
+            //      scale the subject into the rim inset box [3..66] like the
+            //      frame-margin band does, so the green stays inside the circle.
+            //  (b) reclassFieldWhite — the AI default canvas inside a circle /
+            //      pillow is pure white field, NOT white thread: reachable-from-
+            //      rim white with no subject neighbor becomes EMPTY (fabric).
+            //  (c) snapGreyMushToPalette — anti-aliased mid-greys (#b2b2b2 /
+            //      #3c3c3c = 583 cells on her tree) map to the nearest real
+            //      in-shape chromatic color so branch detail reads.
+            // Stocking is excluded from (b): its white cuff/toe are subject.
+            // Small grids are excluded from all three: the charm path has its
+            // own magnify/face/bear passes and beige fur is light enough to be
+            // misread as field by (b).
+            const detailPassed =
+              !isSmallGrid(genW, genH) &&
+              (effectiveShape === "stocking" || effectiveShape === "ornament" || effectiveShape === "pillow")
+                ? (effectiveShape === "ornament" || effectiveShape === "pillow"
+                    ? snapGreyMushToPalette(reclassFieldWhite(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH), effectiveShape, genW, genH)
+                    : snapGreyMushToPalette(containSubjectToRim(haloFilled, effectiveShape, genW, genH), effectiveShape, genW, genH))
+                : haloFilled;
             // Deterministic face-feature guard (owner 09-15, 3rd report: bag
             // charm 4 "teddy bear" 28×28 → featureless orange blob, 0 dark
             // cells). The prompt can't guarantee the model draws features and
@@ -1017,7 +1039,7 @@ export function createAIEmbroideryRouter(): Router {
             // shape mask, so synthesized eyes land inside the silhouette.
             const guarded = isSmallGrid(genW, genH)
               ? applyFaceFeatureGuard(magnified, grid.dmcColors, prompt)
-              : { grid: magnified, dmcColors: grid.dmcColors };
+              : { grid: detailPassed, dmcColors: grid.dmcColors };
             // Deterministic bear-fur color rescue (owner 10-09 17:40Z charm
             // verdict #2 — "blue sweater" charm shipped rust #bf5816 / orange
             // #e27323 in EVERY round; the directive is advisory, the prompt
@@ -1032,12 +1054,16 @@ export function createAIEmbroideryRouter(): Router {
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject
             // bleeds to an edge.
-            const qualityWarning = qualityGate(rescued.grid, rescued.dmcColors, prompt, {
+            // Recount DMC usage after the field-reclass/grey passes: colors whose
+            // count hit 0 (e.g. the AI canvas white field) drop to the palette
+            // tail instead of reporting thousands of non-existent stitches.
+            const recalcDmc = recountDmcFromGrid(rescued.grid, rescued.dmcColors);
+            const qualityWarning = qualityGate(rescued.grid, recalcDmc, prompt, {
               frame: isFrameCanvasResult,
               canvasWidth: genW,
               canvasHeight: genH,
             });
-            return { grid, guarded: rescued, preview, qualityWarning };
+            return { grid, guarded: { grid: rescued.grid, dmcColors: recalcDmc }, preview, qualityWarning };
           };
           // Run the pipeline once; if a prompt-named NON-subject color ("blue
           // sweater") is ABSENT from the final grid, re-roll ONCE with a

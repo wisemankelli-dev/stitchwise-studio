@@ -426,9 +426,15 @@ function maskGridToGuide(
     const cy = r + 0.5 + oy;
     switch (guide.type) {
       case 'circle': {
-        const rad = Math.min(colW, rowH) / 2;
-        const dx = cx - colW / 2;
-        const dy = cy - rowH / 2;
+        // Mirror the SERVER's buildProductSilhouette geometry exactly (owner
+        // P0 1c6d2de8 Appendix C): rim inset 3% of the min side (2 cells at
+        // 70x70 => r33, not r35), center at (w-1)/2 with +0.5 cell centers, so
+        // the saved grid shows the same r33 fabric-rim circle the server
+        // masks to (client r35 no-inset previously won and left no rim).
+        const inset = Math.max(1, Math.round(0.03 * Math.min(colW, rowH)));
+        const rad = Math.min(colW, rowH) / 2 - inset;
+        const dx = cx - (colW - 1) / 2;
+        const dy = cy - (rowH - 1) / 2;
         return dx * dx + dy * dy <= rad * rad;
       }
       case 'roundedRect': {
