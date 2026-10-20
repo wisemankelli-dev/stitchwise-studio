@@ -31,6 +31,7 @@ import { recenterGrid } from "../../domain/stitch/recenterGrid";
 import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, preserveWhiteDetail, recountDmcFromGrid, clipShapeEdge, enforceSnowflakeDefinition } from "../../domain/stitch/productShapeMask";
 import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
+import { enforceCharmFacePostClip } from "../../domain/stitch/charmFacePostClip";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
@@ -1073,15 +1074,26 @@ export function createAIEmbroideryRouter(): Router {
             // e.g. the 13 #ffffff ring cells on stored charm a4c16a62) visually
             // spills outside the charm. Clip against full corner coverage so
             // NOTHING non-empty survives beyond the drawn circle after save.
-            const rescuedEdged = clipShapeEdge(rescued.grid, effectiveShape, genW, genH);
+                        const rescuedEdged = clipShapeEdge(rescued.grid, effectiveShape, genW, genH);
+            // Post-clip face guarantee (owner 10-20 "loses eyes, nose and
+            // details in face every time"; lead 18:15 directive — make failure
+            // structurally impossible). The true-corner clip empties every
+            // row-0 cell AND can strip injected features; this final stage
+            // re-expands the subject crown (rows 0-1) when the head reaches the
+            // top and re-audits/injects a symmetric dark-eye pair + nose from
+            // the grid's darkest color — bounded to in-circle cells, so the
+            // zero-spill guarantee holds. Nothing runs after it.
+            const faced = isSmallGrid(genW, genH) && effectiveShape === "ornament"
+              ? enforceCharmFacePostClip(rescuedEdged, effectiveShape, genW, genH)
+              : rescuedEdged;
             // Quality gate — warn (don't silently save) when the conversion
             // came out sparse/muddy, OR (on frame canvases) the subject
             // bleeds to an edge.
             // Recount DMC usage after the field-reclass/grey passes: colors whose
             // count hit 0 (e.g. the AI canvas white field) drop to the palette
             // tail instead of reporting thousands of non-existent stitches.
-            const recalcDmc = recountDmcFromGrid(rescuedEdged, rescued.dmcColors);
-            const qualityWarning = qualityGate(rescuedEdged, recalcDmc, prompt, {
+            const recalcDmc = recountDmcFromGrid(faced, rescued.dmcColors);
+            const qualityWarning = qualityGate(faced, recalcDmc, prompt, {
               frame: isFrameCanvasResult,
               canvasWidth: genW,
               canvasHeight: genH,
