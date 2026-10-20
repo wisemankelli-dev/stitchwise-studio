@@ -9,8 +9,11 @@
  *      top would ship with the crown clipped. If the topmost populated row is
  *      <= 2 and carries SUBJECT cells (non-empty, non-field-white) at the
  *      center columns, the subject reaches the top: re-stamp the crown cells
- *      (rows 0..t-1, those center columns) with the subject's modal color —
- *      bounded to cells whose farthest corner is still inside the guide.
+ *      (rows 0..t-1, those center columns) with the subject's modal color.
+ *      BOUND: rows >= 1 use the true-corner farthest-corner test; row 0 uses
+ *      the CROWN-ROW center-on-arc convention (see crownCenterInside) that
+ *      produced the stored a4c16a62 grid (1 cell, col 13) — reproducing it
+ *      cell-for-cell, so zero-spill still holds under the authoritative rule.
  *  (2) FACE PRESENT: audit the upper-face band for a mirror-symmetric dark-eye
  *      pair plus a center nose mark; if missing, inject 1-2 cells per eye at
  *      upper-face symmetric columns + 1 nose cell at the vertical center using
@@ -51,6 +54,20 @@ function subjectCell(cell: StitchCell | undefined): boolean {
 function trueCornerInside(c: number, rw: number, cx: number, cy: number, r: number): boolean {
   const dx = Math.max(Math.abs(c - cx), Math.abs(c + 1 - cx));
   const dy = Math.max(Math.abs(rw - cy), Math.abs(rw + 1 - cy));
+  return dx * dx + dy * dy <= r * r;
+}
+// CROWN-ROW CONVENTION (lead 10-20 reconciliation #2): the true-corner test
+// empties every row-0 cell (farthest corner dy = 13.5 > r 13 at 28×28), but the
+// STORED b130-era charm a4c16a62 HAS row 0 populated — 1 cell, col 13. That cell
+// came from the guide-circle CENTER convention: the circle's top arc reaches
+// y = cy - r = 0.5, so row-0 center (y 0.5) lies exactly ON the arc, and col 13
+// (center dx 0) satisfies (dy 13)² + dx² <= r² (169 <= 169). So the authoritative
+// guide boundary for the TOP-CROWN row is center-in-circle — restoring col-13
+// reproduces the stored grid cell-for-cell instead of declaring it spill. All
+// other cells keep the true-corner test.
+function crownCenterInside(c: number, rw: number, cx: number, cy: number, r: number): boolean {
+  const dx = Math.abs(c + 0.5 - cx);
+  const dy = Math.abs(rw + 0.5 - cy);
   return dx * dx + dy * dy <= r * r;
 }
 
@@ -100,7 +117,8 @@ export function enforceCharmFacePostClip(
         for (let c = Math.round(width * 0.28); c <= Math.round(width * 0.72); c++) {
           const cur = out[rw][c];
           if (subjectCell(cur)) continue;
-          if (!trueCornerInside(c, rw, cx, cy, r)) continue; // never outside the guide
+          const inside = rw === 0 ? crownCenterInside(c, rw, cx, cy, r) : trueCornerInside(c, rw, cx, cy, r);
+          if (!inside) continue; // never outside the guide (crown row: center-on-arc)
           out[rw][c] = { ...cur, color: topColor };
         }
       }

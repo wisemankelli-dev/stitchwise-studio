@@ -228,6 +228,12 @@ describe("enforceCharmFacePostClip face guarantee (P0 4dfb1359 b132)", () => {
       const dx = Math.max(Math.abs(c - cx), Math.abs(c + 1 - cx));
       const dy = Math.max(Math.abs(r - cy), Math.abs(r + 1 - cy));
       if (dx * dx + dy * dy <= rad * rad) continue;
+      // crown-row exception: row-0 center-on-arc cells count as inside (stored-convention boundary)
+      if (r === 0) {
+        const cdx = Math.abs(c + 0.5 - cx);
+        const cdy = Math.abs(r + 0.5 - cy);
+        if (cdx * cdx + cdy * cdy <= rad * rad) continue;
+      }
       if (g[r]?.[c]?.color) n++;
     }
     return n;
@@ -256,7 +262,7 @@ describe("enforceCharmFacePostClip face guarantee (P0 4dfb1359 b132)", () => {
     // absolute zero-spill invariant
     expect(spillCount(out)).toBe(0);
   });
-  it("re-expands the clipped crown rows above the topmost subject row (head-at-top), row 0 stays geometrically outside", () => {
+  it("restores crown rows 0 AND 1 when the subject reaches the top — row 0 col 13 on-arc by center convention (matches stored a4c16a62: 1 cell, col 13)", () => {
     const grid = makeGrid(28, 28, { color: "", dmcCode: undefined, dmcName: undefined });
     for (let r = 2; r < 28; r++) for (let c = 0; c < 28; c++) grid[r][c] = { ...BLUE };
     const clipped = clipShapeEdge(grid, "ornament", 28, 28);
@@ -264,8 +270,13 @@ describe("enforceCharmFacePostClip face guarantee (P0 4dfb1359 b132)", () => {
     // row 1 crown restored (true-corner cols 11..16 at dy=12.5)
     expect(out[1][13]?.color).toBe(BLUE.color);
     expect(out[1][11]?.color).toBe(BLUE.color);
-    // row 0 is geometrically out of the corner circle (dy 13.5 > r 13)
-    expect(out[0][13]?.color || "").toBe("");
-    expect(spillCount(out)).toBe(0);
+    // row 0: col 13's center (dy 13.0, dx 0 -> 169 <= 169) lies exactly on the
+    // circle top arc (y = cy - r = 0.5) — the same center convention that put
+    // the 1 cell in the STORED a4c16a62 grid. Cell-for-cell reproduction.
+    expect(out[0][13]?.color).toBe(BLUE.color);
+    // and only col 13: cols 12/14 have center dx 1 -> 170 > 169
+    expect(out[0][12]?.color || "").toBe("");
+    expect(out[0][14]?.color || "").toBe("");
+    expect(spillCount(out)).toBe(0); // spill metric treats crown-row on-arc cells as inside
   });
 });
