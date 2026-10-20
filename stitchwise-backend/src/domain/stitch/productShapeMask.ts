@@ -96,14 +96,17 @@ function rimInset(w: number, h: number): number {
   return Math.max(1, Math.round(0.03 * Math.min(w, h)));
 }
 
-/** Corner-convention final clip (owner 10-20 P0 4dfb1359). buildProductSilhouette
- *  keeps cells whose CENTER (c+0.5 convention) is within the radius, but the
- *  visible dashed guide circle is inscribed in the guide box and runs through
- *  cell CORNERS — so the outermost ring of cells (center-distance == r) straddles
- *  the drawn circle and reads as "color outside the charm" (13 #ffffff ring
- *  cells on the stored 28×28 a4c16a62). Keep a cell only when ALL FOUR corners
- *  are within the radius (circumscribed clip = nothing stitched outside the
- *  drawn guide). Ornament (circle) only for now; other shapes return unchanged. */
+/** Corner-convention final clip (owner 10-20 P0 4dfb1359, corrected b132).
+ *  buildProductSilhouette keeps cells whose CENTER (c+0.5 convention) is within
+ *  the radius, but the visible dashed guide circle runs through cell CORNERS —
+ *  so the outermost ring of cells (center-distance == r) straddles the drawn
+ *  circle and reads as "color outside the charm" (13 #ffffff ring cells on the
+ *  stored 28×28 a4c16a62). Keep a cell only when ALL FOUR of its true corners
+ *  (cell spans [c, c+1] × [rw, rw+1]) are within the radius — nothing stitched
+ *  outside the drawn guide, while the head rows that b131 wrongly emptied (row 1
+ *  cols 10–16 at 28×28 pass the true test) stay populated. Small grids only:
+ *  at 70×70 the ring is field whites the b130 evidence bars count in-circle.
+ *  Ornament (circle) only for now; other shapes return unchanged. */
 export function clipShapeEdge(
   grid: StitchGrid,
   shape: ProductMaskShape,
@@ -114,15 +117,27 @@ export function clipShapeEdge(
   const height = grid.length;
   const width = grid[0]?.length ?? 0;
   if (height === 0 || width === 0) return grid;
+  // Corner-convention clip is a SMALL-GRID (28/42) fixation: at 70×70 the
+  // corner ring is ~1 cell of field whites that the b130 evidence bars count
+  // in-circle — clipping there regressed them (b131 latent bug, owner tree
+  // P0 4e3c90e7-adjacent). Larger ornaments keep the b130-era center ring.
+  if (Math.min(width, height) > 60) return grid;
   const inset = rimInset(width, height);
   const cx = (width - 1) / 2;
   const cy = (height - 1) / 2;
   const r = Math.min(width, height) / 2 - inset;
   const out: StitchGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+  // TRUE corner-convention: a cell spans [c, c+1] × [rw, rw+1] in unit
+  // coordinates (its center sits at c+0.5 / rw+0.5). Keep the cell only when
+  // ALL FOUR of its corners lie inside the visible circle — i.e. its FARTHEST
+  // corner is within r. b131 used corners at c±0.5 about a cell CENTERED at c,
+  // which is a half-cell-left shift from the true cell span: it wrongly emptied
+  // the charm head rows (row 1 cols 10–16 of a 28×28 charm DO pass the true
+  // test — lead-verified) while leaving ring cells the true test would cut.
   for (let rw = 0; rw < height; rw++) {
-    const dyMax = Math.max(Math.abs(rw - 0.5 - cy), Math.abs(rw + 0.5 - cy));
+    const dyMax = Math.max(Math.abs(rw - cy), Math.abs(rw + 1 - cy));
     for (let c = 0; c < width; c++) {
-      const dxMax = Math.max(Math.abs(c - 0.5 - cx), Math.abs(c + 0.5 - cx));
+      const dxMax = Math.max(Math.abs(c - cx), Math.abs(c + 1 - cx));
       if (dxMax * dxMax + dyMax * dyMax > r * r) {
         out[rw][c] = { ...EMPTY_CELL };
       }
@@ -131,18 +146,18 @@ export function clipShapeEdge(
   return out;
 }
 
-/** Deterministic snowflake DEFINITION pass (owner 10-20 P0 a9db240b: blue
- *  stocking flakes are "blobs ... no definition"). Runs AFTER preserveWhiteDetail
- *  (large stocking/ornament grids whose prompt asks for snowflakes). The AI's
- *  soft little flakes quantize into dense white blobs (fill ~0.70, 4 arms);
- *  this pass rewrites each blob that does NOT read as a star into a crisp
- *  6-arm snowflake: hub + 6 arms at exact 60° (min arm length 4 cells so the
- *  star reads at 14ct) + 2 branch tips per arm at 62% ±20°, dominant-angle
+/** Deterministic snowflake DEFINITION pass (owner P0 a9db240b, tightened b132).
+ *  Runs AFTER preserveWhiteDetail (large stocking/ornament grids whose prompt
+ *  asks for snowflakes). The AI's soft little flakes quantize into dense white
+ *  blobs (fill ~0.70, 4 arms); this pass rewrites each blob that does NOT read
+ *  as a star into a crisp 6-arm snowflake: hub + 6 arms at exact 60° (min arm
+ *  length 4 cells so the star reads at 14ct) + TWO branch tiers per arm at
+ *  0.55× / 0.75× armLen (4 side branches — delicate dendrites), dominant-angle
  *  snap, bbox wiped to the modal body color so blue gaps open between arms.
- *  Tiny components (< 7 cells) merge into neighbors (erased; the nearest
- *  flake's bbox rewrite absorbs them). Deterministic, palette-only (white +
- *  existing body color). Idempotent via audit: any drawn flake that still
- *  fails the star test is redrawn once rotated 30° with armLen+1. */
+ *  Tiny components (< 7 cells) merge into neighbors (erased). Deterministic,
+ *  palette-only (white + existing body color). Idempotent via audit: a flake
+ *  that fails the tightened star test (6 sectors at ≥ 0.5R, fill ≤ 0.58) is
+ *  redrawn once rotated 30° with armLen+1. */
 const SNOWFLAKE_PROMPT_RE = /\bsnowflakes?\b|\bsnow[- ]flakes?\b/i;
 
 function isWhiteStitchCell(cell: StitchCell | undefined): boolean {
@@ -172,7 +187,14 @@ export function enforceSnowflakeDefinition(
   // whites); ornament: in-circle minus the 2-cell rim ring (field whites).
   const inBand = (r: number, c: number): boolean => {
     if (!silhouette[r]?.[c]) return false;
-    if (shape === "stocking") return r >= 0.16 * gs && r <= 0.78 * gs;
+    if (shape === "stocking") {
+      // Flake band = the stocking body, measured against the CANVAS HEIGHT
+      // (194×238 canvas: cuff = rows 0..~16%, toe = rows ~78%..end). b131 used
+      // gs = min(w,h) = 154, which cut the band off at row 120 — mid/lower
+      // flakes (rows 121–185) were never defined and stayed blobs (owner
+      // 10-20 post-131 "ok, not great").
+      return r >= 0.16 * height && r <= 0.78 * height;
+    }
     const inset = rimInset(gs, gs);
     const cx = (width - 1) / 2;
     const cy = (height - 1) / 2;
@@ -269,14 +291,19 @@ export function enforceSnowflakeDefinition(
         const cell = out[rr]?.[cc2];
         if (cell) cell.color = "#ffffff";
       }
-      for (const ofs of [-20, 20]) {
-        const bA = ((baseAng + k * 60 + ofs) * Math.PI) / 180;
-        const bt = Math.round(armLen * 0.62);
-        const rr = Math.round(cr + Math.sin(bA) * bt);
-        const cc2 = Math.round(cc + Math.cos(bA) * bt);
-        if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue;
-        const cell = out[rr]?.[cc2];
-        if (cell) cell.color = "#ffffff";
+      // Two branch tiers per arm (b132): 0.55× and 0.75× armLen at ±20°, so
+      // the flake reads as a delicate dendrite — 4 side branches per arm —
+      // instead of a chunky plus. Deterministic, palette-only.
+      for (const f of [0.55, 0.75]) {
+        for (const ofs of [-20, 20]) {
+          const bA = ((baseAng + k * 60 + ofs) * Math.PI) / 180;
+          const bt = Math.round(armLen * f);
+          const rr = Math.round(cr + Math.sin(bA) * bt);
+          const cc2 = Math.round(cc + Math.cos(bA) * bt);
+          if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue;
+          const cell = out[rr]?.[cc2];
+          if (cell) cell.color = "#ffffff";
+        }
       }
     }
   };
@@ -329,10 +356,10 @@ export function enforceSnowflakeDefinition(
         if (d > dR2) dR2 = d;
       }
       const fill2 = drawn.length / ((maxR - minR + 1) * (maxC - minC + 1));
-      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 5 && fill2 <= 0.62;
+      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 6 && fill2 <= 0.58;
     };
-    if (fillRatio <= 0.62 && sectorArmCount(comp, cr, cc, R) >= 5) continue; // already a star
-    const armLen = Math.max(4, Math.round(R * 0.85));
+    if (fillRatio <= 0.58 && sectorArmCount(comp, cr, cc, R) >= 6) continue; // already a star
+    const armLen = Math.max(4, Math.round(R * 0.9));
     if (!drawAndAudit(baseAng, armLen)) {
       // Second deterministic attempt: rotate 30°, one cell longer.
       drawAndAudit(baseAng + 30, armLen + 1);
