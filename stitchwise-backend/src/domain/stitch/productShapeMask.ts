@@ -96,6 +96,41 @@ function rimInset(w: number, h: number): number {
   return Math.max(1, Math.round(0.03 * Math.min(w, h)));
 }
 
+/** Corner-convention final clip (owner 10-20 P0 4dfb1359). buildProductSilhouette
+ *  keeps cells whose CENTER (c+0.5 convention) is within the radius, but the
+ *  visible dashed guide circle is inscribed in the guide box and runs through
+ *  cell CORNERS — so the outermost ring of cells (center-distance == r) straddles
+ *  the drawn circle and reads as "color outside the charm" (13 #ffffff ring
+ *  cells on the stored 28×28 a4c16a62). Keep a cell only when ALL FOUR corners
+ *  are within the radius (circumscribed clip = nothing stitched outside the
+ *  drawn guide). Ornament (circle) only for now; other shapes return unchanged. */
+export function clipShapeEdge(
+  grid: StitchGrid,
+  shape: ProductMaskShape,
+  targetW: number,
+  targetH: number,
+): StitchGrid {
+  if (shape !== "ornament") return grid;
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (height === 0 || width === 0) return grid;
+  const inset = rimInset(width, height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const r = Math.min(width, height) / 2 - inset;
+  const out: StitchGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+  for (let rw = 0; rw < height; rw++) {
+    const dyMax = Math.max(Math.abs(rw - 0.5 - cy), Math.abs(rw + 0.5 - cy));
+    for (let c = 0; c < width; c++) {
+      const dxMax = Math.max(Math.abs(c - 0.5 - cx), Math.abs(c + 0.5 - cx));
+      if (dxMax * dxMax + dyMax * dyMax > r * r) {
+        out[rw][c] = { ...EMPTY_CELL };
+      }
+    }
+  }
+  return out;
+}
+
 /** Build a boolean silhouette mask (true = inside the shape). */
 export function buildProductSilhouette(
   shape: ProductMaskShape,
@@ -204,7 +239,13 @@ export function magnifyToFillShape(
   }
   if (interior === 0 || top >= height) return grid;
   const fill = fg / interior;
-  if (fill >= 0.55) return grid; // already dense — keep the drawing as-is
+  // Dense AND already at the shape top — keep the drawing as-is. A dense
+  // subject that is stranded >= 2 rows below the shape top (owner 10-20 P0
+  // 4dfb1359: charm head cut off because the white sky cap made top=3 but
+  // fill was 67.5% >= 55%) still magnifies — the bbox cover-fit lands the
+  // head near row 1 and the cap rows become background by construction
+  // (dest only writes non-background cells).
+  if (fill >= 0.55 && top <= 1) return grid;
   const bboxW = right - left + 1;
   const bboxH = bottom - top + 1;
   if (bboxW <= 0 || bboxH <= 0) return grid;
