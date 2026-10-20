@@ -218,9 +218,13 @@ export function magnifyToFillShape(
   // cover-fit (Math.max) — contain-fit (min) kept a tall-narrow teddy narrow
   // (owner P0 1c6d2de8 e5f979cf: fill stuck at 58% because availW/bboxW never
   // applied when the height ratio was smaller).
+  // Cover-fit zoom, but NEVER let the scaled size overflow the target canvas:
+  // a tall-narrow subject inside a circle could otherwise scale height past
+  // targetH and write out of bounds (TypeError in the repro pipeline). Clamp
+  // to the target so dest stays in-bounds; the re-mask below clips overflow.
   const k = Math.max(1, Math.max(availW / bboxW, availH / bboxH));
-  const scaledW = Math.max(bboxW, Math.round(bboxW * k));
-  const scaledH = Math.max(bboxH, Math.round(bboxH * k));
+  const scaledW = Math.max(bboxW, Math.min(targetW, Math.round(bboxW * k)));
+  const scaledH = Math.max(bboxH, Math.min(targetH, Math.round(bboxH * k)));
   const destLeft = Math.max(0, Math.round((targetW - scaledW) / 2));
   const destTop = Math.max(0, Math.round((targetH - scaledH) / 2));
   const out: StitchGrid = Array.from({ length: height }, () =>
