@@ -277,7 +277,10 @@ export function enforceSnowflakeDefinition(
       if (d > R2) R2 = d;
     }
     const R = Math.sqrt(R2);
-    const hubR = Math.max(1, Math.round(armLen * 0.22));
+    // Hub capped at radius 2 (≤13 white cells) — scaling with armLen made a
+    // 4-radius white disc on big flakes, exactly the "indistinct white blob"
+    // the owner rejected (b133 Fix D audit gate: no in-band white comp >15).
+    const hubR = Math.max(1, Math.min(2, Math.round(armLen * 0.22)));
     for (let r = minR; r <= maxR; r++) {
       for (let c = minC; c <= maxC; c++) {
         const cell = out[r]?.[c];
