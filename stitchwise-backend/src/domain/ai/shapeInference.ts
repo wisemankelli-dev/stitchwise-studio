@@ -36,6 +36,13 @@ const STOCKING_CONTEXT = /\b(toes?|tops?|cuffs?|socks?|snowflakes?|christmas|hol
 const ORNAMENT_RE =
   /\b(ornaments?|baubles?|bag\s+charms?|christmas\s+trees?|xmas\s+trees?|holiday\s+trees?|snow\s?flakes?|holiday\s+decorations?|christmas\s+decorations?)\b/i;
 const PILLOW_RE = /\b(pillows?|cushions?)\b/i;
+// 10-21 (owner b132 retest, P0 4dfb1359): her charm prompt was "teddy bear with
+// blue sweater" — no product noun at all, yet the canvas was a 28×28 charm. The
+// frame path (no shape) silently bypassed mask/clip/face and saved an unmasked
+// small centered subject. "charm" alone is ambiguous on big canvases (a charm
+// BRACELET pattern), but on a SMALL grid (≤60 cells) it is overwhelmingly a
+// bag-charm product intent — route it to ornament deterministically.
+const CHARM_RE = /\bcharms?\b/i;
 
 /**
  * Infer the product shape named by the prompt, or undefined when no strong
@@ -43,12 +50,16 @@ const PILLOW_RE = /\b(pillows?|cushions?)\b/i;
  * / "rect" (frame shapes) are never inferred; a shape-less prompt without a
  * product noun keeps the current frame behavior.
  */
-export function inferShapeFromPrompt(prompt: string | undefined): InferredProductShape | undefined {
+export function inferShapeFromPrompt(
+  prompt: string | undefined,
+  opts?: { smallGrid?: boolean },
+): InferredProductShape | undefined {
   if (!prompt) return undefined;
   if (STOCKING_EXPLICIT.test(prompt) || (STOCKING_BARE.test(prompt) && STOCKING_CONTEXT.test(prompt))) {
     return "stocking";
   }
   if (ORNAMENT_RE.test(prompt)) return "ornament";
+  if (opts?.smallGrid && CHARM_RE.test(prompt)) return "ornament";
   if (PILLOW_RE.test(prompt)) return "pillow";
   return undefined;
 }
@@ -62,6 +73,7 @@ export function inferShapeFromPrompt(prompt: string | undefined): InferredProduc
 export function resolveEffectiveShape(
   shape: ProductShapeParam | undefined,
   prompt: string | undefined,
+  opts?: { smallGrid?: boolean },
 ): ProductShapeParam | undefined {
-  return shape ?? inferShapeFromPrompt(prompt);
+  return shape ?? inferShapeFromPrompt(prompt, opts);
 }

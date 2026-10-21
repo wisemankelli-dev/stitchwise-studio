@@ -872,6 +872,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const lastSaved = useRef<Record<string, string>>({});
   // Save/Load state (F-2: studio toolbar Save/Load wired to /api/patterns)
   const [patternName, setPatternName] = useState('');
+  // b133: the id of the saved pattern this design was loaded from — sent as
+  // patternId on generate so the server re-converts the SAME source image.
+  const [loadedPatternId, setLoadedPatternId] = useState<string | null>(null);
   const [isSavingPattern, setIsSavingPattern] = useState(false);
   const [savedPatterns, setSavedPatterns] = useState<SavedPatternSummary[]>([]);
   const [showPatternLoad, setShowPatternLoad] = useState(false);
@@ -1590,6 +1593,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         ));
       }
       setPatternName(p.name);
+      // b133: remember which saved pattern this design came from so a later
+      // "generate" re-converts ITS saved source image (deterministic regenerate)
+      // instead of rolling a brand-new AI subject.
+      setLoadedPatternId(id);
       // Restore AI provenance so a round-trip load→save keeps the prompt +
       // source artwork (owner 09-11: "teddy bear ornament2" saved with a NULL
       // sourceImage — the load path never restored it, so the save lost it).
@@ -1659,6 +1666,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         canvasHeight: targetH,
         shape: aiShape,
         premiumModel: premiumModel && isStudioTier ? true : undefined,
+        // b133: a design opened from the pattern library carries its pattern id
+        // so "generate" on a saved design REGENERATES that design's saved source
+        // image deterministically (no new AI subject) — backend re-converts the
+        // stored sourceImage with the product shape recovered from the pattern
+        // name + prompt.
+        ...(loadedPatternId ? { patternId: loadedPatternId } : {}),
       });
       // Backend quality gate: if the image didn't convert cleanly, say so
       // instead of silently showing a bad grid (owner 09-03 definition of done).

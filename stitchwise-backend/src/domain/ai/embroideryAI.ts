@@ -92,6 +92,10 @@ export const TextToPatternSchema = z.object({
   aspectRatio: z.enum(["1:1", "2:3", "3:4", "9:16", "16:9"]).optional(),
   /** Product shape hint for prompt enrichment ("stocking"|"ornament"|"pillow"|"square"). */
   shape: z.enum(["stocking", "ornament", "pillow", "square", "rect"]).optional(),
+  /** Owner's saved pattern to REGENERATE (10-21 b133): re-convert its stored
+   *  source image deterministically (no new AI roll) with the product shape
+   *  recovered from the pattern name + prompt. */
+  patternId: z.string().uuid().optional(),
 });
 
 export const ImageToPatternSchema = z.object({

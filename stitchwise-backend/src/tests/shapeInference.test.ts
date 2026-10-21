@@ -81,3 +81,37 @@ describe("frame decision (the exact failure class)", () => {
     expect(isFrameCanvas("stocking", 100, 100)).toBe(false);
   });
 });
+// ─── b133 additions (owner b132 retest P0 4dfb1359) ─────────────────────────
+describe("b133: small-grid 'charm' widening", () => {
+  it("routes a bare 'charm' noun to ornament on a small grid", () => {
+    expect(inferShapeFromPrompt("teddy bear with blue sweater charm", { smallGrid: true })).toBe("ornament");
+  });
+
+  it("keeps frame behavior for a bare 'charm' noun on a large grid", () => {
+    expect(inferShapeFromPrompt("yellow charm bracelet", { smallGrid: false })).toBeUndefined();
+    expect(inferShapeFromPrompt("yellow charm bracelet")).toBeUndefined();
+  });
+
+  it("still detects existing ornament family nouns on large grids", () => {
+    expect(inferShapeFromPrompt("a red bauble", { smallGrid: false })).toBe("ornament");
+    expect(inferShapeFromPrompt("bag charm", { smallGrid: false })).toBe("ornament");
+  });
+});
+
+describe("b133: name+prompt shape recovery for regenerate", () => {
+  it("reconstructs ornament from the owner's saved pattern name", () => {
+    expect(
+      resolveEffectiveShape(undefined, "teddy bag charm update2 a teddy bear with a blue sweater", {
+        smallGrid: true,
+      }),
+    ).toBe("ornament");
+  });
+
+  it("an explicit request shape always wins over the name+prompt", () => {
+    expect(
+      resolveEffectiveShape("stocking", "teddy bag charm update2 a teddy bear with a blue sweater", {
+        smallGrid: true,
+      }),
+    ).toBe("stocking");
+  });
+});

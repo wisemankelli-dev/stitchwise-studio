@@ -9,6 +9,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import type { PrismaClient } from "@prisma/client";
 import multer from "multer";
 import {
   TextToPatternSchema,
@@ -831,9 +832,232 @@ export function qualityGate(
 }
 
 /**
+ * Deterministic AI-image → pattern conversion (b133 extraction, 10-21).
+ *
+ * This is the EXACT stage pipeline the generate job runs (recenter → shape
+ * mask → small-grid magnify → halo fill → detail pass → snowflake definition →
+ * corner clip → face guard → bear rescue → final clip → post-clip face
+ * guarantee → DMC recount → quality gate). It is used by BOTH:
+ *   - the async generate job (after Gemini returns a fresh image) — behavior
+ *     unchanged, and
+ *   - the new deterministic REGENERATE path (owner b132 retest P0 4dfb1359):
+ *     re-converts the SAVED source image bytes with the product shape
+ *     recovered from the pattern's name + prompt, so clicking "generate" on a
+ *     saved design NEVER rolls a new AI subject ("bear is totally different").
+ *
+ * KEEP IN SYNC with the inline chain in createAIEmbroideryRouter's
+ * runConversion if the conversion stages ever change.
+ */
+export interface StitchConversionOptions {
+  /** ORIGINAL user prompt (face guard / bear rescue / body directive / quality). */
+  prompt: string;
+  /** ENRICHED prompt (snowflake-definition gate). */
+  finalPrompt: string;
+  shape: "stocking" | "ornament" | "pillow" | "square" | "rect" | undefined;
+  gridSize: number;
+  maxColors: number;
+  genW: number;
+  genH: number;
+  isFrameCanvasResult: boolean;
+}
+
+export async function convertStitchPatternImage(
+  buffer: Buffer,
+  opts: StitchConversionOptions,
+): Promise<{
+  grid: Awaited<ReturnType<typeof imageBufferToStitchGrid>>;
+  guarded: {
+    grid: StitchCell[][];
+    dmcColors: Awaited<ReturnType<typeof recountDmcFromGrid>>;
+  };
+  qualityWarning: string | null;
+}> {
+  const { prompt, finalPrompt, shape, gridSize, maxColors, genW, genH, isFrameCanvasResult } = opts;
+  // Color cap: floor higher than before so vibrant scenes keep enough colors
+  // (owner: sunset scene collapsed to 4 muddy colors at cap 6).
+  const aiColorCap = Math.max(16, Math.round(maxColors * 0.9));
+  const grid = await imageBufferToStitchGrid(
+    buffer,
+    gridSize,
+    Math.min(maxColors, aiColorCap),
+    { width: genW, height: genH },
+    { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
+  );
+  const recentered = recenterGrid(
+    grid.grid,
+    isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
+  );
+  const masked =
+    shape === "stocking" || shape === "ornament" || shape === "pillow"
+      ? applyProductShapeMask(recentered, shape, genW, genH)
+      : recentered;
+  const magnified =
+    isSmallGrid(genW, genH) && (shape === "stocking" || shape === "ornament" || shape === "pillow")
+      ? magnifyToFillShape(masked, shape, genW, genH)
+      : masked;
+  const haloFilled =
+    shape === "stocking" && !isSmallGrid(genW, genH)
+      ? edgeHaloFill(masked, shape, genW, genH, {
+          trimLegWhites: !!stockingBodyDirective(prompt, shape),
+        })
+      : masked;
+  const detailBase =
+    !isSmallGrid(genW, genH) && (shape === "stocking" || shape === "ornament" || shape === "pillow")
+      ? shape === "ornament" || shape === "pillow"
+        ? preserveWhiteDetail(snapGreyMushToPalette(reclassFieldWhite(containSubjectToRim(haloFilled, shape, genW, genH), shape, genW, genH), shape, genW, genH), shape, genW, genH)
+        : preserveWhiteDetail(snapGreyMushToPalette(containSubjectToRim(haloFilled, shape, genW, genH), shape, genW, genH), shape, genW, genH)
+      : haloFilled;
+  const detailSnow =
+    shape === "stocking" || shape === "ornament"
+      ? enforceSnowflakeDefinition(detailBase, shape, genW, genH, finalPrompt)
+      : detailBase;
+  const detailPassed =
+    shape === "ornament" && isSmallGrid(genW, genH)
+      ? clipShapeEdge(detailSnow, shape, genW, genH)
+      : detailSnow;
+  const guarded = isSmallGrid(genW, genH)
+    ? applyFaceFeatureGuard(magnified, grid.dmcColors, prompt)
+    : { grid: detailPassed, dmcColors: grid.dmcColors };
+  const rescued = isSmallGrid(genW, genH)
+    ? applyBearColorRescue(guarded.grid, guarded.dmcColors, prompt)
+    : guarded;
+  // Cast mirrors the runtime guard inside clipShapeEdge (any non-product shape
+  // returns the grid unchanged) — equivalent to the inline chain's behavior.
+  const rescuedEdged = clipShapeEdge(rescued.grid, shape as "stocking" | "ornament" | "pillow", genW, genH);
+  const faced =
+    isSmallGrid(genW, genH) && shape === "ornament"
+      ? enforceCharmFacePostClip(rescuedEdged, shape, genW, genH)
+      : rescuedEdged;
+  const recalcDmc = recountDmcFromGrid(faced, rescued.dmcColors);
+  const qualityWarning = qualityGate(faced, recalcDmc, prompt, {
+    frame: isFrameCanvasResult,
+    canvasWidth: genW,
+    canvasHeight: genH,
+  });
+  return { grid, guarded: { grid: faced, dmcColors: recalcDmc }, qualityWarning };
+}
+
+/**
+ * Deterministic REGENERATE (b133, owner b132 retest P0 4dfb1359).
+ *
+ * Re-runs the exact conversion chain on a SAVED pattern's stored source
+ * image. The subject is BINARY: the same source in → the same subject out;
+ * only the conversion stages can change the result. This closes the workflow
+ * hole where the Designer's "generate" on a saved design re-rolled Gemini on
+ * the TEXT prompt ("I opened file and regenerated and it made a whole new
+ * bear"). Auth: the pattern must belong to the signed-in user (401 otherwise).
+ * No AI model call, no async job — responds sync 200 with the standard
+ * pattern body so the client renders it exactly like a fresh generation.
+ */
+interface RegeneratePatternContext {
+  patternId: string;
+  prompt: string;
+  requestShape?: "stocking" | "ornament" | "pillow" | "square" | "rect";
+  fabricCount?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  gridSize?: number;
+  req: Request;
+  res: Response;
+  prisma?: PrismaClient;
+}
+
+async function handleRegeneratePattern(ctx: RegeneratePatternContext): Promise<void> {
+  const { patternId, prompt, requestShape, fabricCount, canvasWidth, canvasHeight, req, res, prisma } = ctx;
+  try {
+    const user = (req as any).user;
+    if (!user?.userId) {
+      res.status(401).json({ success: false, error: "Please sign in to regenerate a saved pattern" });
+      return;
+    }
+    if (!prisma) {
+      res.status(503).json({ success: false, error: "Pattern store unavailable — try again shortly" });
+      return;
+    }
+    const pattern = await prisma.embroideryPattern.findFirst({
+      where: { id: patternId, userId: user.userId },
+      select: { id: true, name: true, prompt: true, sourceImage: true },
+    });
+    if (!pattern) {
+      res.status(404).json({ success: false, error: "Pattern not found" });
+      return;
+    }
+    const source = pattern.sourceImage;
+    if (!source || source.length < 64 || !source.includes(",")) {
+      res.status(400).json({
+        success: false,
+        error: "This pattern has no saved source image — open the design and run Generate to create a new one",
+      });
+      return;
+    }
+    // The stored sourceImage is a base64 data-URL ("data:image/...;base64," +
+    // payload). The wrapper's mime claim is NOT trustworthy (b133 evidence:
+    // the wrapper says image/png while the payload bytes are JPEG) — decode
+    // the payload after the first comma and let the converter sniff the real
+    // format. This is exactly why the first offline replays failed.
+    const imageBuf = Buffer.from(source.split(",").slice(1).join(","), "base64");
+    if (imageBuf.length < 32) {
+      res.status(400).json({ success: false, error: "Saved source image is unreadable" });
+      return;
+    }
+    const fc = fabricCount || DEFAULT_FABRIC_COUNT;
+    const maxColors = getMaxColors(fc);
+    const genW = canvasWidth ?? 70;
+    const genH = canvasHeight ?? 70;
+    // Product shape: the pattern NAME first (owner's "teddy bag charm update2"
+    // → ornament via ORNAMENT_RE), then the prompt; the request's explicit
+    // shape (a restored product guide in the Designer) wins over both.
+    const shapeSource = `${pattern.name} ${prompt}`.trim();
+    const effectiveShape = resolveEffectiveShape(requestShape, shapeSource, {
+      smallGrid: isSmallGrid(genW, genH),
+    });
+    const isFrameCanvasResult = isFrameCanvas(effectiveShape, genW, genH);
+    const finalPrompt = enrichAIPrompt(prompt, effectiveShape, {
+      canvasWidth: genW,
+      canvasHeight: genH,
+    }).prompt;
+    // Same grid-size convention the client uses for gen (≥200 cap 240); the
+    // converter resolves the canvas from genW/genH.
+    const guessedGridSize = ctx.gridSize ?? Math.min(240, Math.max(genW, genH, 200));
+    const conversion = await convertStitchPatternImage(imageBuf, {
+      prompt,
+      finalPrompt,
+      shape: effectiveShape,
+      gridSize: guessedGridSize,
+      maxColors,
+      genW,
+      genH,
+      isFrameCanvasResult,
+    });
+    // NO missing-named-color re-roll on purpose: a re-roll would mint a NEW
+    // AI subject — the exact failure the owner hit. The conversion warning
+    // (if any) is passed through so the client can still surface it.
+    res.status(200).json(
+      buildPatternResponse(
+        { ...conversion.grid, grid: conversion.guarded.grid, dmcColors: conversion.guarded.dmcColors },
+        {
+          promptUsed: prompt,
+          processingTimeMs: 0,
+          fabric: { count: fc, inches: +((genW || 70) / fc).toFixed(2) },
+          previewUrl: source,
+          regeneratedFrom: patternId,
+          ...(conversion.qualityWarning ? { qualityWarning: conversion.qualityWarning } : {}),
+        },
+      ),
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error({ event: "regenerate_pattern_error", patternId, error: message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+}
+
+/**
  * Creates a router for AI Embroidery pattern generation endpoints.
  */
-export function createAIEmbroideryRouter(): Router {
+export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
   const router = Router();
 
   /**
@@ -862,13 +1086,29 @@ export function createAIEmbroideryRouter(): Router {
         }
 
         const { prompt, gridSize: rawGridSize, negativePrompt, fabricCount, desiredInches, premiumModel, canvasWidth, canvasHeight, aspectRatio: aspectRatioOpt, shape } = parsed.data;
-        // Prompt-driven shape (owner 10-19 P0 c9f3e630): an explicit shape
-        // always wins; when the client sent NONE (custom canvas — no preset
-        // guide), the product noun in the prompt decides. This is the server
-        // safety net: a broken/forgotten client can never produce an unmasked
-        // stocking again, because inferShapeFromPrompt feeds EVERY downstream
-        // consumer (isFrameCanvas, enrichAIPrompt, applyProductShapeMask).
-        const effectiveShape = resolveEffectiveShape(shape, prompt);
+        // ── Deterministic REGENERATE (owner b132 retest P0 4dfb1359) ──────────
+        // When the client sends patternId (the Designer's generate clicked on a
+        // design opened from the pattern library), re-convert that pattern's
+        // SAVED source image — NOT a new Gemini roll — so the subject can never
+        // change ("bear is totally different"). Shape is recovered from the
+        // pattern NAME + prompt (owner's "teddy bag charm update2" → ornament),
+        // then the exact chain runs on the stored bytes. No AI job, no model
+        // cost, same subject every click.
+        if (parsed.data.patternId) {
+          await handleRegeneratePattern({
+            patternId: parsed.data.patternId,
+            prompt,
+            requestShape: shape,
+            fabricCount,
+            canvasWidth,
+            canvasHeight,
+            gridSize: rawGridSize,
+            req,
+            res,
+            prisma,
+          });
+          return;
+        }
         const premium = premiumModel === true && isPremiumTier((req as any).user?.tier);
 
         // Resolve fabric-aware grid size and color limit
@@ -887,6 +1127,18 @@ export function createAIEmbroideryRouter(): Router {
         const aspect = aspectRatioOpt ?? aspectFromCanvas(canvasWidth, canvasHeight);
         const genW = canvasWidth ?? gridSize ?? DEFAULT_GRID_SIZE;
         const genH = canvasHeight ?? gridSize ?? DEFAULT_GRID_SIZE;
+
+        // Prompt-driven shape (owner 10-19 P0 c9f3e630): an explicit shape
+        // always wins; when the client sent NONE (custom canvas — no preset
+        // guide), the product noun in the prompt decides. This is the server
+        // safety net: a broken/forgotten client can never produce an unmasked
+        // stocking again, because inferShapeFromPrompt feeds EVERY downstream
+        // consumer (isFrameCanvas, enrichAIPrompt, applyProductShapeMask).
+        // b133: small grids additionally treat a bare "charm" noun as ornament
+        // (owner's 28×28 charm prompt carried no product noun at all).
+        const effectiveShape = resolveEffectiveShape(shape, prompt, {
+          smallGrid: isSmallGrid(genW, genH),
+        });
 
         // Owner 09-14: ALL prompt requests → AI artwork ALWAYS. The procedural
         // fast path and the Shape Library are no longer usable from this route
