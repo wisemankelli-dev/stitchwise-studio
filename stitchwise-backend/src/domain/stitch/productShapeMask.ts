@@ -254,6 +254,13 @@ export function enforceSnowflakeDefinition(
     return sectorBest.filter((v) => v >= R * 0.5).length;
   };
 
+  // b133 Fix D (owner 10-20 "weird white lines and no definition"): white
+  // stars on her mid-blue body (#2e609d / #6c95c4) read as dirty smears; the
+  // arms are drawn in a dark steel-blue #113b69 that CONTRASTS on both palette
+  // blues (DMC recount maps it to a real thread: nearest = DMC 939).
+  const ARM_COLOR = "#113b69";
+  const isArmCell = (c: StitchCell | undefined): boolean => !!c && c.color.toLowerCase() === ARM_COLOR;
+
   const drawFlake = (comp: Array<[number, number]>, baseAng: number, armLen: number): void => {
     let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
     for (const [r, c] of comp) {
@@ -274,10 +281,12 @@ export function enforceSnowflakeDefinition(
     for (let r = minR; r <= maxR; r++) {
       for (let c = minC; c <= maxC; c++) {
         const cell = out[r]?.[c];
-        if (!cell || !isWhiteStitchCell(cell)) continue;
-        cell.color = body; // wipe blob to body blue (opens gaps between arms)
+        // Wipe BOTH prior white blobs and any dark arms from a failed earlier
+        // attempt (retry must start clean — no accumulation across rotations).
+        if (!cell || (!isWhiteStitchCell(cell) && !isArmCell(cell))) continue;
+        cell.color = body;
         if (silhouette[r]?.[c] && inBand(r, c) && (r - cr) * (r - cr) + (c - cc) * (c - cc) <= hubR * hubR) {
-          cell.color = "#ffffff"; // hub overlay
+          cell.color = "#ffffff"; // hub overlay — the white core of the flake
         }
       }
     }
@@ -289,11 +298,14 @@ export function enforceSnowflakeDefinition(
         const cc2 = Math.round(cc + dirC * t);
         if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue; // arms stay in the flake band (cuff/toe/rim untouched)
         const cell = out[rr]?.[cc2];
-        if (cell) cell.color = "#ffffff";
+        // DARK-ARM contrast (b133 Fix D): white-on-mid-blue reads as "weird
+        // white lines"; #113b69 steel-blue pops on BOTH her palette blues
+        // (#2e609d / #6c95c4) and the DMC recount maps it to a real thread.
+        if (cell) cell.color = ARM_COLOR;
       }
       // Two branch tiers per arm (b132): 0.55× and 0.75× armLen at ±20°, so
       // the flake reads as a delicate dendrite — 4 side branches per arm —
-      // instead of a chunky plus. Deterministic, palette-only.
+      // instead of a chunky plus. Deterministic, palette-only (dark too).
       for (const f of [0.55, 0.75]) {
         for (const ofs of [-20, 20]) {
           const bA = ((baseAng + k * 60 + ofs) * Math.PI) / 180;
@@ -302,7 +314,7 @@ export function enforceSnowflakeDefinition(
           const cc2 = Math.round(cc + Math.cos(bA) * bt);
           if (!inBand(rr, cc2) || !silhouette[rr]?.[cc2]) continue;
           const cell = out[rr]?.[cc2];
-          if (cell) cell.color = "#ffffff";
+          if (cell) cell.color = ARM_COLOR;
         }
       }
     }
@@ -342,11 +354,12 @@ export function enforceSnowflakeDefinition(
     baseAng = Math.round(baseAng / 60) * 60;
     const drawAndAudit = (ang: number, armLen: number): boolean => {
       drawFlake(comp, ang, armLen);
-      // Audit on the DRAWN white cells within the flake bbox (silhouette-clipped).
+      // Audit on the DRAWN DARK-ARM cells within the flake bbox
+      // (silhouette-clipped) — arms are now #113b69, not white.
       const drawn: Array<[number, number]> = [];
       for (let r = minR; r <= maxR; r++) {
         for (let c = minC; c <= maxC; c++) {
-          if (silhouette[r]?.[c] && isWhiteStitchCell(out[r]?.[c])) drawn.push([r, c]);
+          if (silhouette[r]?.[c] && isArmCell(out[r]?.[c])) drawn.push([r, c]);
         }
       }
       if (drawn.length < 7) return false;
@@ -356,13 +369,25 @@ export function enforceSnowflakeDefinition(
         if (d > dR2) dR2 = d;
       }
       const fill2 = drawn.length / ((maxR - minR + 1) * (maxC - minC + 1));
-      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 6 && fill2 <= 0.58;
+      // ≥5 of 6 sectors armed (lead target: ≥4 arms per flake) + not a filled
+      // smear — a crisp dendrite, not a blob repainted dark.
+      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 5 && fill2 <= 0.6;
     };
-    if (fillRatio <= 0.58 && sectorArmCount(comp, cr, cc, R) >= 6) continue; // already a star
+    if (fillRatio <= 0.58 && sectorArmCount(comp, cr, cc, R) >= 6) continue; // already a white star — keep
     const armLen = Math.max(4, Math.round(R * 0.9));
-    if (!drawAndAudit(baseAng, armLen)) {
-      // Second deterministic attempt: rotate 30°, one cell longer.
-      drawAndAudit(baseAng + 30, armLen + 1);
+    // HARD audit: fail → rotate retry (three deterministic angles) → ERASE.
+    // No partial-blob debris may ever reach the saved grid (owner b132 save:
+    // 0 six-sector stars, 562-cell white blob in-band — undefined white runs).
+    let ok = drawAndAudit(baseAng, armLen);
+    for (const altAng of [baseAng + 30, baseAng + 60]) {
+      if (ok) break;
+      ok = drawAndAudit(altAng, armLen + 1);
+    }
+    if (!ok) {
+      for (const [r, c] of comp) {
+        const cell = out[r]?.[c];
+        if (cell && (isWhiteStitchCell(cell) || isArmCell(cell))) cell.color = body;
+      }
     }
   }
   // Final sweep: erase any leftover band specks (< 3 cells) to body so the
@@ -385,7 +410,13 @@ export function enforceSnowflakeDefinition(
           }
         }
       }
-      if (comp.length < 3) {
+      // Keep flake HUBS (white core cells touching a dark arm) — only erase
+      // isolated specks with no flake connection (b133 Fix D; before this the
+      // hub alone read as a sub-3-cell comp and got erased).
+      const touchesArm = comp.some(([srr, scc]) =>
+        [-1, 0, 1].some((dr) => [-1, 0, 1].some((dc) => (dr !== 0 || dc !== 0) && isArmCell(out[srr + dr]?.[scc + dc]))),
+      );
+      if (comp.length < 3 && !touchesArm) {
         for (const [srr, scc] of comp) {
           const cell = out[srr]?.[scc];
           if (cell) cell.color = body;
