@@ -984,6 +984,8 @@ class ApiClient {
       canvasWidth?: number;
       canvasHeight?: number;
       shape?: string;
+      /** b133: saved pattern id → deterministic regenerate of its source image. */
+      patternId?: string;
     }
   ): Promise<AIPatternResponse> {
     if (!this.isLiveBackend) {
