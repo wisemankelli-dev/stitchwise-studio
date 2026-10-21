@@ -69,7 +69,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createShowcaseRouter(showcaseRepo));
   app.use("/api", createFabricEstimatorRouter(collageRepo));
   app.use("/api", createQuiltBlockRouter(quiltBlockRepo));
-  app.use("/api", createAIEmbroideryRouter());
+  app.use("/api", createAIEmbroideryRouter(prisma));
   app.use("/api", createAICollageRouter());
   app.use("/api", createLineArtRouter());
   app.use("/api", createAIJobsRouter());
