@@ -10,7 +10,7 @@
  * body that mirrors her canvas geometry (100 rows → band rows 16–78).
  */
 import { describe, it, expect } from "@jest/globals";
-import { enforceSnowflakeDefinition, buildProductSilhouette } from "../domain/stitch/productShapeMask";
+import { enforceSnowflakeDefinition, buildProductSilhouette, emptyStockingField } from "../domain/stitch/productShapeMask";
 import type { StitchCell } from "../domain/stitch/types";
 
 const BODY = "#2e609d";
@@ -82,13 +82,25 @@ function flattenArmCells(grid: StitchCell[][], width: number, height: number): A
 
 function stockingWithWhiteBlob(): StitchCell[][] {
   const width = 60, height = 100;
+  // Model the SHIPPING chain state (b133 Fix D1): the field outside the
+  // stocking silhouette is already EMPTY, the body is the silhouette. A bare
+  // rect that pokes outside the silhouette (as the old fixture did) leaves
+  // unreachable edge whites that the production chain never sees.
+  const sil = buildProductSilhouette("stocking", width, height);
   const grid: StitchCell[][] = Array.from({ length: height }, () =>
-    Array.from({ length: width }, () => ({ color: BODY, dmcCode: "799", dmcName: "Blue" })),
+    Array.from({ length: width }, () => ({ color: "", dmcCode: undefined, dmcName: undefined })),
   );
-  // A large white blob inside the flake band (rows 16–78% of the canvas).
-  for (let r = 28; r <= 60; r++) {
-    for (let c = 18; c <= 41; c++) {
-      if (grid[r]?.[c]) grid[r][c] = { color: "#ffffff", dmcCode: "520", dmcName: "White" };
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (sil[r]?.[c]) grid[r][c] = { color: BODY, dmcCode: "799", dmcName: "Blue" };
+    }
+  }
+  // A large white blob fully inside the silhouette AND inside the flake band
+  // (rows 0.3h..0.78h = 30..78 on this canvas) — her ~562-cell in-band blob.
+  for (let r = 34; r <= 62; r++) {
+    for (let c = 20; c <= 40; c++) {
+      // only paint INSIDE the silhouette — the field outside stays EMPTY
+      if (sil[r]?.[c] && grid[r]?.[c]) grid[r][c].color = "#ffffff";
     }
   }
   return grid;
@@ -125,5 +137,39 @@ describe("enforceSnowflakeDefinition — b133 Fix D (dark arms, hard audit)", ()
     const out = enforceSnowflakeDefinition(grid, "stocking", 60, 100, "a blue teddy bear");
     const { max } = whiteCompMax(out, 60, 100);
     expect(max).toBeGreaterThan(100); // untouched blob still there
+  });
+});
+describe("emptyStockingField — b133 Fix D1 (white field killer)", () => {
+  it("empties the field OUTSIDE the stocking silhouette", () => {
+    const width = 60, height = 100;
+    const allWhite: StitchCell[][] = Array.from({ length: height }, () =>
+      Array.from({ length: width }, () => ({ color: "#ffffff", dmcCode: "520", dmcName: "White" })),
+    );
+    const out = emptyStockingField(allWhite, width, height);
+    let inflated = 0;
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const cell = out[r]?.[c];
+        if (cell && cell.color) inflated++;
+      }
+    }
+    // Inside the silhouette there are cells; outside there are NONE.
+    expect(inflated).toBeGreaterThan(500); // still a stocking shape worth of white
+    expect(inflated).toBeLessThan(width * height); // and a big emptied field
+  });
+
+  it("leaves inside-silhouette cells byte-identical", () => {
+    const width = 60, height = 100;
+    const sil = buildProductSilhouette("stocking", width, height);
+    const grid: StitchCell[][] = Array.from({ length: height }, () =>
+      Array.from({ length: width }, () => ({ color: "#2e609d", dmcCode: "799", dmcName: "Blue" })),
+    );
+    const out = emptyStockingField(grid, width, height);
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        if (sil[r]?.[c]) expect(out[r]?.[c]?.color).toBe("#2e609d");
+        else expect(out[r]?.[c]?.color).toBe("");
+      }
+    }
   });
 });

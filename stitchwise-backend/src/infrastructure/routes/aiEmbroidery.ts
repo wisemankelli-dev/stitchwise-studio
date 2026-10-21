@@ -29,7 +29,7 @@ import {
   frameMarginCellCount,
 } from "../../domain/stitch/patternConverter";
 import { recenterGrid } from "../../domain/stitch/recenterGrid";
-import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, preserveWhiteDetail, recountDmcFromGrid, clipShapeEdge, enforceSnowflakeDefinition } from "../../domain/stitch/productShapeMask";
+import { applyProductShapeMask, magnifyToFillShape, containSubjectToRim, reclassFieldWhite, snapGreyMushToPalette, preserveWhiteDetail, recountDmcFromGrid, clipShapeEdge, enforceSnowflakeDefinition, emptyStockingField } from "../../domain/stitch/productShapeMask";
 import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { enforceCharmFacePostClip } from "../../domain/stitch/charmFacePostClip";
@@ -891,16 +891,22 @@ export async function convertStitchPatternImage(
     shape === "stocking" || shape === "ornament" || shape === "pillow"
       ? applyProductShapeMask(recentered, shape, genW, genH)
       : recentered;
+  // b133 Fix D1: the STOCKING path must empty the field OUTSIDE the
+  // silhouette (b132 left ~30k white thread around the stocking — the
+  // "weird white lines" the owner rejected). Cuff/toe/snowflakes are inside
+  // the silhouette and untouched; the ornament path already reclasses.
+  const maskedField =
+    shape === "stocking" ? emptyStockingField(masked, genW, genH) : masked;
   const magnified =
     isSmallGrid(genW, genH) && (shape === "stocking" || shape === "ornament" || shape === "pillow")
-      ? magnifyToFillShape(masked, shape, genW, genH)
-      : masked;
+      ? magnifyToFillShape(maskedField, shape, genW, genH)
+      : maskedField;
   const haloFilled =
     shape === "stocking" && !isSmallGrid(genW, genH)
-      ? edgeHaloFill(masked, shape, genW, genH, {
+      ? edgeHaloFill(maskedField, shape, genW, genH, {
           trimLegWhites: !!stockingBodyDirective(prompt, shape),
         })
-      : masked;
+      : maskedField;
   const detailBase =
     !isSmallGrid(genW, genH) && (shape === "stocking" || shape === "ornament" || shape === "pillow")
       ? shape === "ornament" || shape === "pillow"

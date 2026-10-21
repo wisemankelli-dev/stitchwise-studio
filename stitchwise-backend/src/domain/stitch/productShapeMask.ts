@@ -188,12 +188,14 @@ export function enforceSnowflakeDefinition(
   const inBand = (r: number, c: number): boolean => {
     if (!silhouette[r]?.[c]) return false;
     if (shape === "stocking") {
-      // Flake band = the stocking body, measured against the CANVAS HEIGHT
-      // (194×238 canvas: cuff = rows 0..~16%, toe = rows ~78%..end). b131 used
-      // gs = min(w,h) = 154, which cut the band off at row 120 — mid/lower
-      // flakes (rows 121–185) were never defined and stayed blobs (owner
-      // 10-20 post-131 "ok, not great").
-      return r >= 0.16 * height && r <= 0.78 * height;
+      // Flake band = the stocking BODY. b131 used the canvas-height fraction
+      // 0.16..0.78 (modeled on a 194-row canvas), but on the owner's 154-row
+      // stocking that window starts at row 24 — INSIDE her ~35-row cuff, so
+      // the cuff spill was star-ified/audited as a 500+ white "blob" and the
+      // band leaked big cuff/toe whites into the retest gate (owner 10-20
+      // "weird white lines"). b133 Fix D window: exclude the whole top 30%
+      // (cuff + cuff shadow) and bottom 22% (toe) — the true body interior.
+      return r >= 0.3 * height && r <= 0.78 * height;
     }
     const inset = rimInset(gs, gs);
     const cx = (width - 1) / 2;
@@ -372,9 +374,14 @@ export function enforceSnowflakeDefinition(
         if (d > dR2) dR2 = d;
       }
       const fill2 = drawn.length / ((maxR - minR + 1) * (maxC - minC + 1));
+      // Arms must REACH near the target length (b133): at the band/silhouette
+      // edge the draw is clipped and a dense half-star can pass a radius-ratio
+      // sector audit by sheer proximity — require the drawn radius ≈ armLen
+      // so a "star" is a real star, not a clipped smear (fail → rotate → erase).
+      const reached = Math.sqrt(dR2) >= armLen * 0.8;
       // ≥5 of 6 sectors armed (lead target: ≥4 arms per flake) + not a filled
       // smear — a crisp dendrite, not a blob repainted dark.
-      return sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 5 && fill2 <= 0.6;
+      return reached && sectorArmCount(drawn, cr, cc, Math.sqrt(dR2)) >= 5 && fill2 <= 0.6;
     };
     if (fillRatio <= 0.58 && sectorArmCount(comp, cr, cc, R) >= 6) continue; // already a white star — keep
     const armLen = Math.max(4, Math.round(R * 0.9));
@@ -428,6 +435,26 @@ export function enforceSnowflakeDefinition(
     }
   }
   return out;
+}
+
+/**
+ * b133 Fix D1 (owner 10-20 "weird white lines and not definition"): the b132
+ * STOCKING path left the entire field around the silhouette as white thread —
+ * the ornament path reclassifies field whites, the stocking branch never
+ * did — so a 154×238 stocking conversion carried ~30k white-cells
+ * (replay on her real decoded source: 30,231 white, 0 empty; her saved grid:
+ * 26,748 EMPTY, i.e. she or a tool erased the field by hand). Empty the
+ * field OUTSIDE the silhouette once, right after the shape mask, so the
+ * canvas reads bare fabric with a crisp stocking (cuff/toe/snowflakes live
+ * INSIDE the silhouette and are untouched). Pure and side-effect free.
+ */
+export function emptyStockingField(grid: StitchGrid, width: number, height: number): StitchGrid {
+  const silhouette = buildProductSilhouette("stocking", width, height);
+  return grid.map((row, r) =>
+    row.map((cell, c) =>
+      silhouette[r]?.[c] ? cell : { ...cell, color: "", dmcCode: undefined, dmcName: undefined },
+    ),
+  );
 }
 
 /** Charm crown fill — REMOVED from the chain 10-20 (b131): rows 0-1 are NEVER
