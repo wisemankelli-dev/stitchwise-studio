@@ -119,6 +119,9 @@ export interface AIPatternResponse {
   width: number;
   height: number;
   dmcPalette: { code: string; name: string; hex: string; count: number }[];
+  /** True when the generation was produced by deterministic direct-draw
+   *  (owner retest2 10-26): such grids are final designs — never re-mask them. */
+  directDraw?: boolean;
   totalStitches: number;
   promptUsed?: string;
   processingTimeMs: number;

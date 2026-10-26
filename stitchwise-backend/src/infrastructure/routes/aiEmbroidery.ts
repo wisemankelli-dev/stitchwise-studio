@@ -895,7 +895,7 @@ export async function convertStitchPatternImage(
   const ddSync = tryDirectDraw({ shape, prompt, canvasWidth: genW, canvasHeight: genH });
   if (ddSync) {
     const ddSyncDmc = recountDmcFromGrid(ddSync, DIRECT_DRAW_PALETTE);
-    return { grid, guarded: { grid: ddSync, dmcColors: ddSyncDmc }, qualityWarning: null };
+    return { grid, guarded: { grid: ddSync, dmcColors: ddSyncDmc }, qualityWarning: null, __directDraw: true as const };
   }
   const recentered = recenterGrid(
     grid.grid,
@@ -1185,6 +1185,7 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
                 processingTimeMs: 0,
                 fabric: { count: fc, inches: +((genW || 70) / fc).toFixed(2) },
                 previewUrl: undefined,
+                directDraw: true,
               },
             );
           }
