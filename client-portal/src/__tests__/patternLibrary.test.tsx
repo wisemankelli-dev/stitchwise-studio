@@ -83,3 +83,61 @@ describe('Pattern Library — public storefront', () => {
     expect(screen.getByRole('button', { name: /Try Again/i })).toBeTruthy();
   });
 });
+
+describe('Pattern Library — Rooster feature card (designer kit)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const catalogWithRooster = {
+    patterns: [
+      {
+        id: 'rainbow-trout',
+        title: 'Rainbow Trout',
+        description: 'A lifelike rainbow trout.',
+        priceLabel: '$2.50',
+        imageUrl: '/p1.png',
+        paymentUrl: 'https://buy.stripe.com/trout',
+        badge: 'New',
+      },
+      {
+        id: 'rooster-collage',
+        title: 'Rooster',
+        description: 'A bold farmhouse rooster — a collage quilting pattern.',
+        priceLabel: '$4.50',
+        imageUrl: '/p2.png',
+        paymentUrl: 'https://buy.stripe.com/rooster',
+      },
+    ],
+  };
+
+  it('renders the Rooster feature card with live price, buy link and fulfillment copy', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => catalogWithRooster,
+    });
+    render(<PatternLibrary />);
+    expect(await screen.findByText(/Rooster — Farmhouse Collage/i)).toBeTruthy();
+    expect(screen.getByText('Collage Quilt')).toBeTruthy();
+    expect(screen.getByText('A bold farmhouse rooster in 94 cuttable pieces.')).toBeTruthy();
+    expect(screen.getByText('94 pieces · numbered cutting guide · overview page')).toBeTruthy();
+    expect(screen.getByText('$4.50')).toBeTruthy();
+    const buys = screen.getAllByRole('link', { name: /Buy Pattern/i });
+    const buy = buys.find((a) => (a as HTMLAnchorElement).getAttribute('href') === 'https://buy.stripe.com/rooster') as HTMLAnchorElement;
+    expect(buy).toBeTruthy();
+    expect(screen.getByText(/1\. Buy · 2\. Log in with your checkout email · 3\. Stitch/)).toBeTruthy();
+  });
+
+  it('hides the Rooster card (and its grid slot) when the catalog has no Rooster', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => catalog,
+    });
+    render(<PatternLibrary />);
+    expect(await screen.findByText('Test Sunflower')).toBeTruthy();
+    expect(screen.queryByText(/Rooster — Farmhouse Collage/i)).toBeNull();
+  });
+});

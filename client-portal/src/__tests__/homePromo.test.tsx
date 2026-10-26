@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, renderHook } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactElement } from 'react';
-import { FeaturedPatterns, useLibraryPatterns } from '../components/FeaturedPatterns';
+import {
+  FeaturedPatterns,
+  useLibraryPatterns,
+  FULFILLMENT_COPY,
+} from '../components/FeaturedPatterns';
 import type { LibraryLoadStatus, PromoLibraryPattern } from '../components/FeaturedPatterns';
 import { Home, CollageSpotlight, FinalCta } from '../pages/Home';
 
@@ -79,16 +83,22 @@ describe('useLibraryPatterns — shared landing catalog hook', () => {
   });
 });
 
-describe('FeaturedPatterns — landing shop window', () => {
-  it('renders pattern cards with title, price, badge and a secure Buy Pattern link', () => {
-    renderWithRouter(
-      <FeaturedPatterns patterns={mockPatterns} status="ready" />,
-    );
+describe('FeaturedPatterns — landing shop window (designer kit design)', () => {
+  it('renders pattern cards with kit copy, live price/badge and a secure Buy link', () => {
+    renderWithRouter(<FeaturedPatterns patterns={mockPatterns} status="ready" />);
+    // Titles, live prices and kit badges (kit overrides the API "New" badge).
     expect(screen.getByText('Rainbow Trout')).toBeTruthy();
     expect(screen.getByText('Rooster')).toBeTruthy();
     expect(screen.getByText('$2.50')).toBeTruthy();
     expect(screen.getByText('$4.50')).toBeTruthy();
-    expect(screen.getByText('New')).toBeTruthy();
+    expect(screen.getByText('Best Seller')).toBeTruthy();
+    expect(screen.getByText('Collage Quilt')).toBeTruthy();
+    // Kit benefit + specs lines.
+    expect(screen.getByText('A lifelike trout in 13 DMC colors — yours to edit.')).toBeTruthy();
+    expect(screen.getByText('A bold farmhouse rooster in 94 cuttable pieces.')).toBeTruthy();
+    expect(screen.getByText('100 × 100 stitches · 14ct · ~9,950 stitches')).toBeTruthy();
+    expect(screen.getByText('94 pieces · numbered cutting guide · overview page')).toBeTruthy();
+    // Secure Buy Pattern links.
     const buyLinks = screen.getAllByRole('link', { name: /Buy Pattern/i });
     expect(buyLinks).toHaveLength(2);
     const roosterLink = buyLinks[1] as HTMLAnchorElement;
@@ -98,13 +108,22 @@ describe('FeaturedPatterns — landing shop window', () => {
     expect(roosterLink.rel).toContain('noreferrer');
   });
 
-  it('links to the full Pattern Library page and states the checkout promise', () => {
+  it('carries the exact fulfillment copy as its own row on every card', () => {
+    renderWithRouter(<FeaturedPatterns patterns={mockPatterns} status="ready" />);
+    // Both cards show the verbatim one-line fulfillment copy.
+    const rows = screen.getAllByText(
+      new RegExp(`^\\s*${FULFILLMENT_COPY.replace(/[.·]/g, (m) => (m === '.' ? '\\.' : '·'))}`, 'i'),
+    );
+    expect(rows.length).toBe(2);
+    rows.forEach((row) => {
+      expect(row.textContent).toContain(FULFILLMENT_COPY);
+    });
+  });
+
+  it('links to the full Pattern Library page', () => {
     renderWithRouter(<FeaturedPatterns patterns={mockPatterns} status="ready" />);
     const browse = screen.getByRole('link', { name: /Browse the full Pattern Library/i });
     expect(browse.getAttribute('href')).toMatch(/\/patterns$/);
-    expect(
-      screen.getByText(/Secure one-off checkout · Pattern delivered to your account/i),
-    ).toBeTruthy();
   });
 
   it('shows a loading skeleton before data arrives', () => {
@@ -112,7 +131,6 @@ describe('FeaturedPatterns — landing shop window', () => {
       <FeaturedPatterns patterns={[]} status="loading" />,
     );
     expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
-    // Heading text is split across a gradient <span>, so assert on textContent.
     expect(container.textContent).toContain('Featured Patterns');
   });
 
@@ -128,43 +146,38 @@ describe('FeaturedPatterns — landing shop window', () => {
   });
 });
 
-describe('CollageSpotlight — collage band + Rooster product card', () => {
-  const rooster = mockPatterns.find((p) => p.id === 'rooster-collage')!;
-
-  it('leads with the Collage Quilting pitch and a Try Collage Studio CTA', () => {
-    renderWithRouter(<CollageSpotlight rooster={rooster} />);
-    expect(screen.getByText(/From coloring page to/i)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Try Collage Studio/i })
-      .getAttribute('href')).toMatch(/\/collage$/);
-  });
-
-  it('renders the live Rooster price and Buy link when catalog data is present', () => {
-    renderWithRouter(<CollageSpotlight rooster={rooster} />);
-    expect(screen.getByText('94 cuttable pieces')).toBeTruthy();
-    expect(screen.getByText('$4.50')).toBeTruthy();
-    const buy = screen.getByRole('link', { name: /Buy Pattern/i }) as HTMLAnchorElement;
-    expect(buy.getAttribute('href')).toBe('https://buy.stripe.com/rooster');
-  });
-
-  it('falls back to a browse link and never invents a price when catalog data is missing', () => {
-    renderWithRouter(<CollageSpotlight rooster={undefined} />);
+describe('CollageSpotlight — collage band (designer kit hero)', () => {
+  it('leads with the kit kicker, headline and exact sub, plus the flow steps', () => {
+    renderWithRouter(<CollageSpotlight />);
+    expect(screen.getByText('Collage Studio')).toBeTruthy();
+    expect(screen.getByText(/Color it\. Cut it\./)).toBeTruthy();
+    expect(screen.getByText('Quilt it.')).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: /Browse the Pattern Library/i }),
+      screen.getByText(/Turn a coloring page into cuttable pieces, then export a numbered Cutting Guide PDF\./i),
     ).toBeTruthy();
-    expect(screen.queryByText(/\$\d/)).toBeNull();
-    expect(screen.queryByRole('link', { name: /Buy Pattern/i })).toBeNull();
+    expect(screen.getByText(/Trace the lines into clean, non-overlapping pieces\./i)).toBeTruthy();
+  });
+
+  it('links Try Collage Studio to /collage', () => {
+    renderWithRouter(<CollageSpotlight />);
+    expect(
+      screen.getByRole('link', { name: /Try Collage Studio/i }).getAttribute('href'),
+    ).toMatch(/\/collage$/);
   });
 });
 
-describe('FinalCta — conversion band', () => {
-  it('offers three paths: Designer, Collage Studio, Pattern Library', () => {
+describe('FinalCta — conversion band (designer kit CTA banner)', () => {
+  it('shows the combined Library + Collage hook with both CTAs', () => {
     renderWithRouter(<FinalCta />);
-    const designer = screen.getByRole('link', { name: /Explore the AI Designer/i });
+    expect(screen.getByText(/Shop patterns\./)).toBeTruthy();
+    expect(screen.getByText('Create quilts.')).toBeTruthy();
+    expect(
+      screen.getByText(/Buy a ready-to-stitch pattern, or turn a coloring page into a collage quilt\./i),
+    ).toBeTruthy();
+    const shop = screen.getByRole('link', { name: /Shop the Library/i });
+    expect(shop.getAttribute('href')).toMatch(/\/patterns$/);
     const collage = screen.getByRole('link', { name: /Try Collage Studio/i });
-    const patterns = screen.getByRole('link', { name: /Browse the Pattern Library/i });
-    expect(designer.getAttribute('href')).toMatch(/\/designer$/);
     expect(collage.getAttribute('href')).toMatch(/\/collage$/);
-    expect(patterns.getAttribute('href')).toMatch(/\/patterns$/);
   });
 });
 
@@ -182,16 +195,15 @@ describe('Home — promo landing integration', () => {
       json: async () => catalog,
     });
     renderWithRouter(<Home />);
-    // Featured patterns from the live API resolve asynchronously.
+    // Featured grid from the live API resolves asynchronously.
     expect(await screen.findByText('Rainbow Trout')).toBeTruthy();
-    // $4.50 appears twice by design: the featured grid card AND the Rooster
-    // spotlight card (both fed from the same live catalog).
-    expect((await screen.findAllByText('$4.50')).length).toBeGreaterThan(0);
-    // Collage spotlight + Rooster card.
-    expect(screen.getByText(/From coloring page to/i)).toBeTruthy();
-    expect(screen.getByText('94 cuttable pieces')).toBeTruthy();
-    // CTA band.
-    expect(await screen.findByText(/Ready to stitch your first pattern\?/i)).toBeTruthy();
+    expect((await screen.findAllByText('$4.50')).length).toBe(1); // grid only now
+    expect(
+      screen.getAllByText(new RegExp(FULFILLMENT_COPY.replace(/[.]/g, '\\.'))).length,
+    ).toBe(2);
+    // Collage spotlight (kit hero) + CTA banner (kit).
+    expect(screen.getByText(/Color it\. Cut it\./)).toBeTruthy();
+    expect(screen.getByText(/Shop patterns\./)).toBeTruthy();
     // Pre-existing sections still render below the promo.
     expect(screen.getByText('Platform Features')).toBeTruthy();
   });
