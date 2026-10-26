@@ -1,0 +1,198 @@
+/**
+ * b134 DIRECT-DRAW tests (owner 10-26 pivot: "basic bear into a circle /
+ * simple blue sock with stars… we have not made ANY forward progress").
+ *
+ * These tests assert the EXACT properties the owner has rejected for builds
+ * 129→133, now guaranteed BY CONSTRUCTION (pure geometry, no photo/data
+ * dependence, nothing an AI image can corrupt):
+ *   charm:  54×54 (owner floor 3in @18ct) — ornament ring, symmetric defined
+ *           eyes/nose/smile/muzzle (the face can NEVER be a white slab), bear
+ *           head + ears + sweater, field empty outside the ornament;
+ *   stocking: her 238×154 — white cuff + toe cap, body/shade, FIVE six-point
+ *           #113b69 stars at the lead-spec centres, each passing a 6-sector
+ *           arm audit BY CONSTRUCTION, 1-cell dark outline (defined edges),
+ *           field empty outside;
+ *   gates:  stocking → always direct; bear-family ornament → direct @floor;
+ *           non-bear ornament / other shapes → null (AI path preserved);
+ *   determinism: repeated builds are byte-identical.
+ */
+import { describe, it, expect } from "@jest/globals";
+import { tryDirectDraw, CHARM_GRID_FLOOR } from "../domain/stitch/directDraw";
+import type { StitchCell } from "../domain/stitch/types";
+
+const colorAt = (g: StitchCell[][], r: number, c: number): string => g[r]?.[c]?.color ?? "";
+
+function hist(g: StitchCell[][]): Record<string, number> {
+  const h: Record<string, number> = {};
+  for (const row of g) for (const cell of row) {
+    const k = cell?.color ?? "";
+    h[k] = (h[k] ?? 0) + 1;
+  }
+  return h;
+}
+
+const starCentres = [[60, 55], [98, 62], [52, 100], [96, 102], [74, 138]];
+
+/** Sector audit for one star centre: for each of the 6 × 60° sectors assert
+ *  ≥1 dark arm cell at distance ≥ 5 from the centre (an 8-arm star). */
+function starSectorAudit(g: StitchCell[][], sc: [number, number]): number {
+  const [scx, scy] = sc;
+  let okSectors = 0;
+  for (let k = 0; k < 6; k++) {
+    const a = (k * 60 * Math.PI) / 180;
+    const dirX = Math.cos(a), dirY = Math.sin(a);
+    let hit = false;
+    for (let d = 1; d <= 8; d++) {
+      const x = Math.round(scx + d * dirX);
+      const y = Math.round(scy + d * dirY);
+      if (g[y]?.[x]?.color?.toLowerCase() === "#113b69") { hit = true; break; }
+    }
+    if (!hit) {
+      // ±1 lateral tolerance for rounding at the arm tip (d=8)
+      for (const dc of [-1, 0, 1]) {
+        for (const dr of [-1, 0, 1]) {
+          const x = Math.round(scx + 8 * dirX) + dc;
+          const y = Math.round(scy + 8 * dirY) + dr;
+          if (g[y]?.[x]?.color?.toLowerCase() === "#113b69") { hit = true; break; }
+        }
+        if (hit) break;
+      }
+    }
+    if (hit) okSectors++;
+  }
+  return okSectors;
+}
+
+describe("direct-draw STOCKING (tryDirectDraw shape=stocking)", () => {
+  const g = tryDirectDraw({ shape: "stocking", canvasWidth: 154, canvasHeight: 238 })!;
+  expect(g).toBeTruthy();
+
+  it("is her exact canvas 238 rows × 154 cols (portrait)", () => {
+    expect(g.length).toBe(238);
+    expect(g[0].length).toBe(154);
+  });
+
+  it("spans the full contract palette (body/shade/white/dark)", () => {
+    const h = hist(g);
+    expect(h["#2e609d"] ?? 0).toBeGreaterThan(4000); // body
+    expect(h["#6c95c4"] ?? 0).toBeGreaterThan(500); // shade
+    expect(h["#ffffff"] ?? 0).toBeGreaterThan(200); // cuff + toe cap
+    expect(h["#113b69"] ?? 0).toBeGreaterThan(300); // stars + outline
+  });
+
+  it("paints a WHITE cuff (top band) and a WHITE toe cap", () => {
+    expect(colorAt(g, 12, 40)).toBe("#ffffff"); // cuff band
+    expect(colorAt(g, 224, 50)).toBe("#ffffff"); // toe cap
+  });
+
+  it("draws FIVE six-point #113b69 stars AT the spec centres with full sector coverage", () => {
+    for (const [scx, scy] of starCentres) {
+      const hubCells = [0, 1, -1].flatMap((dx) => [0, 1, -1].map((dy) => colorAt(g, scy + dy, scx + dx).toLowerCase() === "#113b69"));
+      const hubDark = hubCells.filter(Boolean).length;
+      expect(hubDark).toBeGreaterThanOrEqual(4); // 3×3 hub present
+      expect(starSectorAudit(g, [scx, scy])).toBeGreaterThanOrEqual(5); // ≥5/6 sectors armed
+    }
+  });
+
+  it("gives the silhouette a 1-cell dark OUTLINE (defined edges)", () => {
+    expect(colorAt(g, 60, 34)).toBe("#113b69"); // leg left boundary cell
+    expect(colorAt(g, 60, 33)).toBe(""); // and its outside neighbour is empty
+  });
+
+  it("leaves the field EMPTY outside the silhouette", () => {
+    expect(colorAt(g, 0, 0)).toBe("");
+    expect(colorAt(g, 0, 77)).toBe("");
+    expect(colorAt(g, 237, 0)).toBe("");
+    expect(colorAt(g, 237, 153)).toBe("");
+  });
+
+  it("is deterministic — two builds are byte-identical", () => {
+    const g2 = tryDirectDraw({ shape: "stocking", canvasWidth: 154, canvasHeight: 238 })!;
+    expect(g2).toEqual(g);
+  });
+});
+
+describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
+  const CHARM_PROMPT = "teddy bear with blue sweater";
+  const g = tryDirectDraw({ shape: "ornament", prompt: CHARM_PROMPT, canvasWidth: 28, canvasHeight: 28 })!;
+  expect(g).toBeTruthy();
+
+  it("enforces the owner's 54×54 floor (3in @ 18ct) even from a 28×28 request", () => {
+    expect(CHARM_GRID_FLOOR).toBe(54);
+    expect(g.length).toBe(54);
+    expect(g[0].length).toBe(54);
+    const big = tryDirectDraw({ shape: "ornament", prompt: CHARM_PROMPT, canvasWidth: 90, canvasHeight: 90 })!;
+    expect(big.length).toBe(90); // larger canvases keep their size
+  });
+
+  it("meets every contract palette threshold (the preview-maker's own asserts)", () => {
+    const h = hist(g);
+    expect(h["#113b69"] ?? 0).toBeGreaterThan(40); // ornament ring
+    expect(h["#254267"] ?? 0).toBeGreaterThan(100); // sweater
+    expect(h["#5d3c2e"] ?? 0).toBeGreaterThan(200); // bear head
+    expect(h["#3c3c3c"] ?? 0).toBeGreaterThan(20); // eyes/nose/smile
+    expect(h["#ffffff"] ?? 0).toBeGreaterThan(100); // muzzle + inside-ring bg
+  });
+
+  it("face is NOT a white slab — head colors dominate the face box", () => {
+    // face box ≈ rows 0.42h..0.62h, center strip (muzzle/eyes zone) at 54:
+    // rows 23..33, cols 10..43. Inside-ring background white sits BESIDE the
+    // head; the FACE STRIP itself must be dark-dominant (target truth: white
+    // 87 vs dark 283).
+    let white = 0, dark = 0;
+    for (let r = 23; r <= 33; r++) {
+      for (let c = 10; c <= 43; c++) {
+        const v = colorAt(g, r, c).toLowerCase();
+        if (v === "#ffffff") white++;
+        else if (v === "#5d3c2e" || v === "#3c3c3c") dark++;
+      }
+    }
+    expect(white).toBeLessThan(dark);
+  });
+
+  it("has SYMMETRIC dark eyes — ≥1 dark cell in EACH half-face at eye rows", () => {
+    let left = 0, right = 0;
+    for (const r of [27, 28, 29, 30, 31, 32, 33]) {
+      for (let c = 10; c <= 25; c++) if (colorAt(g, r, c).toLowerCase() === "#3c3c3c") left++;
+      for (let c = 28; c <= 43; c++) if (colorAt(g, r, c).toLowerCase() === "#3c3c3c") right++;
+    }
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBeGreaterThan(0);
+  });
+
+  it("keeps the ring, crown loop and the #113b69 rim, field empty outside", () => {
+    // coordinate probes taken from the lead's target grid (the visual
+    // contract): crown loop (4,26), left rim (15,7), right rim (15,45).
+    expect(colorAt(g, 4, 26)).toBe("#113b69"); // crown loop top
+    expect(colorAt(g, 15, 7)).toBe("#113b69"); // rim left
+    expect(colorAt(g, 15, 45)).toBe("#113b69"); // rim right
+    expect(colorAt(g, 0, 0)).toBe("");
+    expect(colorAt(g, 53, 53)).toBe("");
+  });
+
+  it("is deterministic — two builds are byte-identical", () => {
+    const g2 = tryDirectDraw({ shape: "ornament", prompt: CHARM_PROMPT, canvasWidth: 28, canvasHeight: 28 })!;
+    expect(g2).toEqual(g);
+  });
+});
+
+describe("direct-draw ELIGIBILITY GATES", () => {
+  it("stocking fires for ANY stocking generation (no subject dependency)", () => {
+    expect(tryDirectDraw({ shape: "stocking" })).toBeTruthy();
+    expect(tryDirectDraw({ shape: "stocking", prompt: "rainbow unicorn", canvasWidth: 154, canvasHeight: 238 })).toBeTruthy();
+  });
+
+  it("bear-family ornaments fire (prompt alone suffices)", () => {
+    expect(tryDirectDraw({ shape: "ornament", prompt: "teddy bear" })).toBeTruthy();
+    expect(tryDirectDraw({ shape: "ornament", patternName: "Safari Bear Charm" })).toBeTruthy();
+    expect(tryDirectDraw({ shape: "ornament", prompt: "a bear" })).toBeTruthy();
+  });
+
+  it("non-bear ornaments and other shapes keep the AI path (null)", () => {
+    expect(tryDirectDraw({ shape: "ornament", prompt: "christmas wreath" })).toBeNull();
+    expect(tryDirectDraw({ shape: "ornament", prompt: "a koala" })).toBeNull();
+    expect(tryDirectDraw({ shape: "pillow", prompt: "teddy bear" })).toBeNull();
+    expect(tryDirectDraw({ shape: "square", prompt: "teddy bear" })).toBeNull();
+    expect(tryDirectDraw({ shape: undefined, prompt: "teddy bear" })).toBeNull();
+  });
+});

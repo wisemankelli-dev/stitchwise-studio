@@ -34,6 +34,7 @@ import { resolveEffectiveShape } from "../../domain/ai/shapeInference";
 import { edgeHaloFill } from "../../domain/stitch/edgeHaloFill";
 import { enforceCharmFacePostClip } from "../../domain/stitch/charmFacePostClip";
 import { applyFaceFeatureGuard, countDarkCells, isAnimalFacePrompt } from "../../domain/stitch/faceFeatureGuard";
+import { tryDirectDraw, DIRECT_DRAW_PALETTE } from "../../domain/stitch/directDraw";
 import { figureSignalWarning, isScatterPatternPrompt, extractScatterMotif, singularizeMotif } from "../../domain/stitch/figureSignalGuard";
 import { paletteViolationWarning } from "../../domain/stitch/paletteViolationGuard";
 import { naturalColorDirective, stockingBodyDirective, otherNounColorPairs, COLOR_HUE_HINT } from "../../domain/stitch/naturalColorDirective";
@@ -883,6 +884,19 @@ export async function convertStitchPatternImage(
     { width: genW, height: genH },
     { margin: isFrameCanvasResult, outlinePreserve: isSmallGrid(genW, genH) },
   );
+  // b134 DIRECT-DRAW (owner 10-26 pivot — "basic bear into a circle" /
+  // "simple blue sock with stars"): the two simple items are drawn from pure
+  // deterministic geometry instead of squeezing a photo through the
+  // quantize/mask chain — identical output every run, recognizable at a
+  // glance with defined edges BY CONSTRUCTION. tryDirectDraw returns the grid
+  // for: stocking (always) and bear-family ornaments (@ charm's 3in × 18ct
+  // 54×54 floor, owner 10-26). Non-matching ornaments / large detailed
+  // subjects keep the full AI path unchanged.
+  const ddSync = tryDirectDraw({ shape, prompt, canvasWidth: genW, canvasHeight: genH });
+  if (ddSync) {
+    const ddSyncDmc = recountDmcFromGrid(ddSync, DIRECT_DRAW_PALETTE);
+    return { grid, guarded: { grid: ddSync, dmcColors: ddSyncDmc }, qualityWarning: null };
+  }
   const recentered = recenterGrid(
     grid.grid,
     isFrameCanvasResult ? { frameMargin: frameMarginCellCount(genW, genH) } : undefined,
@@ -1157,6 +1171,23 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
         // gateway's ~30s upstream timeout is never hit.
         const jobId = createAIJob(async () => {
           const userId = (req as any).user?.userId;
+          // b134 DIRECT-DRAW short-circuit: stocking (always) and bear-family
+          // ornaments are pure geometry — skip the Gemini call entirely for
+          // them (instant 200-via-poll, zero AI cost, deterministic subject).
+          const ddJob = tryDirectDraw({ shape: effectiveShape, prompt, canvasWidth: genW, canvasHeight: genH });
+          if (ddJob) {
+            const ddJobDmc = recountDmcFromGrid(ddJob, DIRECT_DRAW_PALETTE);
+            const ddStitches = ddJob.reduce((n, row) => n + row.filter((c) => c.color).length, 0);
+            return buildPatternResponse(
+              { grid: ddJob, gridSize, stitchCount: ddStitches, dmcColors: ddJobDmc },
+              {
+                promptUsed: prompt,
+                processingTimeMs: 0,
+                fabric: { count: fc, inches: +((genW || 70) / fc).toFixed(2) },
+                previewUrl: undefined,
+              },
+            );
+          }
           // Enrich the prompt: vibrant + shape-fill + scene guard, NO
           // color-draining hints (owner 09-03: "flat colors/no gradients/
           // white background" gutted colorful asks into 5 browns).
