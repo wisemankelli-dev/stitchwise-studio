@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCcw, Scissors, ShoppingBag, Sparkles } from 'lucide-react';
+import { RefreshCcw, Scissors, ShoppingBag } from 'lucide-react';
 
 /** One buyable pattern as served by GET /api/library/patterns (public, no auth). */
 export interface PromoLibraryPattern {
@@ -19,6 +19,44 @@ export interface LibraryLoadResult {
   patterns: PromoLibraryPattern[];
   status: LibraryLoadStatus;
 }
+
+/** Designer canonical promo-kit assets (source: /home/team/shared/promo). */
+export const PROMO_ASSETS = {
+  troutProduct: '/promo/product/rainbow-trout-product.png',
+  roosterProduct: '/promo/product/rooster-collage-product.png',
+  collageHero: '/promo/hero/collage-hero-wide.png',
+  ctaBanner: '/promo/cta/cta-library-collage.png',
+};
+
+/** Exact fulfillment copy (business plan + designer kit, verbatim). */
+export const FULFILLMENT_COPY = '1. Buy · 2. Log in with your checkout email · 3. Stitch';
+
+/**
+ * Kit copy — the designer's canonical card copy for the two featured
+ * patterns (badge / benefit / specs + kit art). Price, title and paymentUrl
+ * ALWAYS come live from GET /api/library/patterns so nothing can drift from
+ * the real checkout.
+ */
+interface KitCopy {
+  badge: string;
+  benefit: string;
+  specs: string;
+  imageUrl: string;
+}
+const KIT_COPY: Record<string, KitCopy> = {
+  'rainbow-trout': {
+    badge: 'Best Seller',
+    benefit: 'A lifelike trout in 13 DMC colors — yours to edit.',
+    specs: '100 × 100 stitches · 14ct · ~9,950 stitches',
+    imageUrl: PROMO_ASSETS.troutProduct,
+  },
+  'rooster-collage': {
+    badge: 'Collage Quilt',
+    benefit: 'A bold farmhouse rooster in 94 cuttable pieces.',
+    specs: '94 pieces · numbered cutting guide · overview page',
+    imageUrl: PROMO_ASSETS.roosterProduct,
+  },
+};
 
 /**
  * Shared fetch for the public pattern catalog. Both landing promo sections
@@ -51,6 +89,61 @@ export function useLibraryPatterns(): LibraryLoadResult {
   return { patterns, status };
 }
 
+const pill = 'inline-flex items-center justify-center rounded-full';
+const ctaPill = `${pill} px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-floral-600 to-blush-500 hover:from-floral-700 hover:to-blush-600 shadow-[0_6px_18px_rgba(190,24,93,0.20)] hover:shadow-[0_8px_24px_rgba(190,24,93,0.28)] active:scale-[0.98] transition-all duration-200`;
+
+function FeaturedPatternCard({ pattern }: { pattern: PromoLibraryPattern }) {
+  const kit = KIT_COPY[pattern.id];
+  const badge = kit?.badge ?? pattern.badge;
+  const benefit = kit?.benefit ?? pattern.description;
+  const specs = kit?.specs;
+  const art = kit?.imageUrl ?? pattern.imageUrl;
+  return (
+    <article className="flex flex-col bg-white rounded-[44px] border border-blush-200 shadow-blush hover:shadow-[0_10px_30px_rgba(236,72,153,0.18)] transition-shadow duration-300 overflow-hidden">
+      {/* Art (square, designer product shot) */}
+      <div className="aspect-square bg-blush-100/60 p-3 sm:p-4 relative">
+        {art ? (
+          <img
+            src={art}
+            alt={pattern.title}
+            className="w-full h-full object-cover rounded-[28px] border border-blush-100"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-blush-300">
+            <Scissors className="h-12 w-12" />
+          </div>
+        )}
+        {badge && (
+          <span className={`${pill} absolute top-5 left-5 bg-white/90 backdrop-blur-sm px-4 py-1 text-xs font-bold text-blush-700 ring-1 ring-inset ring-blush-200`}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {/* Copy block */}
+      <div className="p-8 sm:p-10 pt-6 sm:pt-7 flex flex-col flex-1">
+        <h3 className="font-script text-2xl text-slate-800 leading-snug">{pattern.title}</h3>
+        <p className="mt-2 text-[15px] leading-6 text-slate-600">{benefit}</p>
+        {specs && (
+          <p className="mt-3 text-[11px] font-bold tracking-wide text-slate-400 uppercase">{specs}</p>
+        )}
+        {/* Price + CTA */}
+        <div className="mt-auto pt-6 flex items-baseline justify-between gap-3">
+          <span className="text-2xl font-extrabold text-blush-600">{pattern.priceLabel}</span>
+          <a href={pattern.paymentUrl} target="_blank" rel="noopener noreferrer" className={ctaPill}>
+            <ShoppingBag className="h-4 w-4" />
+            Buy Pattern
+          </a>
+        </div>
+        {/* Fulfillment copy — its own row, verbatim */}
+        <p className="mt-4 pt-4 border-t border-blush-100 text-xs font-bold text-blush-600/90 tracking-wide text-center">
+          {FULFILLMENT_COPY}
+        </p>
+      </div>
+    </article>
+  );
+}
+
 /**
  * Featured Patterns — the home-landing Pattern Library shop window. Purely
  * presentational: the parent owns the fetch (via useLibraryPatterns) so the
@@ -63,14 +156,16 @@ export const FeaturedPatterns: React.FC<{
   return (
     <div id="library-featured" className="mx-auto max-w-7xl px-6 lg:px-8 py-24 sm:py-32">
       <div className="mx-auto max-w-2xl text-center">
-        <div className="inline-flex items-center gap-x-2 rounded-full bg-blush-100/80 px-4 py-1.5 text-sm font-semibold text-blush-700 ring-1 ring-inset ring-blush-300/50 mb-5">
-          <ShoppingBag className="h-4 w-4 text-blush-500" />
+        <span className={`${pill} bg-white px-5 py-1.5 text-xs font-bold tracking-[0.14em] uppercase text-blush-600 ring-1 ring-inset ring-blush-200`}>
           Pattern Library
-        </div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-800 sm:text-4xl">
-          Featured <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-300">Patterns</span>
+        </span>
+        <h2 className="mt-6 font-display text-4xl font-bold tracking-tight text-slate-800 sm:text-5xl">
+          Featured{' '}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-floral-600 to-blush-500">
+            Patterns
+          </span>
         </h2>
-        <p className="mt-4 text-lg leading-8 text-blush-600/80">
+        <p className="mt-5 text-lg leading-8 text-slate-500">
           Buy individual patterns for small projects — no account or subscription
           needed. Each purchase includes everything you need to stitch it yourself.
         </p>
@@ -78,14 +173,14 @@ export const FeaturedPatterns: React.FC<{
 
       <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
         {status === 'loading' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8" aria-busy="true">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10" aria-busy="true">
             {[0, 1].map((i) => (
-              <div key={i} className="floral-card overflow-hidden flex flex-col">
+              <div key={i} className="flex flex-col bg-white rounded-[44px] border border-blush-100 shadow-blush overflow-hidden">
                 <div className="aspect-square bg-blush-100/70 animate-pulse" />
-                <div className="p-5 space-y-3">
-                  <div className="h-4 w-2/3 rounded bg-blush-100/70 animate-pulse" />
-                  <div className="h-3 w-full rounded bg-slate-100 animate-pulse" />
-                  <div className="h-3 w-1/2 rounded bg-slate-100 animate-pulse" />
+                <div className="p-8 space-y-3">
+                  <div className="h-5 w-2/3 rounded-full bg-blush-100/70 animate-pulse" />
+                  <div className="h-4 w-full rounded-full bg-slate-100 animate-pulse" />
+                  <div className="h-4 w-1/2 rounded-full bg-slate-100 animate-pulse" />
                 </div>
               </div>
             ))}
@@ -93,7 +188,7 @@ export const FeaturedPatterns: React.FC<{
         )}
 
         {status === 'error' && (
-          <div className="floral-card max-w-xl mx-auto p-10 text-center">
+          <div className="bg-white max-w-xl mx-auto p-10 text-center rounded-[44px] border border-blush-200 shadow-blush">
             <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-blush-50 text-blush-500 mb-4">
               <RefreshCcw className="h-6 w-6" />
             </div>
@@ -104,7 +199,7 @@ export const FeaturedPatterns: React.FC<{
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blush-500 text-white hover:bg-blush-600 hover:shadow-blush active:scale-[0.98] transition-all duration-200"
+              className={ctaPill}
             >
               Try Again
             </button>
@@ -112,7 +207,7 @@ export const FeaturedPatterns: React.FC<{
         )}
 
         {status === 'ready' && patterns.length === 0 && (
-          <div className="floral-card max-w-xl mx-auto p-10 text-center">
+          <div className="bg-white max-w-xl mx-auto p-10 text-center rounded-[44px] border border-blush-200 shadow-blush">
             <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-blush-50 text-blush-500 mb-4">
               <Scissors className="h-6 w-6" />
             </div>
@@ -124,58 +219,15 @@ export const FeaturedPatterns: React.FC<{
         )}
 
         {status === 'ready' && patterns.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {patterns.map((pattern) => (
-              <div
-                key={pattern.id}
-                className="floral-card overflow-hidden group transition-all duration-300 hover:shadow-blush flex flex-col"
-              >
-                {/* Pattern image (square) */}
-                <div className="aspect-square bg-gradient-to-br from-blush-200 via-pink-100 to-rose-100 relative overflow-hidden">
-                  {pattern.imageUrl ? (
-                    <img
-                      src={pattern.imageUrl}
-                      alt={pattern.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-blush-300">
-                      <Scissors className="h-12 w-12" />
-                    </div>
-                  )}
-                  {pattern.badge && (
-                    <div className="absolute top-3 right-3 floral-badge bg-white/80 backdrop-blur-sm">
-                      {pattern.badge}
-                    </div>
-                  )}
-                </div>
-                {/* Card body */}
-                <div className="p-5 flex flex-col flex-1">
-                  <h3 className="font-bold text-slate-800 text-base group-hover:text-blush-600 transition-colors mb-1">
-                    {pattern.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-4">{pattern.description}</p>
-                  <div className="mt-auto flex items-center justify-between gap-3">
-                    <span className="text-lg font-extrabold text-blush-600">{pattern.priceLabel}</span>
-                    <a
-                      href={pattern.paymentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-blush-500 text-white hover:bg-blush-600 hover:shadow-blush active:scale-[0.98] transition-all duration-200"
-                    >
-                      <ShoppingBag className="h-3.5 w-3.5" />
-                      Buy Pattern
-                    </a>
-                  </div>
-                </div>
-              </div>
+              <FeaturedPatternCard key={pattern.id} pattern={pattern} />
             ))}
           </div>
         )}
 
         {status === 'ready' && patterns.length > 0 && (
-          <div className="mt-10 flex flex-col items-center gap-4">
+          <div className="mt-12 flex flex-col items-center gap-4">
             <Link
               to="/patterns"
               className="group inline-flex items-center gap-1.5 text-sm font-bold text-blush-600 hover:text-blush-700 transition-colors"
@@ -183,10 +235,6 @@ export const FeaturedPatterns: React.FC<{
               Browse the full Pattern Library
               <span aria-hidden="true" className="transition-transform duration-200 group-hover:translate-x-1">→</span>
             </Link>
-            <p className="text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-blush-400" />
-              Secure one-off checkout · Pattern delivered to your account · No subscription required
-            </p>
           </div>
         )}
       </div>

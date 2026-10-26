@@ -158,9 +158,55 @@ export const PatternLibrary: React.FC = () => {
           </div>
         )}
 
+        {status === 'ready' && patterns.some((p) => p.id === 'rooster-collage') && (() => {
+          const rp = patterns.find((p) => p.id === 'rooster-collage')!;
+          // Kit copy — keep in sync with components/FeaturedPatterns KIT_COPY.
+          const kit = {
+            benefit: 'A bold farmhouse rooster in 94 cuttable pieces.',
+            specs: '94 pieces · numbered cutting guide · overview page',
+          };
+          return (
+            <div className="mb-12 bg-white rounded-[44px] border border-blush-200 shadow-blush overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-[320px_1fr]">
+                <div className="aspect-square md:aspect-auto bg-blush-100/60 p-4 sm:p-5">
+                  <img
+                    src={rp.imageUrl}
+                    alt={`${rp.title} — Farmhouse Collage pattern`}
+                    className="w-full h-full object-cover rounded-[28px] border border-blush-100"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="p-8 sm:p-10 flex flex-col">
+                  <span className="inline-flex w-fit items-center rounded-full bg-white px-4 py-1 text-xs font-bold text-blush-700 ring-1 ring-inset ring-blush-200">
+                    Collage Quilt
+                  </span>
+                  <h3 className="mt-4 font-script text-3xl text-slate-800 leading-snug">Rooster — Farmhouse Collage</h3>
+                  <p className="mt-3 text-base leading-7 text-slate-600">{kit.benefit}</p>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">{kit.specs}</p>
+                  <div className="mt-auto pt-6 flex flex-wrap items-center justify-between gap-4 border-t border-blush-100">
+                    <span className="text-3xl font-extrabold text-blush-600">{rp.priceLabel}</span>
+                    <a
+                      href={rp.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-floral-600 to-blush-500 hover:from-floral-700 hover:to-blush-600 shadow-[0_6px_18px_rgba(190,24,93,0.20)] active:scale-[0.98] transition-all duration-200"
+                    >
+                      <ShoppingBag className="h-4 w-4" />
+                      Buy Pattern
+                    </a>
+                  </div>
+                  <p className="mt-4 text-xs font-bold text-blush-600/90 tracking-wide text-center">
+                    1. Buy · 2. Log in with your checkout email · 3. Stitch
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {status === 'ready' && patterns.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {patterns.map((pattern) => (
+            {(patterns.filter((p) => p.id !== 'rooster-collage')).map((pattern) => (
               <div
                 key={pattern.id}
                 className="floral-card overflow-hidden group transition-all duration-300 hover:shadow-blush flex flex-col"
