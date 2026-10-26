@@ -196,3 +196,51 @@ describe("direct-draw ELIGIBILITY GATES", () => {
     expect(tryDirectDraw({ shape: undefined, prompt: "teddy bear" })).toBeNull();
   });
 });
+/**
+ * retest2 P0 contract (PR #203, 2026-10-26): the RESPONSE-grid orientation and
+ * palette that the owner's regenerate flow depends on. The client adopts the
+ * response VERBATIM now (resolveGenerationResponse), so the server grid MUST
+ * be rows-major at the requested canvas axes — any transpose here would be
+ * exactly the "broken and put back together" the owner rejected.
+ */
+describe("retest2 response-dims + palette contract (#203)", () => {
+  it("stocking @ canvas 154x238 -> 238 rows x 154 cols (rows-major portrait, her orientation)", () => {
+    const g = tryDirectDraw({ shape: "stocking", patternName: "Updated Blue Stocking1026-2", canvasWidth: 154, canvasHeight: 238 });
+    expect(g).not.toBeNull();
+    expect(g!.length).toBe(238);
+    expect(g![0].length).toBe(154);
+    const h = hist(g!);
+    expect(h["#2e609d"]).toBe(12083);   // body
+    expect(h["#ffffff"]).toBe(2335);    // cuff + toe cap
+    expect(h["#6c95c4"]).toBe(4715);    // shading
+    expect(h["#113b69"]).toBe(1005);    // the FIVE stars incl. hubs
+    expect(h[""]).toBe(16514);          // field empty
+    expect(g!.reduce((n, r) => n + r.length, 0)).toBe(36652);
+    // The five lead-spec star centres each pass the arm-sector audit.
+    for (const sc of starCentres) expect(starSectorAudit(g!, sc)).toBe(6);
+    // White cuff EXISTS at the very top rows (the old client mask culled rows 0..~31).
+    const topWhite = g!.slice(0, 6).some(row => row.some(c => c.color?.toLowerCase() === "#ffffff"));
+    expect(topWhite).toBe(true);
+  });
+  it("stocking mirrors the REQUEST axes exactly (no server-side transpose)", () => {
+    // landscape request -> landscape response: rows = canvasHeight, cols = canvasWidth
+    const g = tryDirectDraw({ shape: "stocking", patternName: "wide", canvasWidth: 238, canvasHeight: 154 });
+    expect(g!.length).toBe(154);
+    expect(g![0].length).toBe(238);
+  });
+  it("charm floor: a 28x28 request still yields the 54x54 bear (owner floor)", () => {
+    const g = tryDirectDraw({ shape: "ornament", prompt: "teddy bear bauble", patternName: "teddy bag charm update1026-2", canvasWidth: 28, canvasHeight: 28 });
+    expect(g!.length).toBe(54);
+    expect(g![0].length).toBe(54);
+    const h = hist(g!);
+    expect(h["#113b69"]).toBeGreaterThan(0);  // ring + crown
+    expect(h["#254267"]).toBeGreaterThan(0);  // sweater navy (the color the 28-crop lost)
+    expect(h["#ffffff"]).toBeGreaterThan(0);  // muzzle
+    expect(h["#3c3c3c"]).toBeGreaterThan(0);  // face
+  });
+  it("palette hexes are the DL-7 the client tests assert (exact set anchor)", () => {
+    const g = tryDirectDraw({ shape: "stocking", patternName: "x", canvasWidth: 154, canvasHeight: 238 })!;
+    const used = new Set(Object.keys(hist(g)).filter(k => k && k !== ""));
+    expect(used.has("#2e609d") && used.has("#6c95c4") && used.has("#113b69") && used.has("#ffffff")).toBe(true);
+  });
+});
