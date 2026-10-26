@@ -1818,7 +1818,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // (ornament), rounded rect (pillow), stocking silhouette. On custom
       // canvases the prompt-inferred guide (owner 10-19 P0) clips the same
       // way. Frames are the full canvas.
-      if (shouldMaskGeneration({ directDraw: data.directDraw, hasGuide: !!effectiveGuide, targetW })) {
+      if (effectiveGuide && shouldMaskGeneration({ directDraw: data.directDraw, hasGuide: true, targetW })) {
         // Clamp the mask guide to the canvas — identical clamp to drawGuide in
         // StitchGrid.tsx, so the mask and the visibly drawn guide are always the
         // same canvas-tangent shape. Without this, a fabric-count change that
