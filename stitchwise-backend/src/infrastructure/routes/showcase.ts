@@ -32,7 +32,7 @@ export function createShowcaseRouter(repo: ShowcaseRepo): Router {
 
   /**
    * POST /api/showcase/upload - Upload a photo to the Community Showcase.
-   * Accepts multipart/form-data with fields: image (file), title, caption?, projectId?, projectType?
+   * Accepts multipart/form-data with fields: image (file), title, caption?, projectId?
    * Photo is created with status PENDING until reviewed.
    */
   router.post(
@@ -83,7 +83,6 @@ export function createShowcaseRouter(repo: ShowcaseRepo): Router {
           title: parsed.data.title,
           caption: parsed.data.caption ?? null,
           projectId: parsed.data.projectId ?? null,
-          projectType: parsed.data.projectType ?? null,
           imageUrl: stored.url,
           thumbnailUrl: null, // Could generate thumbnails in production
         });

@@ -57,11 +57,16 @@ describe("Community Showcase API", () => {
         .attach("image", testImage, "test-photo.png")
         .field("title", "My First Showcase Photo")
         .field("caption", "A beautiful embroidery project")
+        // Legacy clients may still send projectType; the schema no longer has the
+        // column (a4b0b4c) so it must be tolerated and never written (regression: 500
+        // "Unknown argument projectType" on every upload).
+        .field("projectType", "embroidery")
         .expect(201);
 
       expect(res.body).toHaveProperty("id");
       expect(res.body.title).toBe("My First Showcase Photo");
       expect(res.body.caption).toBe("A beautiful embroidery project");
+      expect(res.body.projectType).toBeUndefined();
       expect(res.body.status).toBe("PENDING");
       expect(res.body.userId).toBe(testUserId);
       expect(res.body.imageUrl).toContain("/uploads/");
