@@ -468,6 +468,46 @@ function maskGridToGuide(
   return { grid: masked, types: maskedTypes };
 }
 
+/**
+ * Save-time hard clip (task d1ee3f17): mirror the backend's clipShapeEdge
+ * TRUE-CORNER convention (src/domain/stitch/productShapeMask.ts) so
+ * hand-drawn ring/corner cells on circle (ornament) designs are clipped to
+ * the visible guide circle at SAVE time. The server clips every NEW
+ * generation (b131/b132), but a manual paint/erase after generation lands
+ * in the raw grid and the save payload used to be written unclipped — a
+ * straddling ring cell (center inside the arc, corners outside) could
+ * persist as "color outside the charm". `maskGridToGuide` (above) uses the
+ * soft CENTER convention for the generation mask; this is the hard
+ * farthest-corner test, so nothing stitched outside the drawn guide can
+ * survive a save.
+ *
+ * Geometry port (1:1, incl. gating): a cell spans [c, c+1] × [rw, rw+1];
+ * keep it only when ALL FOUR true corners are within radius
+ * r = min(w,h)/2 − rimInset (rimInset = max(1, round(0.03·min))), center
+ * (w−1)/2 / (h−1)/2, and only when min(w,h) ≤ 60 — exactly the ornament
+ * small-grid clipShapeEdge, nothing more (70×70+ ornaments, other shapes
+ * and custom canvases are untouched, IDENTICALLY to the server).
+ * Caller gates on the circle guide. Pure: never mutates its input.
+ */
+export function clipGridToCircleCorners(cells: SavedPatternCell[][]): SavedPatternCell[][] {
+  const height = cells.length;
+  const width = cells[0]?.length ?? 0;
+  if (height === 0 || width === 0) return cells;
+  if (Math.min(width, height) > 60) return cells;
+  const inset = Math.max(1, Math.round(0.03 * Math.min(width, height)));
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const r = Math.min(width, height) / 2 - inset;
+  return cells.map((row, rw) =>
+    row.map((cell, c) => {
+      const dxMax = Math.max(Math.abs(c - cx), Math.abs(c + 1 - cx));
+      const dyMax = Math.max(Math.abs(rw - cy), Math.abs(rw + 1 - cy));
+      if (dxMax * dxMax + dyMax * dyMax > r * r) return { color: '' };
+      return cell;
+    }),
+  );
+}
+
 export function framePatternInGrid(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
@@ -1513,12 +1553,21 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       }),
     );
     const gridSize = Math.max(16, Math.min(500, Math.max(gridWidth, gridHeight)));
+    // b134-follow-up (d1ee3f17): hard-clip hand-drawn spill to the visible
+    // circle at SAVE time for small circle-guide designs — the server clips
+    // NEW generations only (b131/b132 clipShapeEdge); manual edits made
+    // after generation would otherwise persist straddling ring cells
+    // outside the drawn guide (center in, corners out).
+    const savePayloadGrid =
+      effectiveGuide?.type === 'circle'
+        ? clipGridToCircleCorners(payloadGrid)
+        : payloadGrid;
     setIsSavingPattern(true);
     setPatternSaveMsg(null);
     try {
       // Save provenance: the AI prompt + source artwork (data URL) travel with
       // the design so it round-trips on load (backend persists both columns).
-      await api.savePattern(name, payloadGrid, stitchData.dmcPalette, gridSize, stitchData.totalStitches, {
+      await api.savePattern(name, savePayloadGrid, stitchData.dmcPalette, gridSize, stitchData.totalStitches, {
         prompt: aiPrompt.trim() || undefined,
         sourceImage: aiArtworkUrl || undefined,
       });
