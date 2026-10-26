@@ -408,7 +408,7 @@ function pointInPolygon(x: number, y: number, pts: [number, number][]): boolean 
  * stocking silhouette (stocking). 'rect' frames fill the whole canvas (guide ==
  * canvas), so no clip is needed.
  */
-function maskGridToGuide(
+export function maskGridToGuide(
   guide: ProductGuide,
   grid: Record<string, string>,
   types: Record<string, string>,
@@ -506,6 +506,41 @@ export function clipGridToCircleCorners(cells: SavedPatternCell[][]): SavedPatte
       return cell;
     }),
   );
+}
+
+/**
+ * REGENERATE-DIMS (owner retest2 2026-10-26 P0): a generation response's grid
+ * IS the canvas — adopt it VERBATIM, always (b133 doctrine: the backend emits
+ * the exact requested canvas). The legacy dimsMatch/framePatternInGrid fallback
+ * existed for square-era backend responses; when a 54x54 direct-draw response
+ * lands on a stale 28-canvas it re-framed the bear DOWN to 28 ("blank center,
+ * weird outlines"), and the guide-mask clamp used the stale targetW/H the same
+ * way. Never re-frame or scale a valid response.
+ */
+export function resolveGenerationResponse(opts: {
+  newGrid: Record<string, string>;
+  newStitchTypes: Record<string, string>;
+  newW: number;
+  newH: number;
+  targetW: number;
+  targetH: number;
+}): { grid: Record<string, string>; stitchTypes: Record<string, string>; width: number; height: number } {
+  if (opts.newW > 0 && opts.newH > 0) {
+    return { grid: opts.newGrid, stitchTypes: opts.newStitchTypes, width: opts.newW, height: opts.newH };
+  }
+  return { grid: opts.newGrid, stitchTypes: opts.newStitchTypes, width: opts.targetW, height: opts.targetH };
+}
+
+/**
+ * REGENERATE-MASK (owner retest2 2026-10-26 P0): never re-mask a DIRECT-DRAW
+ * response — those grids are constructed designs with their own defined edges
+ * (true-corner circle, silhouette + outline). Re-masking them through the guide
+ * polygon culls their own cuff/toe/outline (stocking -2 save: white cuff+toe
+ * holed, "missing details, broken"); the mask exists to contain AI-ART bleeding,
+ * and AI art only.
+ */
+export function shouldMaskGeneration(opts: { directDraw?: boolean; hasGuide: boolean; targetW: number }): boolean {
+  return !!opts.hasGuide && opts.targetW > 0 && !opts.directDraw;
 }
 
 export function framePatternInGrid(
@@ -1758,26 +1793,24 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       let finalW = targetW;
       let finalH = targetH;
       if (newW > 0 && newH > 0) {
-        // The backend generates the grid at the EXACT requested canvas
-        // aspect/size when canvasWidth/canvasHeight are sent (non-square
-        // supported): use the returned grid VERBATIM, no re-framing — this
-        // keeps coverage dense instead of re-fitting a square onto the 154x238
-        // stocking (owner 09-03: 27% fill / 73% blank was the re-frame crush).
-        const dimsMatch =
-          Math.abs(data.width - targetW) <= 2 && Math.abs(data.height - targetH) <= 2;
-        if (dimsMatch) {
-          finalGrid = newGrid;
-          finalStitchTypes = newStitchTypes;
-          finalW = newW;
-          finalH = newH;
-        } else {
-          // Legacy fallback (old square backend response): keep background
-          // cells as stitches — map the detected background to a light fabric
-          // color instead of deleting them to empty, so coverage stays dense.
-          const framed = framePatternInGrid(newGrid, newStitchTypes, {}, targetW, targetH, newW, newH);
-          finalGrid = framed.grid;
-          finalStitchTypes = framed.stitchTypes;
-        }
+        // REGENERATE-DIMS (owner retest2 10-26): ALWAYS adopt the response
+        // grid VERBATIM — the backend emits the exact requested canvas (b133
+        // non-square support), so no re-framing is ever legitimate. The legacy
+        // dimsMatch/framePatternInGrid fallback re-framed a 54×54 direct-draw
+        // response down to a stale 28-canvas ("blank center, weird outlines")
+        // and must never run again.
+        const resolved = resolveGenerationResponse({
+          newGrid,
+          newStitchTypes,
+          newW,
+          newH,
+          targetW,
+          targetH,
+        });
+        finalGrid = resolved.grid;
+        finalStitchTypes = resolved.stitchTypes;
+        finalW = resolved.width;
+        finalH = resolved.height;
       }
 
       // Mask generated art to the ACTIVE/EFFECTIVE PRODUCT-SHAPE GUIDE (owner
@@ -1785,21 +1818,23 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // (ornament), rounded rect (pillow), stocking silhouette. On custom
       // canvases the prompt-inferred guide (owner 10-19 P0) clips the same
       // way. Frames are the full canvas.
-      if (effectiveGuide && targetW > 0) {
+      if (shouldMaskGeneration({ directDraw: data.directDraw, hasGuide: !!effectiveGuide, targetW })) {
         // Clamp the mask guide to the canvas — identical clamp to drawGuide in
         // StitchGrid.tsx, so the mask and the visibly drawn guide are always the
         // same canvas-tangent shape. Without this, a fabric-count change that
         // resized the guide memo but not the canvas (declined resize) made the
         // mask and the drawn circle disagree, and generated art appeared outside
         // the visible circle (owner 08-18: "did not stay in the circle").
+        const maskW = finalW > 0 ? finalW : targetW;
+        const maskH = finalH > 0 ? finalH : targetH;
         const maskGuide = effectiveGuide.type === 'rect'
           ? effectiveGuide
           : {
               ...effectiveGuide,
-              colW: Math.min(effectiveGuide.colW, targetW),
-              rowH: Math.min(effectiveGuide.rowH, targetH),
+              colW: Math.min(effectiveGuide.colW, maskW),
+              rowH: Math.min(effectiveGuide.rowH, maskH),
             };
-        const masked = maskGridToGuide(maskGuide, finalGrid, finalStitchTypes, targetW, targetH);
+        const masked = maskGridToGuide(maskGuide, finalGrid, finalStitchTypes, maskW, maskH);
         finalGrid = masked.grid;
         finalStitchTypes = masked.types;
       }
@@ -1813,6 +1848,13 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       }
       setGrid(finalGrid);
       setGridStitchTypes(finalStitchTypes);
+      // REGENERATE-DIMS (owner retest2 10-26): adopt the RESPONSE dims as the
+      // canvas unconditionally when the response changed them — the stale
+      // 28-canvas was why the charm's 54×54 bear saved (and showed) at 28.
+      if (finalW > 0 && finalH > 0 && (finalW !== gridWidth || finalH !== gridHeight)) {
+        setGridWidth(finalW);
+        setGridHeight(finalH);
+      }
       clearHistory(); // AI generation is a fresh baseline — undo must not cross it
       // A fresh AI result supersedes any pre-AI draft: write the NEW canvas to
       // the stored draft immediately, so the next session restores this result
