@@ -80,6 +80,8 @@ export default {
       fontFamily: {
         script: ['"Playfair Display"', 'Georgia', 'serif'],
         elegant: ['"Lora"', 'Georgia', 'serif'],
+        display: ['"Playfair Display"', 'Georgia', 'serif'],
+        sans: ['"Nunito"', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       borderRadius: {
         'floral': '2rem',
