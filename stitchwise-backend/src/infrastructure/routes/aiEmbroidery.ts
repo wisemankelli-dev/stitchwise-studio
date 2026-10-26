@@ -872,6 +872,10 @@ export async function convertStitchPatternImage(
     dmcColors: Awaited<ReturnType<typeof recountDmcFromGrid>>;
   };
   qualityWarning: string | null;
+  // b134/203 sync wire marker: the direct-draw branch (898) sets
+  // __directDraw: true so sync consumers can detect dd grids without
+  // re-guessing; absent for the photo→quantize→mask chain.
+  __directDraw?: boolean;
 }> {
   const { prompt, finalPrompt, shape, gridSize, maxColors, genW, genH, isFrameCanvasResult } = opts;
   // Color cap: floor higher than before so vibrant scenes keep enough colors
