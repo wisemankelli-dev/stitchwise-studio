@@ -542,6 +542,54 @@ export function resolveGenerationResponse(opts: {
 export function shouldMaskGeneration(opts: { directDraw?: boolean; hasGuide: boolean; targetW: number }): boolean {
   return !!opts.hasGuide && opts.targetW > 0 && !opts.directDraw;
 }
+/**
+ * REGENERATE-SOURCE (owner 2026-10-29 P0): a generate request may only carry
+ * `patternId` — which tells the backend to RE-CONVERT that saved pattern's
+ * stored source image instead of rolling a brand-new AI subject (b133/#197) —
+ * when the loaded pattern actually HAS a usable stored source image.
+ *
+ * Direct-draw designs (the built-in bear, the stocking) never store one, so
+ * carrying their id made the backend refuse the whole request with 400
+ * "This pattern has no saved source image — open the design and run Generate
+ * to create a new one" (owner: saved the 54x54 charm, then picked the stocking
+ * preset and hit Generate — the stale charm id was still on the request).
+ *
+ * This mirrors the backend guard EXACTLY (handleRegeneratePattern in
+ * stitchwise-backend/src/infrastructure/routes/aiEmbroidery.ts):
+ *   if (!source || source.length < 64 || !source.includes(",")) -> 400
+ * Keep the two in sync: the client must never send a request the server is
+ * guaranteed to reject.
+ */
+export function hasRegenerableSource(sourceImage?: string | null): boolean {
+  if (typeof sourceImage !== 'string') return false;
+  return sourceImage.length >= 64 && sourceImage.includes(',');
+}
+/**
+ * The design-identity state a generate request reads. It is captured ONCE, at
+ * load time, and never re-derived from live canvas/artwork state (which can
+ * change under it) — the two fields always move together so a clear can never
+ * leave a stale id behind.
+ */
+export interface LoadedRegenSource {
+  /** The saved pattern this design was loaded from (null = no loaded design). */
+  patternId: string | null;
+  /** Whether that saved pattern has a usable source image (backend's own test). */
+  hasSource: boolean;
+}
+/** No loaded design: the next Generate is a brand-new design. */
+export const NO_REGEN_SOURCE: LoadedRegenSource = { patternId: null, hasSource: false };
+/** Capture the regenerate identity of a pattern the user just loaded. */
+export function regenSourceAfterLoad(id: string, sourceImage?: string | null): LoadedRegenSource {
+  return { patternId: id, hasSource: hasRegenerableSource(sourceImage) };
+}
+/**
+ * The `patternId` field to spread into the generate request body. Empty unless
+ * BOTH a loaded pattern and its usable source exist, so a source-less loaded
+ * design (every direct-draw pattern) can never trigger the backend's 400.
+ */
+export function regenPayload(src: LoadedRegenSource): { patternId?: string } {
+  return src.patternId && src.hasSource ? { patternId: src.patternId } : {};
+}
 
 /**
  * CANVAS-DIMS (b136, owner retest2 follow-up 10-29): the ONE decision point for
@@ -988,9 +1036,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const lastSaved = useRef<Record<string, string>>({});
   // Save/Load state (F-2: studio toolbar Save/Load wired to /api/patterns)
   const [patternName, setPatternName] = useState('');
-  // b133: the id of the saved pattern this design was loaded from — sent as
-  // patternId on generate so the server re-converts the SAME source image.
-  const [loadedPatternId, setLoadedPatternId] = useState<string | null>(null);
+  // b133/b137: the saved pattern this design was loaded from — its id is sent
+  // as patternId on generate so the server re-converts the SAME source image,
+  // but ONLY when that pattern actually HAS a source (regenPayload). Direct-draw
+  // patterns (the built-in bear, the stocking) store none, and carrying their
+  // id made the backend 400 the whole generate (owner 10-29).
+  const [loadedRegenSource, setLoadedRegenSource] = useState<LoadedRegenSource>(NO_REGEN_SOURCE);
+  // Single entry point for every "this canvas is now a DIFFERENT design" path,
+  // so a stale pattern id can never ride the next generate request.
+  const clearLoadedRegenSource = useCallback(() => setLoadedRegenSource(NO_REGEN_SOURCE), []);
   const [isSavingPattern, setIsSavingPattern] = useState(false);
   const [savedPatterns, setSavedPatterns] = useState<SavedPatternSummary[]>([]);
   const [showPatternLoad, setShowPatternLoad] = useState(false);
@@ -1014,6 +1068,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     const file = e.target.files?.[0];
     if (!file) return;
     setRestoredDraft(null); // an upload replaces the canvas -- no pending draft banner
+    // b137: an imported image is a NEW design — the loaded pattern's saved
+    // source is no longer what this canvas came from.
+    clearLoadedRegenSource();
     setIsProcessingImage(true);
     
     const reader = new FileReader();
@@ -1048,7 +1105,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       img.src = ev.target?.result as string;
     };
     reader.readAsDataURL(file);
-  }, [gridWidth, gridHeight, numColors]);
+  }, [gridWidth, gridHeight, numColors, clearLoadedRegenSource]);
 
   // Drawing tools state
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
@@ -1612,6 +1669,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight, drawStart, setShapeEnd]);
 
   const handleClearGrid = () => {
+    // b137: Clear starts a blank design — no saved pattern owns this canvas.
+    clearLoadedRegenSource();
     setRestoredDraft(null); // an explicit Clear also dismisses the restore banner
     clearHistory(); // Clear starts a brand-new baseline
     setGrid({});
@@ -1730,10 +1789,13 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         ));
       }
       setPatternName(p.name);
-      // b133: remember which saved pattern this design came from so a later
-      // "generate" re-converts ITS saved source image (deterministic regenerate)
-      // instead of rolling a brand-new AI subject.
-      setLoadedPatternId(id);
+      // b133/b137: remember which saved pattern this design came from so a
+      // later "generate" re-converts ITS saved source image (deterministic
+      // regenerate) instead of rolling a brand-new AI subject — and remember
+      // whether that pattern HAS a source at all. Captured HERE, from the load
+      // response, never re-derived later: a source-less design (every
+      // direct-draw pattern) must never send patternId.
+      setLoadedRegenSource(regenSourceAfterLoad(id, p.sourceImage));
       // Restore AI provenance so a round-trip load→save keeps the prompt +
       // source artwork (owner 09-11: "teddy bear ornament2" saved with a NULL
       // sourceImage — the load path never restored it, so the save lost it).
@@ -1803,12 +1865,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         canvasHeight: targetH,
         shape: aiShape,
         premiumModel: premiumModel && isStudioTier ? true : undefined,
-        // b133: a design opened from the pattern library carries its pattern id
-        // so "generate" on a saved design REGENERATES that design's saved source
-        // image deterministically (no new AI subject) — backend re-converts the
-        // stored sourceImage with the product shape recovered from the pattern
-        // name + prompt.
-        ...(loadedPatternId ? { patternId: loadedPatternId } : {}),
+        // b133/b137: a design opened from the pattern library carries its pattern
+        // id so "generate" on a saved design REGENERATES that design's saved
+        // source image deterministically (no new AI subject) — backend re-converts
+        // the stored sourceImage with the product shape recovered from the pattern
+        // name + prompt. regenPayload() emits patternId ONLY when that saved
+        // pattern has a usable source, mirroring the backend's own guard: a
+        // source-less design (direct-draw) falls through to a fresh generation
+        // instead of the guaranteed 400 "no saved source image".
+        ...regenPayload(loadedRegenSource),
       });
       // Backend quality gate: if the image didn't convert cleanly, say so
       // instead of silently showing a bad grid (owner 09-03 definition of done).
@@ -1979,7 +2044,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -2009,6 +2074,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // blank grid, no reframing of whatever was on canvas, auto-fit zoom. This is
   // the only place a preset is applied to the canvas.
   const startFreshPresetCanvas = (preset: CanvasPreset, stitchW: number, stitchH: number) => {
+    // b137: picking a product template starts a NEW design (owner 10-29: a
+    // source-less 54x54 charm was still loaded when she picked the stocking
+    // preset, so Generate sent the charm's id and 400'd). Identity cleared.
+    clearLoadedRegenSource();
     setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
     setAdoptedGuideDims(null); // b136: a fresh preset canvas has no DD-adopted dims
     setPendingPreset(null);
@@ -2035,6 +2104,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   };
 
   const applyResize = (newW: number, newH: number) => {
+    // b137: a resized canvas is re-derived — the next Generate is a NEW design,
+    // not a re-convert of whatever saved pattern happened to be loaded.
+    clearLoadedRegenSource();
     clearHistory(); // a canvas resize changes dimensions — treat as a new baseline
     setAdoptedGuideDims(null); // b136: the canvas was re-derived, adopted dims are stale
     // Clip any stitches outside the new bounds
@@ -2107,6 +2179,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   }, []);
   const handleKeepDraft = () => {
     if (!restoredDraft) return;
+    // b137: a restored local draft is its own design, not the loaded pattern's.
+    clearLoadedRegenSource();
     const d = restoredDraft;
     setRestoredDraft(null); // persist effect may re-write the draft below
     setGrid(d.grid);
@@ -2118,6 +2192,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   };
 
   const handleClearDraft = () => {
+    // b137: "start blank" — the canvas no longer belongs to a saved pattern.
+    clearLoadedRegenSource();
     setRestoredDraft(null);
     localStorage.removeItem(DESIGNER_DRAFT_KEY);
     setGrid({});
