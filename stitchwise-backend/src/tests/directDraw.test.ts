@@ -7,7 +7,8 @@
  * dependence, nothing an AI image can corrupt):
  *   charm:  54×54 (owner floor 3in @18ct) — ornament ring, symmetric defined
  *           eyes/nose/smile/muzzle (the face can NEVER be a white slab), bear
- *           head + ears + sweater, field empty outside the ornament;
+ *           head + ears, complete brown chin, field empty outside the ornament;
+ *           LOOK = the owner-picked "B2" (2026-10-29, +18 % face, NO sweater);
  *   stocking: her 238×154 — white cuff + toe cap, body/shade, FIVE six-point
  *           #113b69 stars at the lead-spec centres, each passing a 6-sector
  *           arm audit BY CONSTRUCTION, 1-cell dark outline (defined edges),
@@ -125,13 +126,72 @@ describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
     expect(big.length).toBe(90); // larger canvases keep their size
   });
 
-  it("meets every contract palette threshold (the preview-maker's own asserts)", () => {
+  it("meets every contract palette threshold (the B2 look's own asserts)", () => {
     const h = hist(g);
     expect(h["#113b69"] ?? 0).toBeGreaterThan(40); // ornament ring
-    expect(h["#254267"] ?? 0).toBeGreaterThan(100); // sweater
     expect(h["#5d3c2e"] ?? 0).toBeGreaterThan(200); // bear head
     expect(h["#3c3c3c"] ?? 0).toBeGreaterThan(20); // eyes/nose/smile
     expect(h["#ffffff"] ?? 0).toBeGreaterThan(100); // muzzle + inside-ring bg
+  });
+
+  it("draws the owner-picked B2 bear: the EXACT histogram, and NO #254267 sweater", () => {
+    // Owner pick 2026-10-29 (B2, +18 % face): the b134 sweater band is GONE —
+    // paper fills the ornament below the chin — while the ornament rim and the
+    // crown loop stay cell-for-cell identical (that is why #113b69 is still 173).
+    // 2916 cells = 1254 empty + 173 navy + 794 white + 561 brown + 64 inner + 70 dark
+    expect(hist(g)).toEqual({
+      "": 1254, // outside the ornament
+      "#113b69": 173, // rim + crown loop (UNCHANGED)
+      "#ffffff": 794, // muzzle + the paper inside the rim
+      "#5d3c2e": 561, // head + ears
+      "#8a6c54": 64, // inner ears
+      "#3c3c3c": 70, // eyes + nose + smile
+    });
+    expect(hist(g)["#254267"] ?? 0).toBe(0); // the sweater no longer exists
+  });
+
+  it("closes the chin — brown all the way down, no flat cut, no navy slab under it", () => {
+    // The rejected b134 bear: brown stopped at row 38, the muzzle was white-on-
+    // white and rows 43+ were a full-width navy slab. B2's jaw is brown through
+    // row 41 and the head ends exactly on the cell boundary y = 42.
+    const rowCount = (r: number, hex: string) => {
+      let n = 0;
+      for (let c = 0; c < 54; c++) if (colorAt(g, r, c).toLowerCase() === hex) n++;
+      return n;
+    };
+    for (const r of [37, 38, 39, 40, 41]) expect(rowCount(r, "#5d3c2e")).toBeGreaterThan(0);
+    expect(rowCount(42, "#5d3c2e")).toBe(0); // head closes on the boundary
+    // below the chin it is paper, not a sweater: navy is rim edge only (≤6
+    // cells a side), never the 29-cell full-width band the owner rejected
+    for (const r of [42, 43, 44, 45, 46]) {
+      expect(rowCount(r, "#113b69")).toBeLessThan(10);
+      expect(rowCount(r, "#ffffff")).toBeGreaterThan(15);
+    }
+  });
+
+  it("keeps ≥1 cell of paper between the face and the rim, and the exact 5-colour palette", () => {
+    const face = new Set(["#5d3c2e", "#8a6c54", "#3c3c3c"]);
+    const faceCells: Array<[number, number]> = [];
+    const rimCells: Array<[number, number]> = [];
+    for (let r = 0; r < 54; r++)
+      for (let c = 0; c < 54; c++) {
+        const v = colorAt(g, r, c).toLowerCase();
+        if (face.has(v)) faceCells.push([r, c]);
+        if (v === "#113b69" && r >= 12) rimCells.push([r, c]); // below the crown loop
+      }
+    let gap = Infinity;
+    for (const [fr, fc] of faceCells)
+      for (const [rr, rc] of rimCells) gap = Math.min(gap, Math.max(Math.abs(fr - rr), Math.abs(fc - rc)) - 1);
+    expect(gap).toBeGreaterThanOrEqual(1); // at least one cell of paper, everywhere
+    // the rim itself is complete: the cell straddling the ring at 720 angles
+    let rimOk = 0;
+    for (let i = 0; i < 720; i++) {
+      const a = (i * Math.PI * 2) / 720;
+      const x = Math.floor(26.5 + 22.4 * Math.cos(a));
+      const y = Math.floor(27.0 + 22.4 * Math.sin(a));
+      if (colorAt(g, y, x).toLowerCase() === "#113b69") rimOk++;
+    }
+    expect(rimOk).toBe(685); // same 685/720 as the approved B2 render (and as b134)
   });
 
   it("face is NOT a white slab — head colors dominate the face box", () => {
@@ -234,7 +294,7 @@ describe("retest2 response-dims + palette contract (#203)", () => {
     expect(g![0].length).toBe(54);
     const h = hist(g!);
     expect(h["#113b69"]).toBeGreaterThan(0);  // ring + crown
-    expect(h["#254267"]).toBeGreaterThan(0);  // sweater navy (the color the 28-crop lost)
+    expect(h["#254267"] ?? 0).toBe(0);        // NO sweater (B2: paper below the chin)
     expect(h["#ffffff"]).toBeGreaterThan(0);  // muzzle
     expect(h["#3c3c3c"]).toBeGreaterThan(0);  // face
   });

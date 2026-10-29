@@ -128,11 +128,15 @@ describe('b136 — SECOND generate in one session must not re-shrink a 54x54 DD 
     // the 28-window crop (the -2 failure) would have kept 28x28 = 784 cells and
     // lost the muzzle/crown ring: the full 54x54 canvas keeps all 2916 cells.
     expect(g2.saved.grid.flat().length).toBe(2916);
-    // every contract colour still present after the second generate
-    const hexes = new Set(g2.saved.grid.flat().map((c) => c.color));
-    for (const hex of ['#113b69', '#ffffff', '#5d3c2e', '#8a6c54', '#3c3c3c', '#254267']) {
+    // every contract colour still present after the second generate (the B2
+    // palette is exactly these five — the b134 #254267 sweater no longer exists)
+    const hexes = new Set(g2.saved.grid.flat().map((c) => c.color).filter(Boolean));
+    const B2 = ['#113b69', '#ffffff', '#5d3c2e', '#8a6c54', '#3c3c3c'];
+    for (const hex of B2) {
       expect(hexes.has(hex)).toBe(true);
     }
+    expect([...hexes].sort()).toEqual([...B2].sort()); // and NOTHING else (no sweater)
+    expect(hexes.has('#254267')).toBe(false);
     // crown ring sits at row 4 / col 26 — outside a 28-wide window's face but
     // inside the 54 canvas, so it proves the canvas did not window the grid.
     expect(g2.saved.grid[4][26].color).toBe('#113b69');

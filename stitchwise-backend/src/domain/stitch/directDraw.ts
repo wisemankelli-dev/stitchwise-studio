@@ -16,9 +16,12 @@
  *           procedural bear-face ornament — #113b69 ornament ring + crown
  *           loop, #5d3c2e bear head + ears (#8a6c54 inner ears), #3c3c3c
  *           symmetric eyes + nose + smile, #ffffff muzzle + inside-ring
- *           background, #254267 sweater band; outside the ornament = empty.
- *           Face features are geometric primitives, so the face can NEVER be
- *           a white slab and the eyes/nose are always present and symmetric.
+ *           background; outside the ornament = empty. Face features are
+ *           geometric primitives, so the face can NEVER be a white slab and
+ *           the eyes/nose are always present and symmetric.
+ *           LOOK = the owner-picked "B2" (2026-10-29): complete round head
+ *           with a brown chin, muzzle fully inside the head, and NO sweater
+ *           (#254267 is gone — paper fills the ornament below the chin).
  *   STOCKING (her size 238 rows × 154 cols @14ct):
  *           procedural stocking silhouette (cuff + toe cap #ffffff, body
  *           #2e609d, shade #6c95c4), FIVE six-point #113b69 snowflake stars
@@ -62,7 +65,51 @@ const BROWN = "#5d3c2e"; // bear head
 const INNER = "#8a6c54"; // inner ears
 const WHITE = "#ffffff"; // muzzle + inside-ring background
 const DARK = "#3c3c3c"; // eyes / nose / smile
-const SWEATER = "#254267"; // blue sweater band
+
+/**
+ * CHARM BEAR — the owner-picked "B2" look (2026-10-29, +18 % face).
+ *
+ * The b134 bear was rejected on retest ("there is no bottom of the face for the
+ * bear, just a blue blocked out space"): its muzzle was wider than the head at
+ * the chin, so the chin was white-on-white, and the #254267 "sweater" was a
+ * full-width navy slab starting 0.1 cells under the head. B2 replaces both:
+ *   - a COMPLETE round head (r 14.4 cells at N=54) whose chin closes on a cell
+ *     boundary, with the muzzle ellipse fully inside it (max boundary radius
+ *     10.3·k < head 12.2·k), so the jaw is brown all the way down;
+ *   - NO sweater at all — paper/white fills the ornament below the chin;
+ *   - features in CELL space, mirrored about the axis (c ↔ 52−c), so the eyes,
+ *     inner ears and nose are exactly symmetric.
+ * The ornament rim, the crown loop and the palette are untouched (B2's rim and
+ * crown are cell-for-cell identical to the shipped bear: navy 173, rim 685/720).
+ *
+ * Every number below is in the 54-cell reference space and scales by
+ * s = N/54, so the composition is identical at any canvas ≥ the 54 floor.
+ */
+const FACE_K = 1.18; // face size vs the b134 bear (owner picked B2 of B1/B2/B3)
+const HEAD_R = 12.2 * FACE_K; // 14.396 cells at N=54
+/** Head bottom snapped to the cell boundary y = 42.0 — a chin edge that lands
+ *  mid-cell leaves a 1-cell spike under the vote — so the face centre sits
+ *  0.604 cells (not a round 0.6) below the ornament centre.  Order of the
+ *  subtraction is kept identical to the approved render's snap. */
+const FACE_DY = 42.0 - 27.0 - HEAD_R;
+const EAR_POS = 0.8156242445111275; // ear POSITION vs proportional: the least tuck
+// that keeps ≥1.2 cells of rendered paper between face and rim (solved by
+// bisection on the rendered grid; the owner-facing report rounds it to 0.816 —
+// this is the exact value, so the shipped grid is the approved one bit for bit)
+/** B2's own numbers, in 54-space, relative to the face centre. */
+const BEAR = {
+  headR: HEAD_R, // 14.396 → head bottom lands on y = 42.0 exactly
+  earDx: 11.7 * FACE_K * EAR_POS,
+  earDy: -8.2 * FACE_K * EAR_POS,
+  earR: 5.5 * FACE_K,
+  muzDy: 6.4 * FACE_K, // muzzle ellipse centre below the face centre
+  muzRx: 6.6 * FACE_K,
+  muzRy: 3.9 * FACE_K,
+  eyeCx: 6.5 * FACE_K, // eye centre distance from the mirror axis
+  noseBlockDy: 3 * FACE_K, // nose+smile = ONE contiguous block under the face centre
+  innerDx: -0.3 * FACE_K,
+  innerDy: 0.7 * FACE_K,
+} as const;
 
 /** Ornament + bear geometry in CELL units at N=54 (the owner floor).  For
  *  N≠54 every constant scales by N/54 so the proportions stay identical. */
@@ -74,36 +121,87 @@ function buildCharm(N: number): StitchGrid {
   const inE = (x: number, y: number, px: number, py: number, rx: number, ry: number): boolean =>
     ((x - px) / rx) * ((x - px) / rx) + ((y - py) / ry) * ((y - py) / ry) <= 1;
 
+  // ── B2 bear, built in the 54-cell reference space ────────────────────────
+  const hx = 26.5; // ornament centre x == mirror axis
+  const hy = 27.0 + FACE_DY; // face centre y (54-space)
+  const axisC = 26; // cell index of the mirror axis (cols 26 ± hw)
+  // Integer feature boxes snapped from the scaled geometry and then MIRRORED
+  // (c → 52−c) so both sides are cell-exact (an ellipse centred on a half-cell
+  // boundary rasterises asymmetrically — measured 12 vs 10 cells).
+  const eyeW = Math.max(4, Math.round(4 * FACE_K)); // 5
+  const eyeH = Math.max(4, Math.round(4 * FACE_K)); // 5
+  const eyeC0 = Math.round(hx - BEAR.eyeCx - eyeW / 2);
+  const eyeC1 = eyeC0 + eyeW - 1;
+  const eyeC0R = 54 - 2 - eyeC1;
+  const eyeC1R = 54 - 2 - eyeC0;
+  const eyeR0 = Math.round(hy - eyeH / 2);
+  const eyeR1 = eyeR0 + eyeH - 1;
+  const noseHW1 = Math.max(2, Math.round(2 * FACE_K)); // 2 → 5 wide
+  const noseHW2 = Math.max(1, Math.round(1 * FACE_K)); // 1 → 3 wide
+  const smileHW = Math.max(3, Math.round(3 * FACE_K)); // 4 → 9 wide
+  const blkA = Math.round(hy + BEAR.noseBlockDy); // 31
+  const noseRows = Math.max(4, Math.round(4 * FACE_K)); // 5
+  const wideRows = Math.ceil(noseRows / 2); // 3
+  const n1a = blkA;
+  const n1b = blkA + wideRows - 1;
+  const n2a = n1b + 1;
+  const n2b = blkA + noseRows - 1;
+  const smA = n2b + 1;
+  const smB = smA + Math.max(1, Math.round(1 * FACE_K)) - 1;
+  const innerW = Math.max(3, Math.round(5 * FACE_K)); // 6
+  const icx = hx - BEAR.earDx + BEAR.innerDx;
+  const icy = hy + BEAR.earDy + BEAR.innerDy;
+  const inC0 = Math.round(icx - innerW / 2);
+  const inC1 = inC0 + innerW - 1;
+  const inC0R = 54 - 2 - inC1;
+  const inC1R = 54 - 2 - inC0;
+  const inR0 = Math.round(icy - innerW / 2);
+  const inR1 = inR0 + innerW - 1;
+  // rounded box (corners cut) — the inner ears and the eyes
+  const inRound = (r: number, c: number, r0: number, r1: number, c0: number, c1: number): boolean =>
+    r >= r0 && r <= r1 && c >= c0 && c <= c1 && !((r === r0 || r === r1) && (c === c0 || c === c1));
+
   const zone = (sx: number, sy: number): string => {
     if (!inC(sx, sy, cx, cy, R)) return ""; // outside ornament -> empty
     if (inC(sx, sy, cx, 3.0 * s, 2.5 * s)) return CHROWN; // crown loop
-    if (inC(sx, sy, cx, cy, R) && !inC(sx, sy, cx, cy, Ri)) return CHROWN; // ornament rim
+    if (!inC(sx, sy, cx, cy, Ri)) return CHROWN; // ornament rim
+    // the bear is drawn in 54-space: x/s turns the s-scaled constants into
+    // B2's own numbers, so N=54 reproduces the approved render exactly.
+    const x = sx / s, y = sy / s;
     // EARS drawn BEFORE the head so they fully render above the skull.
-    if (inC(sx, sy, 13.8 * s, 20.0 * s, 5.8 * s) || inC(sx, sy, 39.2 * s, 20.0 * s, 5.8 * s)) {
-      if (inC(sx, sy, 14.0 * s, 20.8 * s, 2.7 * s) || inC(sx, sy, 39.0 * s, 20.8 * s, 2.7 * s)) {
-        return INNER; // inner ear
+    for (const sgn of [-1, 1] as const) {
+      const ex = hx + sgn * BEAR.earDx;
+      const ey = hy + BEAR.earDy;
+      if (inC(x, y, ex, ey, BEAR.earR)) {
+        const c = Math.floor(x);
+        const r = Math.floor(y);
+        return inRound(r, c, inR0, inR1, sgn < 0 ? inC0 : inC0R, sgn < 0 ? inC1 : inC1R)
+          ? INNER // inner ear
+          : BROWN; // ear
       }
-      return BROWN; // ear
     }
-    if (inC(sx, sy, 26.5 * s, 29.5 * s, 13.2 * s)) {
-      if (inE(sx, sy, 26.5 * s, 37.6 * s, 8.6 * s, 6.2 * s)) {
-        if (inE(sx, sy, 26.5 * s, 34.8 * s, 3.4 * s, 2.6 * s)) {
-          return DARK; // nose (solid dark)
-        }
-        if (sy >= 40.6 * s && sy <= 41.4 * s && Math.abs(sx - 26.5 * s) <= 3.0 * s) {
-          return DARK; // small smile
-        }
+    const hdx = x - hx;
+    const hdy = y - hy;
+    if (hdx * hdx + hdy * hdy <= BEAR.headR * BEAR.headR) {
+      const muzCy = hy + BEAR.muzDy;
+      if (inE(x, y, hx, muzCy, BEAR.muzRx, BEAR.muzRy)) {
+        const c = Math.floor(x);
+        const r = Math.floor(y);
+        // nose (solid dark) + smile: one contiguous block, so the mouth can
+        // never float away from the nose (a sub-cell band loses the 2–2 vote)
+        if (r >= n1a && r <= n1b && Math.abs(c - axisC) <= noseHW1) return DARK;
+        if (r >= n2a && r <= n2b && Math.abs(c - axisC) <= noseHW2) return DARK;
+        if (r >= smA && r <= smB && Math.abs(c - axisC) <= smileHW) return DARK;
         return WHITE; // muzzle
       }
-      if (inE(sx, sy, 20.4 * s, 30.4 * s, 2.1 * s, 2.9 * s) || inE(sx, sy, 32.6 * s, 30.4 * s, 2.1 * s, 2.9 * s)) {
+      const c = Math.floor(x);
+      const r = Math.floor(y);
+      if (inRound(r, c, eyeR0, eyeR1, eyeC0, eyeC1) || inRound(r, c, eyeR0, eyeR1, eyeC0R, eyeC1R)) {
         return DARK; // eyes
       }
-      return BROWN; // head
+      return BROWN; // head (chin closes on a cell boundary — no flat cut)
     }
-    if (sy >= 42.8 * s && inC(sx, sy, cx, cy, Ri)) {
-      return SWEATER; // blue sweater lower band
-    }
-    return WHITE; // background inside rim
+    return WHITE; // background inside rim — NO sweater below the chin
   };
 
   const out: StitchGrid = [];
