@@ -543,6 +543,47 @@ export function shouldMaskGeneration(opts: { directDraw?: boolean; hasGuide: boo
   return !!opts.hasGuide && opts.targetW > 0 && !opts.directDraw;
 }
 
+/**
+ * CANVAS-DIMS (b136, owner retest2 follow-up 10-29): the ONE decision point for
+ * the canvas once a generation response has landed. Two rules, in this order:
+ *
+ *  1. A DIRECT-DRAW response OWNS the canvas: its grid dims are adopted
+ *     verbatim and NOTHING may resize them afterwards. This closes the second
+ *     regression door of 10-29: the legacy "preset dims win" re-apply
+ *     (`activePreset && (presetW !== canvasW || presetH !== canvasH)`) fired on
+ *     the SECOND generate of a session, because by then canvasW is the ADOPTED
+ *     54 while presetW is still the 28 of the Bag Charm preset - it snapped a
+ *     correct 54x54 bear back to 28x28 (canvas windowed at 28 over a 54 grid,
+ *     save clipped to 28x28, undo already cleared).
+ *  2. For an AI response the preset still wins over a stale leftover canvas
+ *     (owner 08-18: picked the 5x5 ornament but the pattern came out 17x17) -
+ *     i.e. exactly today's behaviour for every non-direct-draw flow.
+ */
+export function resolvePostGenerationCanvas(opts: {
+  /** True when the response came from the deterministic direct-draw path. */
+  directDraw: boolean;
+  /** Response grid dims (0/0 when the response carried none). */
+  adoptedW: number;
+  adoptedH: number;
+  /** Canvas dims captured BEFORE the request. */
+  canvasW: number;
+  canvasH: number;
+  /** Preset dims at the current fabric count (== canvas dims when no preset). */
+  presetW: number;
+  presetH: number;
+  hasPreset: boolean;
+}): { width: number; height: number } {
+  const adopted = opts.adoptedW > 0 && opts.adoptedH > 0;
+  const base = adopted
+    ? { width: opts.adoptedW, height: opts.adoptedH }
+    : { width: opts.canvasW, height: opts.canvasH };
+  if (opts.directDraw) return base; // a direct-draw adopt is final
+  if (opts.hasPreset && (opts.presetW !== opts.canvasW || opts.presetH !== opts.canvasH)) {
+    return { width: opts.presetW, height: opts.presetH };
+  }
+  return base;
+}
+
 export function framePatternInGrid(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
@@ -825,7 +866,7 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 }
 
 /** Build a StitchGridData from the manual grid state (flat key-value records) */
-function buildManualGridData(
+export function buildManualGridData(
   grid: Record<string, string>,
   stitchTypes: Record<string, string>,
   width: number,
@@ -1043,6 +1084,14 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
   const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
 
+  // DIRECT-DRAW ADOPTED CANVAS (b136): a direct-draw response adopts its own
+  // grid dims verbatim, so the preset's inch-derived guide dims no longer
+  // describe the canvas (owner 10-29: after the 54x54 bear adopt the dashed
+  // 26-cell rose circle was still drawn across the bear's face). ONLY set on a
+  // direct-draw adopt and cleared whenever another path re-derives the canvas,
+  // so every non-direct-draw flow keeps its exact current behaviour.
+  const [adoptedGuideDims, setAdoptedGuideDims] = useState<{ colW: number; rowH: number } | null>(null);
+
   // Product-shape guide for the active preset (null for custom canvases).
   // colW/rowH use the same inchesToStitches call the preset buttons use, so the
   // guide always matches the canvas exactly.
@@ -1052,12 +1101,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       (p) => p.inchW === activePreset.inchW && p.inchH === activePreset.inchH,
     );
     if (!preset?.guide) return null;
+    // b136: on a direct-draw adopt the guide is drawn at the ADOPTED canvas dims
+    // (the preset's inches no longer describe the canvas). adoptedGuideDims is
+    // null on every non-DD flow, so those stay byte-identical to before.
     return {
       type: preset.guide,
-      colW: inchesToStitches(activePreset.inchW, fabricCount),
-      rowH: inchesToStitches(activePreset.inchH, fabricCount),
+      colW: adoptedGuideDims ? adoptedGuideDims.colW : inchesToStitches(activePreset.inchW, fabricCount),
+      rowH: adoptedGuideDims ? adoptedGuideDims.rowH : inchesToStitches(activePreset.inchH, fabricCount),
     };
-  }, [activePreset, fabricCount]);
+  }, [activePreset, fabricCount, adoptedGuideDims]);
   // Prompt-driven product shape (owner 10-19 P0 c9f3e630): on a CUSTOM
   // canvas (no active preset guide) a prompt that plainly names a product
   // shape must still be masked to that shape AND show its dashed overlay -
@@ -1655,6 +1707,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       const width = p.grid[0]?.length || p.gridSize;
       setGridWidth(width);
       setGridHeight(height);
+      setAdoptedGuideDims(null); // b136: the loaded pattern owns the canvas dims
       const restored: Record<string, string> = {};
       const restoredTypes: Record<string, string> = {};
       p.grid.forEach((row, r) => {
@@ -1851,10 +1904,33 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // REGENERATE-DIMS (owner retest2 10-26): adopt the RESPONSE dims as the
       // canvas unconditionally when the response changed them — the stale
       // 28-canvas was why the charm's 54×54 bear saved (and showed) at 28.
-      if (finalW > 0 && finalH > 0 && (finalW !== gridWidth || finalH !== gridHeight)) {
-        setGridWidth(finalW);
-        setGridHeight(finalH);
+      // b136: this is now the ONLY place the post-generation canvas is decided
+      // (see resolvePostGenerationCanvas). The legacy "preset dims win" block
+      // that used to run ~30 lines below re-applied presetW/presetH whenever
+      // presetW !== canvasW — on the SECOND generate of a session canvasW is
+      // the ADOPTED 54 while presetW is still the 28 preset, so it snapped the
+      // canvas back to 28 while the grid stayed 54x54 (windowed render, 28x28
+      // save, undo already cleared). A direct-draw adopt is final.
+      const nextCanvas = resolvePostGenerationCanvas({
+        directDraw: !!data.directDraw,
+        adoptedW: finalW,
+        adoptedH: finalH,
+        canvasW,
+        canvasH,
+        presetW,
+        presetH,
+        hasPreset: !!activePreset,
+      });
+      if (nextCanvas.width !== gridWidth || nextCanvas.height !== gridHeight) {
+        setGridWidth(nextCanvas.width);
+        setGridHeight(nextCanvas.height);
       }
+      // b136: the drawn guide follows the adopted canvas on a direct-draw
+      // response (owner-visible: the rose circle must not cut across the bear's
+      // face). Cleared for AI responses so non-DD flows keep today's guide.
+      setAdoptedGuideDims(
+        data.directDraw && finalW > 0 && finalH > 0 ? { colW: finalW, rowH: finalH } : null,
+      );
       clearHistory(); // AI generation is a fresh baseline — undo must not cross it
       // A fresh AI result supersedes any pre-AI draft: write the NEW canvas to
       // the stored draft immediately, so the next session restores this result
@@ -1876,12 +1952,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       } catch {
         // Best-effort: localStorage quota etc. must not fail the generation.
       }
-      // When a product template is active, the canvas becomes the preset size —
-      // never a stale leftover size.
-      if (activePreset && (presetW !== canvasW || presetH !== canvasH)) {
-        setGridWidth(presetW);
-        setGridHeight(presetH);
-      }
+      // (b136) The "when a product template is active the canvas becomes the
+      // preset size" re-apply that used to live here is now folded into
+      // resolvePostGenerationCanvas above, where it can never override a
+      // direct-draw adopt. Non-preset/non-DD behaviour is unchanged.
       setCellFractions({});
       setReferenceImage(null);
       setShowReference(false);
@@ -1936,6 +2010,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // the only place a preset is applied to the canvas.
   const startFreshPresetCanvas = (preset: CanvasPreset, stitchW: number, stitchH: number) => {
     setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+    setAdoptedGuideDims(null); // b136: a fresh preset canvas has no DD-adopted dims
     setPendingPreset(null);
     clearHistory(); // a fresh preset canvas is a new baseline
     // Selecting a product template starts a fresh canvas at that product's
@@ -1961,6 +2036,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
 
   const applyResize = (newW: number, newH: number) => {
     clearHistory(); // a canvas resize changes dimensions — treat as a new baseline
+    setAdoptedGuideDims(null); // b136: the canvas was re-derived, adopted dims are stale
     // Clip any stitches outside the new bounds
     const newGrid: Record<string, string> = {};
     const newStitchTypes: Record<string, string> = {};
