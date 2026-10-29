@@ -9,6 +9,9 @@
  *           charm 54x54 bear, stocking 238x154 portrait — generated from the
  *           shipped tryDirectDraw; histograms byte-identical to the lead's
  *           approved preview grids, verified by QA recount).
+ *           CHARM UPDATED 2026-10-29 to the owner-picked "B2" look (+18 % face,
+ *           no #254267 sweater — the charm rows were regenerated from the new
+ *           buildCharm(54); the stocking rows are untouched).
  * Pipeline: REAL code imported from ../pages/Designer (resolveGenerationResponse,
  *           shouldMaskGeneration, maskGridToGuide) — the exact functions the
  *           shipping bundle calls.
@@ -146,7 +149,7 @@ describe('RENDERED-PIXEL GATE — DD charm 54x54 bear through the FIXED pipeline
     expect(canvasW).toBe(54);
     expect(canvasH).toBe(54);
   });
-  it('renders the FULL 54x54 canvas — all 6 bear colors present, outside paper', () => {
+  it('renders the FULL 54x54 canvas — the 5 B2 bear colors present, no sweater, outside paper', () => {
     const img = renderGrid(charmFixture, 10);
     expect(img.W).toBe(54);
     expect(img.H).toBe(54);
@@ -154,13 +157,16 @@ describe('RENDERED-PIXEL GATE — DD charm 54x54 bear through the FIXED pipeline
     img.raster.forEach((v) => {
       counts[v] = (counts[v] ?? 0) + 1;
     });
-    // contract histograms (lead-approved contract, QA-recounted)
-    expect(counts['#113b69']).toBe(173);   // ring + crown
-    expect(counts['#ffffff']).toBe(773);   // muzzle + inside-ring bg (MASK NOT APPLIED)
-    expect(counts['#5d3c2e']).toBe(483);   // head + ears
-    expect(counts['#8a6c54']).toBe(44);    // inner ears
-    expect(counts['#3c3c3c']).toBe(67);    // symmetric face
-    expect(counts['#254267']).toBe(122);   // sweater band
+    // B2 pins (owner-picked look 2026-10-29): the b134 #254267 sweater band is
+    // GONE — paper fills the ornament below the chin — and the face grew +18 %
+    // (head 12.2 → 14.4 cells). The ornament rim + crown are cell-for-cell
+    // unchanged, which is why #113b69 stays at 173.
+    expect(counts['#113b69']).toBe(173);   // ring + crown (unchanged)
+    expect(counts['#ffffff']).toBe(794);   // muzzle + inside-ring bg (MASK NOT APPLIED)
+    expect(counts['#5d3c2e']).toBe(561);   // head + ears
+    expect(counts['#8a6c54']).toBe(64);    // inner ears
+    expect(counts['#3c3c3c']).toBe(70);    // symmetric eyes + nose + smile
+    expect(counts['#254267']).toBeUndefined(); // NO sweater: paper below the chin
     expect(counts[PAPER]).toBe(1254);      // outside empty = paper at full canvas
   });
   it('crown ring + full-canvas window: crown at (4,26); no 28-window crop (colored>1000)', () => {
@@ -273,7 +279,7 @@ describe('RENDERED-PIXEL GATE — PNG artifacts for human review', () => {
       path.join(OUT, 'qa-render-pins.json'),
       JSON.stringify(
         {
-          charm: { dims: '54x54', hexes: { '#113b69': 173, '#5d3c2e': 483, '#3c3c3c': 67, '#ffffff': 773, '#254267': 122, '#8a6c54': 44 }, empty: 1254 },
+          charm: { dims: '54x54', hexes: { '#113b69': 173, '#5d3c2e': 561, '#3c3c3c': 70, '#ffffff': 794, '#8a6c54': 64 }, empty: 1254 },
           stocking: { dims: '238x154', body: 12083, shade: 4715, white: 2335, stars: 1005, empty: 16514, total: 36652 },
         },
         null,
