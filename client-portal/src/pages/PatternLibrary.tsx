@@ -62,7 +62,7 @@ export const PatternLibrary: React.FC = () => {
             </h1>
             <p className="text-base text-slate-500 max-w-2xl mx-auto">
               Buy individual patterns for small projects — no account or subscription needed.
-              Each purchase includes everything you need to stitch it yourself.
+              Each purchase is a complete, ready-to-use pattern file for the product described on its card.
             </p>
             {/* What you receive — process explained */}
             <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
@@ -84,7 +84,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">2. Log in</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    After checkout, create a free account or log in with the email you used to pay — your pattern will be waiting in your Designer.
+                    After checkout, follow the delivery note on your receipt: grid patterns appear in your Designer when you log in with your checkout email; collage patterns arrive as a PDF by email.
                   </p>
                 </div>
               </div>
@@ -95,7 +95,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">3. Stitch</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    Open the pattern, personalize it, and export the full pattern sheet — chart, DMC color key, and instructions.
+                    Rainbow Trout: open it in the Designer, adjust it, and export the pattern sheet — chart, DMC colour key, instructions. Rooster Collage: the PDF cutting guide is emailed to you.
                   </p>
                 </div>
               </div>
@@ -214,7 +214,7 @@ export const PatternLibrary: React.FC = () => {
         {status === 'ready' && patterns.length > 0 && (
           <p className="text-center text-xs text-slate-400 mt-10 flex items-center justify-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-blush-400" />
-            Secure one-off checkout · Pattern delivered to your account · No subscription required
+            Secure one-off checkout · Grid patterns appear in your account · Collage guides arrive by email · No subscription required
           </p>
         )}
       </div>
