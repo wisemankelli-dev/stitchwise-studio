@@ -3,6 +3,7 @@
  * Defines data models and provides communication endpoints.
  * Includes robust mocks with artificial network latency that persist state locally.
  */
+import { normalizeAIUsage, type AIUsageSnapshot } from '../utils/aiGenerationAllowance';
 
 // Data Interfaces
 export interface Project {
@@ -470,6 +471,26 @@ class ApiClient {
    */
   isAuthenticated(): boolean {
     return !!localStorage.getItem('stitchwise_token');
+  }
+
+  /**
+   * Reads the caller's current AI generation allowance.
+   * GET /api/ai/usage — READ-ONLY: it never charges a generation.
+   *
+   * Returns null when the caller isn't signed in, the backend is unreachable or
+   * the body is unusable; the Designer then falls back to fail-open copy rather
+   * than blocking generation on a read-only lookup.
+   */
+  async getAIUsage(): Promise<AIUsageSnapshot | null> {
+    if (!this.isLiveBackend) return null;
+    if (typeof localStorage === 'undefined' || !localStorage.getItem('stitchwise_token')) return null;
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/ai/usage`, { headers: this.getHeaders() });
+      if (!response.ok) return null;
+      return normalizeAIUsage(await response.json());
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -11,7 +11,7 @@ import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/colla
 import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt, attachMockPiecesToCollage } from "../services/openaiCollageService";
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
-import { aiRateLimit, getAIUsage, isPremiumTier } from "../middleware/aiRateLimit";
+import { aiRateLimit, isPremiumTier } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
 const upload = multer({
@@ -33,10 +33,10 @@ const upload = multer({
 export function createAICollageRouter(): Router {
   const router = Router();
 
-  router.get("/ai/usage", authenticate, (req: Request, res: Response) => {
-    const user = (req as any).user as { userId: string; tier?: string };
-    res.json(getAIUsage(user.userId, user.tier));
-  });
+  // NOTE: GET /api/ai/usage used to live here; it now lives in
+  // routes/aiUsage.ts (createAIUsageRouter) so the allowance snapshot is owned
+  // by one small read-only router instead of the collage routes. Same path,
+  // same handler behaviour, plus remainingToday/remainingMonth.
 
   /**
    * POST /api/ai/collage/text-to-collage

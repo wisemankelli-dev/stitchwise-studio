@@ -13,6 +13,7 @@ export { createQuiltBlockRouter } from "./quiltBlock";
 export { createAIEmbroideryRouter } from "./aiEmbroidery";
 export { createAIJobsRouter } from "./aiJobs";
 export { createAICollageRouter } from "./aiCollage";
+export { createAIUsageRouter } from "./aiUsage";
 export { createEstimatorRouter } from "./estimator";
 export { createPatternEditorRouter } from "./patternEditor";
 export { createPatternExportRouter } from "./patternExport";
