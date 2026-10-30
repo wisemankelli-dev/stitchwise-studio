@@ -12,6 +12,7 @@ import StitchGrid, { DmcLegend } from '../components/StitchGrid';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { describeAiGenerationError } from '../utils/aiGenerationErrors';
+import { generationCostNotice, type AIUsageSnapshot } from '../utils/aiGenerationAllowance';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
 import { stampShape, type ClipartShape } from '../data/shapes';
@@ -1131,6 +1132,21 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // silently.
   const [pendingSaveConfirm, setPendingSaveConfirm] = useState(false);
   const [pollingStatus, setPollingStatus] = useState('');
+  // Pre-click cost visibility (owner rule ratified 10-30: EVERY generation costs
+  // one allowance unit - the zero-AI-cost direct-draw designs included). This is a
+  // read-only snapshot of the caller's allowance; null means "unknown", which
+  // fails open and never blocks Generate.
+  const [aiUsage, setAiUsage] = useState<AIUsageSnapshot | null>(null);
+  /** Re-reads the allowance snapshot (GET /api/ai/usage - read-only, charges nothing). */
+  const refreshAIUsage = useCallback(async () => {
+    const snapshot = await api.getAIUsage();
+    setAiUsage(snapshot);
+  }, []);
+  useEffect(() => {
+    void refreshAIUsage();
+  }, [refreshAIUsage]);
+  // The cost line shown next to Generate BEFORE the click.
+  const generationNotice = generationCostNotice(aiUsage, { signedIn: api.isAuthenticated() });
   // Premium art model toggle (Design Studio only; server enforces the tier gate).
   const [premiumModel, setPremiumModel] = useState(false);
   const isStudioTier = (typeof window !== 'undefined' && localStorage.getItem('stitchwise_tier')) === 'Design Studio';
@@ -2043,8 +2059,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       setPollingStatus('');
     } finally {
       setIsGenerating(false);
+      // A generation just spent a unit - re-read the allowance so the cost line
+      // stays true (and so a spent allowance is caught before the next click).
+      void refreshAIUsage();
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource]);
+  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -2791,7 +2810,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   />
                   <button
                     onClick={handleGenerate}
-                    disabled={!aiPrompt.trim() || isGenerating}
+                    disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked}
+                    title={generationNotice.blocked ? generationNotice.text : undefined}
                     className="px-4 py-2 rounded-lg bg-gradient-to-r from-blush-600 to-blush-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0 hover:from-blush-700 hover:to-blush-600"
                   >
                     {isGenerating ? (
@@ -2802,6 +2822,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     {isGenerating ? (pollingStatus || 'Generating…') : 'Generate'}
                   </button>
                 </div>
+
+                <p
+                  data-testid="ai-generation-cost"
+                  className={`mt-2 text-[10px] flex items-center gap-1 ${
+                    generationNotice.state === 'exhausted' ? 'text-amber-600 font-semibold' : 'text-slate-500'
+                  }`}
+                >
+                  {generationNotice.text}
+                </p>
 
                 <p className="mt-2 text-[10px] text-slate-500">
                   💡 Tip: descriptive prompts give the best patterns — name the subject and add a few details (colors, texture, pose). Short prompts work too, but specifics come out richer.
