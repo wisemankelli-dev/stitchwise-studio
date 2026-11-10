@@ -80,6 +80,16 @@ export type BootReport = {
   sha256?: string;
   counts?: Record<string, number>;
   error?: string;
+  /**
+   * Set ONLY by `ensureDatabaseUsable()` (post-connect, through Prisma): was the
+   * database the running client actually opened usable? A restore that wrote a
+   * perfectly good file somewhere Prisma does not read is NOT a usable database
+   * — that is the b142 publish failure.
+   */
+  usable?: boolean;
+  /** Absolute path Prisma opened (`PRAGMA database_list`) when verified. */
+  usablePath?: string;
+  usableAt?: string;
 };
 
 let bootReport: BootReport | null = null;
@@ -87,6 +97,19 @@ let lastGood: { path: string; size: number; mtimeMs: number } | null = null;
 let sqlite3Bin: string | null | undefined;
 
 export function getBootReport(): BootReport | null {
+  if (!bootReport) return null;
+  // Never report a restore that did not leave a usable database behind
+  // (b142: health said boot.action "restored" while every query answered
+  // "no such table: User" — the heal had written the wrong file).
+  if (bootReport.action === "restored" && bootReport.usable !== true) {
+    return {
+      ...bootReport,
+      action: "restore-failed",
+      error:
+        bootReport.error ??
+        "seed was restored but the database this process opens was not verified usable",
+    };
+  }
   return bootReport;
 }
 
@@ -575,5 +598,242 @@ export async function ensureDatabaseReady(opts: EnsureOptions = {}): Promise<Boo
     console.error(`[db-selfheal] FAILED to restore database from ${seedPath}: ${String(err)}`);
     console.error(JSON.stringify({ event: "db_selfheal_restore_failed", ...bootReport }));
     return bootReport;
+  }
+}
+
+// ─── post-connect verification (the authoritative pass) ──────────────────────
+
+/** The slice of PrismaClient this module needs (keeps tests DB-free). */
+export type SqlQueryable = {
+  $queryRawUnsafe<T = unknown>(query: string): Promise<T>;
+  $connect(): Promise<void>;
+  $disconnect(): Promise<void>;
+};
+
+export type UsabilityReport = {
+  ok: boolean;
+  /** Absolute path of the file Prisma actually opened. */
+  path: string;
+  counts: Record<string, number>;
+  missingTables: string[];
+  /** true when this pass replaced the database Prisma was reading. */
+  healed: boolean;
+  sha256?: string;
+  error?: string;
+};
+
+/**
+ * The database file the running Prisma client is really using.
+ *
+ * `resolveDbPath()` guesses from DATABASE_URL and the process cwd, but Prisma
+ * resolves a RELATIVE `file:` URL against the generated client's schema
+ * directory — not the cwd. In the b142 live artifact those two disagreed
+ * (`<site>/dev.db` vs `<site>/prisma/dev.db`), so the self-heal restored a file
+ * nobody read while Prisma served a freshly created EMPTY database. The only
+ * authority on the path is SQLite itself: `PRAGMA database_list`.
+ */
+export async function prismaDbPath(
+  prisma: SqlQueryable,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  try {
+    const rows = await prisma.$queryRawUnsafe<Array<{ name?: string; file?: string | null }>>(
+      "PRAGMA database_list",
+    );
+    const main = Array.isArray(rows) ? rows.find((r) => r && r.name === "main") : undefined;
+    if (main?.file) return main.file;
+  } catch {
+    // fall through to the env-derived guess
+  }
+  return resolveDbPath(env);
+}
+
+/** Count rows through Prisma — the same tables /api/health reports. */
+async function probeThroughPrisma(prisma: SqlQueryable): Promise<{
+  ok: boolean;
+  counts: Record<string, number>;
+  missingTables: string[];
+  error?: string;
+}> {
+  const counts: Record<string, number> = {};
+  const missingTables: string[] = [];
+  let error: string | undefined;
+  for (const table of COUNTED_TABLES) {
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ c?: number | bigint }>>(
+        `SELECT COUNT(*) AS c FROM "${table}"`,
+      );
+      counts[table] = Number(rows?.[0]?.c ?? 0);
+    } catch (err) {
+      const message = String(err);
+      if (/no such table/i.test(message)) {
+        missingTables.push(table);
+        continue;
+      }
+      error = message;
+      break;
+    }
+  }
+  const missingRequired = missingTables.filter((t) => REQUIRED_TABLES.includes(t));
+  return { ok: !error && missingRequired.length === 0, counts, missingTables, error };
+}
+
+/**
+ * Verify — through Prisma, after it has connected — that the database this
+ * process is actually serving is usable, and heal THAT file when it is not.
+ *
+ * Runs after `ensureDatabaseReady()` because only the live client knows which
+ * file it opened. Never throws: a failure is recorded in the boot report and
+ * returned, so `/api/health` can say "degraded" with the reason instead of
+ * claiming a restore that did not take.
+ */
+export async function ensureDatabaseUsable(
+  prisma: SqlQueryable,
+  opts: EnsureOptions = {},
+): Promise<UsabilityReport> {
+  const env = opts.env ?? process.env;
+  const at = new Date().toISOString();
+  const path = await prismaDbPath(prisma, env);
+  const first = await probeThroughPrisma(prisma);
+
+  if (first.ok) {
+    // Usable. If the pre-connect pass restored a DIFFERENT file, that restore
+    // never reached this process — report the truth instead of a phantom fix.
+    if (bootReport && bootReport.action === "restored" && bootReport.dbPath !== path) {
+      bootReport = {
+        ...bootReport,
+        action: "none",
+        reason: `ok-at-prisma-path (the pre-connect heal wrote ${bootReport.dbPath}, which is not the database Prisma opens)`,
+        usable: true,
+        usablePath: path,
+        usableAt: at,
+      };
+    } else if (bootReport) {
+      bootReport = { ...bootReport, usable: true, usablePath: path, usableAt: at };
+    } else {
+      bootReport = {
+        at,
+        action: "none",
+        reason: "ok",
+        dbPath: path,
+        seedPath: resolveSeedPath(path, env),
+        seedPresent: false,
+        usable: true,
+        usablePath: path,
+        usableAt: at,
+      };
+    }
+    return { ok: true, path, counts: first.counts, missingTables: first.missingTables, healed: false };
+  }
+
+  const reason = first.error
+    ? `unusable:${first.error}`
+    : `missing-tables:${first.missingTables.join(",")}`;
+  const seedPath = opts.seedPath ?? (await findSeedPath(path, env));
+  const seed = await readSeedInfo(seedPath);
+
+  if (!seed.present) {
+    const error = `database at ${path} is unusable (${reason}) and the seed snapshot ${seedPath} is missing`;
+    bootReport = {
+      at,
+      action: "restore-failed",
+      reason,
+      dbPath: path,
+      seedPath,
+      seedPresent: false,
+      usable: false,
+      usablePath: path,
+      usableAt: at,
+      error,
+    };
+    console.error(`[db-selfheal] ${error}`);
+    console.error(JSON.stringify({ event: "db_selfheal_unusable", ...bootReport }));
+    return {
+      ok: false,
+      path,
+      counts: first.counts,
+      missingTables: first.missingTables,
+      healed: false,
+      error,
+    };
+  }
+
+  // Close Prisma's handle BEFORE swapping the file: a connection opened on the
+  // old (empty) inode keeps serving that inode after the rename, which is why
+  // b142 answered "no such table: User" against a database that was on disk.
+  try {
+    await prisma.$disconnect();
+  } catch {
+    // ignore — restoreFromSeed replaces the file either way
+  }
+
+  try {
+    const { sha256 } = await restoreFromSeed(path, seedPath);
+    await prisma.$connect();
+    const after = await probeThroughPrisma(prisma);
+    if (!after.ok) {
+      throw new Error(
+        `restored the seed to ${path} but it is still unusable (${
+          after.error ?? `missing-tables:${after.missingTables.join(",")}`
+        })`,
+      );
+    }
+    bootReport = {
+      at,
+      action: "restored",
+      reason: `verified-after-connect:${reason}`,
+      dbPath: path,
+      seedPath,
+      seedPresent: true,
+      sha256,
+      counts: after.counts,
+      usable: true,
+      usablePath: path,
+      usableAt: at,
+    };
+    const summary = Object.entries(after.counts)
+      .map(([k, v]) => `${v} ${k}`)
+      .join(" / ");
+    console.error(
+      `[db-selfheal] healed the database Prisma actually opened: ${path} (${reason}; sha256 ${sha256.slice(0, 16)}…; ${summary || "no counts"})`,
+    );
+    console.error(JSON.stringify({ event: "db_selfheal_restored", ...bootReport }));
+    return {
+      ok: true,
+      path,
+      counts: after.counts,
+      missingTables: [],
+      healed: true,
+      sha256,
+    };
+  } catch (err) {
+    const error = String(err);
+    bootReport = {
+      at,
+      action: "restore-failed",
+      reason,
+      dbPath: path,
+      seedPath,
+      seedPresent: true,
+      usable: false,
+      usablePath: path,
+      usableAt: at,
+      error,
+    };
+    console.error(`[db-selfheal] FAILED to heal ${path}: ${error}`);
+    console.error(JSON.stringify({ event: "db_selfheal_restore_failed", ...bootReport }));
+    try {
+      await prisma.$connect();
+    } catch {
+      // server keeps starting; health reports degraded
+    }
+    return {
+      ok: false,
+      path,
+      counts: first.counts,
+      missingTables: first.missingTables,
+      healed: false,
+      error,
+    };
   }
 }

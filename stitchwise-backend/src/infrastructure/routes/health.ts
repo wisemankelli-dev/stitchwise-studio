@@ -106,6 +106,11 @@ export function createHealthRouter(prisma: PrismaClient): Router {
             action: boot.action,
             reason: boot.reason,
             at: boot.at,
+            // "restored" is only reported when the database Prisma opened was
+            // verified usable (see getBootReport); these fields say where that
+            // file is and whether the post-connect check passed.
+            ...(boot.usable !== undefined ? { usable: boot.usable } : {}),
+            ...(boot.usablePath ? { path: boot.usablePath } : {}),
             ...(boot.error ? { error: boot.error } : {}),
             ...(boot.seedCandidates ? { seedCandidates: boot.seedCandidates } : {}),
           }
