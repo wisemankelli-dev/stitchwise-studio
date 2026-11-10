@@ -5,13 +5,19 @@ import {
 } from "../../domain/collage";
 import type { CollageRepo } from "../db/collageRepo";
 import { authenticate } from "../middleware/auth";
+import type { PrismaClient } from "@prisma/client";
+import { materializePendingPurchases } from "../../domain/patternGrants";
 
 /**
  * Creates a router for Collage Studio API endpoints.
  *
  * @param repo - The CollageRepo implementation to use.
+ * @param prisma - Optional Prisma client. When supplied, listing projects also
+ *   materialises any pending Pattern Library purchases for this buyer, so a
+ *   collage they paid for appears in the studio on login (without this hook a
+ *   buyer who goes straight to Collage Studio would get nothing).
  */
-export function createCollageRouter(repo: CollageRepo): Router {
+export function createCollageRouter(repo: CollageRepo, prisma?: PrismaClient): Router {
   const router = Router();
 
   /**
@@ -155,6 +161,11 @@ export function createCollageRouter(repo: CollageRepo): Router {
   router.get("/collage", authenticate, async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (prisma) {
+        // Grant any purchased collages to this account before listing (covers a
+        // buyer who opens Collage Studio without passing through login again).
+        await materializePendingPurchases(prisma, user.email, user.userId, repo);
+      }
       const projects = await repo.listProjectsByUser(user.userId);
       res.json({ projects: projects.map(toCollageFrontend) });
     } catch (err) {

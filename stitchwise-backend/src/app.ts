@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
 import { createHealthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter, createAdminDbSeedRouter } from "./infrastructure/routes";
 import { ensureDatabaseReady } from "./infrastructure/db/dbSelfHeal";
+import { loadGrantData } from "./infrastructure/data/patternGrantData";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -22,6 +23,12 @@ function log(event: string, meta?: Record<string, unknown>): void {
  */
 export async function createApp(): Promise<express.Application> {
   const app = express();
+
+  // Boot-time grant-asset load — the paid pattern payloads are NOT in this repo
+  // (see infrastructure/data/patternGrantData.ts); they are staged into the
+  // artifact. A missing asset logs `grant-data-missing` and shows in
+  // /api/health but must never stop the server: login has to work for everyone.
+  loadGrantData();
 
   // Boot-time database self-heal — MUST run before the Prisma client is
   // constructed: Prisma's SQLite connector silently creates an EMPTY database
@@ -73,7 +80,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createStitchRouter());
   app.use("/api", createPaymentRouter(prisma));
   app.use("/api", createMarketplaceRouter(marketplaceRepo));
-  app.use("/api", createCollageRouter(collageRepo));
+  app.use("/api", createCollageRouter(collageRepo, prisma));
   app.use("/api", createShowcaseRouter(showcaseRepo));
   app.use("/api", createFabricEstimatorRouter(collageRepo));
   app.use("/api", createQuiltBlockRouter(quiltBlockRepo));

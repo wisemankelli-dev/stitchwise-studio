@@ -14,3 +14,13 @@ __pycache__/
 .venv/
 *.local
 client-portal/node_modules
+
+# Paid Pattern Library payloads — the finished grids and collage project data ARE
+# the product, so they never live in this (public) repo. The private master copy
+# is /home/team/shared/patterns/grants/ and scripts/build-grant-data.sh stages it
+# into the deploy artifact. These paths are ignored so a payload can never be
+# re-added by accident.
+stitchwise-backend/src/infrastructure/data/pattern-grants.json
+stitchwise-backend/src/infrastructure/data/grants/
+stitchwise-backend/src/infrastructure/data/*-collage.json
+dist/backend/data/grants/

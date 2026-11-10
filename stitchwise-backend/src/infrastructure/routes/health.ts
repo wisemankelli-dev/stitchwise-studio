@@ -8,6 +8,7 @@ import {
   readSeedInfo,
   resolveDbPath,
 } from "../db/dbSelfHeal";
+import { getGrantDataState } from "../data/patternGrantData";
 
 /**
  * Health-check router.
@@ -19,7 +20,8 @@ import {
  * usable, so "up but no data" can never look healthy again.
  *
  * It also reports the boot-time self-heal outcome and whether a seed snapshot
- * is available to heal from.
+ * is available to heal from, plus whether the private Pattern Library grant
+ * asset (paid payloads, shipped in the artifact — never in the repo) loaded.
  */
 
 /** Tables whose absence makes the app unusable (rows may legitimately be 0). */
@@ -69,6 +71,7 @@ export function createHealthRouter(prisma: PrismaClient): Router {
     const seedPath = await findSeedPath(dbPath);
     const seed = await readSeedInfo(seedPath);
     const boot = getBootReport();
+    const grants = getGrantDataState();
 
     res.status(db.ok ? 200 : 503).json({
       status: db.ok ? "ok" : "degraded",
@@ -86,6 +89,17 @@ export function createHealthRouter(prisma: PrismaClient): Router {
         path: seedPath,
         size: seed.size,
         ...(seed.updatedAt ? { updatedAt: seed.updatedAt } : {}),
+      },
+      grants: {
+        status: grants.status,
+        patterns: grants.patterns,
+        collages: grants.collages,
+        ...(grants.dir ? { dir: grants.dir } : {}),
+        ...(grants.file ? { file: grants.file } : {}),
+        ...(grants.sha256 ? { sha256: grants.sha256 } : {}),
+        ...(grants.missingCollages.length > 0 ? { missingCollages: grants.missingCollages } : {}),
+        ...(grants.invalidPatterns.length > 0 ? { invalidPatterns: grants.invalidPatterns } : {}),
+        ...(grants.error ? { error: grants.error } : {}),
       },
       boot: boot
         ? {

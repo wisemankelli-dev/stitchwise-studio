@@ -5,12 +5,15 @@ import { PrismaClient } from "@prisma/client";
 import { SignupSchema, LoginSchema } from "../../domain/auth";
 import { materializePendingPurchases } from "../../domain/patternGrants";
 import { JWT_SECRET } from "../middleware/auth";
+import { PrismaCollageRepo } from "../db/prismaCollageRepo";
 
 const SALT_ROUNDS = 10;
 const TOKEN_EXPIRY = "7d";
 
 export function createAuthRouter(prisma: PrismaClient): Router {
   const router = Router();
+  // Collage purchases materialise into the buyer's Collage studio on login.
+  const collageRepo = new PrismaCollageRepo(prisma);
 
   /**
    * POST /api/auth/signup - Register a new user.
@@ -46,7 +49,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
 
       // Grant any purchased Pattern Library patterns to this account.
-      await materializePendingPurchases(prisma, user.email, user.id);
+      await materializePendingPurchases(prisma, user.email, user.id, collageRepo);
       res.status(201).json({
         token,
         user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },
@@ -90,7 +93,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
 
       // Grant any purchased Pattern Library patterns to this account.
-      await materializePendingPurchases(prisma, user.email, user.id);
+      await materializePendingPurchases(prisma, user.email, user.id, collageRepo);
       res.json({
         token,
         user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },
