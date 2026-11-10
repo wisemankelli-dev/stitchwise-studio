@@ -25,6 +25,12 @@ import {
   MASK_FOR_INFERRED_SHAPE,
   type MaskKind,
 } from '../data/maskMinGrid';
+import {
+  applyBasicOption,
+  basicOptionsFor,
+  basicOptionsHeading,
+  BASIC_OPTIONS_COST_NOTE,
+} from '../data/basicOptions';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -1244,6 +1250,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     fabricCount,
     prompt: aiPrompt,
   });
+
+  // THE BASIC-SIMPLE-OPTIONS GALLERY (data/basicOptions.ts). Every mask gets a
+  // row of one-click designs the AI can reliably complete — a single subject,
+  // flat colours, thick outline. A pick only FILLS THE PROMPT; it never
+  // generates, so the allowance line above Generate stays true.
+  const basicOptions = basicOptionsFor(activeMask);
 
   // Keep the whole canvas visible when the panel resizes (owner report 08-17:
   // shrinking the window after picking the Stocking cut the toe off). Only ever
@@ -2894,6 +2906,30 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   </div>
                 ) : (
                 <>
+                {basicOptions.length > 0 && activeMask && (
+                  <div className="mb-2" data-testid="basic-options-gallery">
+                    <p className="text-[10px] font-bold text-slate-600 mb-1.5">
+                      {basicOptionsHeading(activeMask)}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {basicOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`basic-option-${option.id}`}
+                          onClick={() => applyBasicOption(option, setAiPrompt)}
+                          disabled={isGenerating}
+                          title={option.prompt}
+                          className="rounded-full bg-white border border-purple-200 text-[10px] font-bold text-slate-700 px-2.5 py-1 hover:bg-purple-50 hover:border-purple-300 transition-all disabled:opacity-50"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-[10px] text-slate-500">{BASIC_OPTIONS_COST_NOTE}</p>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
                   <input
