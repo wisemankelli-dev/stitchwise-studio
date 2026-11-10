@@ -45,7 +45,7 @@ describe('Pattern Library — public storefront', () => {
       await screen.findByText(/The Pattern Library is being stocked/i),
     ).toBeTruthy();
     expect(
-      screen.getByText(/No account needed — buy individual patterns for small projects/i),
+      screen.getByText(/Checkout needs no account — then log in with the same email/i),
     ).toBeTruthy();
   });
 

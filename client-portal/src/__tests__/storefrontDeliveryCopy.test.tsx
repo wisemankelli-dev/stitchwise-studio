@@ -193,6 +193,22 @@ describe('storefront delivery copy — promises match what the app can actually 
     expect(text).toContain('Log in — or create an account — with the email you paid with');
   });
 
+  // The page's own error and empty branches are not rendered by the happy-path
+  // render above, so pin them on the collapsed source too — a line wrap must not
+  // be able to hide a promise there either.
+  it('the Pattern Shop error and empty branches make no account promise they cannot keep', () => {
+    const page = flatten(pageSrc);
+    expect(page, '"no account needed" came back in PatternLibrary.tsx').not.toMatch(
+      /no account (?:is )?(?:needed|required)/i,
+    );
+    for (const [label, re] of RETIRED_STRINGS) {
+      expect(page, `${label} came back in PatternLibrary.tsx`).not.toMatch(re);
+    }
+    // Both branches state the real step instead: checkout, then log in with the
+    // same email.
+    expect(page).toMatch(/Checkout needs no account — then log in with the same email/i);
+  });
+
   it('does not over-claim what a purchase contains', async () => {
     const text = await renderStorefrontText();
     expect(text).toContain(
