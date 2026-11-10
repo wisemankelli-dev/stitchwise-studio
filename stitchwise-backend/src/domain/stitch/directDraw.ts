@@ -65,6 +65,7 @@ const BROWN = "#5d3c2e"; // bear head
 const INNER = "#8a6c54"; // inner ears
 const WHITE = "#ffffff"; // muzzle + inside-ring background
 const DARK = "#3c3c3c"; // eyes / nose / smile
+const EYE_BLACK = "#000000"; // DMC 310 Black — eyes only; nose/smile stay DARK (#3c3c3c)
 
 /**
  * CHARM BEAR — the owner-picked "B2" look (2026-10-29, +18 % face).
@@ -196,8 +197,13 @@ function buildCharm(N: number): StitchGrid {
       }
       const c = Math.floor(x);
       const r = Math.floor(y);
-      if (inRound(r, c, eyeR0, eyeR1, eyeC0, eyeC1) || inRound(r, c, eyeR0, eyeR1, eyeC0R, eyeC1R)) {
-        return DARK; // eyes
+      const inEyeL = inRound(r, c, eyeR0, eyeR1, eyeC0, eyeC1);
+      const inEyeR = inRound(r, c, eyeR0, eyeR1, eyeC0R, eyeC1R);
+      if (inEyeL || inEyeR) {
+        // one white glint cell in the top-OUTER corner of each eye (owner variant C)
+        const glintC = inEyeR ? eyeC1R - 1 : eyeC0 + 1;
+        if (r === eyeR0 + 1 && c === glintC) return WHITE;
+        return EYE_BLACK; // DMC 310
       }
       return BROWN; // head (chin closes on a cell boundary — no flat cut)
     }
@@ -375,6 +381,7 @@ export const DIRECT_DRAW_PALETTE: Array<{ code: string; name: string; hex: strin
   { code: "3371", name: "Black Brown", hex: "#5d3c2e", count: 0 },
   { code: "402", name: "Mahogany", hex: "#8a6c54", count: 0 },
   { code: "3799", name: "Pewter Gray", hex: "#3c3c3c", count: 0 },
+  { code: "310", name: "Black", hex: "#000000", count: 0 },
   { code: "520", name: "White", hex: "#ffffff", count: 0 },
   { code: "311", name: "Medium Royal Blue", hex: "#254267", count: 0 },
   { code: "799", name: "Medium Blue", hex: "#2e609d", count: 0 },

@@ -30,7 +30,7 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     title: "Rainbow Trout",
     description:
       "A lifelike rainbow trout in rich grays, tans and a salmon-rose belly. 100×100 stitches on 14ct fabric (~7.1×7.1 in), 13 DMC colors, ~9,950 stitches. Log in with your checkout email after purchase and the pattern appears in your Designer, ready to edit and export as a full pattern sheet with the DMC color key.",
-    priceLabel: "$2.50",
+    priceLabel: "$3.50",
     imageUrl: "/patterns/rainbow-trout-v2.png",
     paymentUrl: "https://buy.stripe.com/8x28wRexLgJ97nJaFh9EI03",
     badge: "New",
