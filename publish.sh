@@ -125,6 +125,21 @@ if find "$SITE_DIR/dist" -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*
   exit 1
 fi
 
+# ── 1d. Seed snapshot placement (b141) ────────────────────────────
+# `scripts/build-db-seed.sh` writes the seed to dist/backend/prisma/, but the
+# runtime resolves it from the site dir (DATABASE_URL is cwd-relative live), so
+# b140 booted "seed-missing" and the self-heal could not fire. The app now
+# searches all three layouts; publish keeps them in sync so any of them works.
+SEED_SRC="$SITE_DIR/dist/backend/prisma/seed-snapshot.db.gz"
+if [ -f "$SEED_SRC" ]; then
+  mkdir -p "$SITE_DIR/prisma"
+  cp -f "$SEED_SRC" "$SITE_DIR/seed-snapshot.db.gz"
+  cp -f "$SEED_SRC" "$SITE_DIR/prisma/seed-snapshot.db.gz"
+  echo "-> seed snapshot placed at site root + prisma/ ($(du -h "$SEED_SRC" | cut -f1))"
+else
+  echo "warning: no seed snapshot at $SEED_SRC — boot self-heal will report seed-missing" >&2
+fi
+
 # ── 2. SPA (non-fatal) ───────────────────────────────────────────
 mkdir -p "$SITE_DIR/dist/client"
 set +e

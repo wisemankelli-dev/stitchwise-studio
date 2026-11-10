@@ -13,9 +13,11 @@ import { join } from "node:path";
 import {
   decideDbAction,
   ensureDatabaseReady,
+  findSeedPath,
   probeDatabaseFile,
   resetSelfHealState,
   resolveDbPath,
+  resolveSeedCandidates,
   resolveSeedPath,
   type SqliteProbe,
 } from "../infrastructure/db/dbSelfHeal";
@@ -119,6 +121,48 @@ describe("resolveDbPath / resolveSeedPath", () => {
   it("honours DB_SEED_PATH", () => {
     expect(resolveSeedPath("/srv/app/prisma/dev.db", { DB_SEED_PATH: "/seeds/x.db.gz" })).toBe(
       "/seeds/x.db.gz",
+    );
+  });
+});
+
+/**
+ * b140 regression: the artifact carries the seed at
+ * `<site>/dist/backend/prisma/seed-snapshot.db.gz` (build-db-seed.sh output) while
+ * the live DATABASE_URL is cwd-relative, so "next to the database" alone missed
+ * it and the self-heal reported seed-missing on a real publish.
+ */
+describe("seed lookup across the deployed layout", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "selfheal-layout-"));
+    resetSelfHealState();
+  });
+
+  it("searches the site root, prisma/ and dist/backend/prisma/", () => {
+    const candidates = resolveSeedCandidates(join(dir, "dev.db"), {}, dir, dir);
+    expect(candidates).toContain(join(dir, "seed-snapshot.db.gz"));
+    expect(candidates).toContain(join(dir, "prisma", "seed-snapshot.db.gz"));
+    expect(candidates).toContain(join(dir, "dist", "backend", "prisma", "seed-snapshot.db.gz"));
+  });
+
+  it("DB_SEED_PATH is used alone", () => {
+    expect(resolveSeedCandidates(join(dir, "dev.db"), { DB_SEED_PATH: "/seeds/x.db.gz" }, dir)).toEqual([
+      "/seeds/x.db.gz",
+    ]);
+  });
+
+  it("finds a seed that only exists in the published dist/backend/prisma layout", async () => {
+    const seedDir = join(dir, "dist", "backend", "prisma");
+    mkdirSync(seedDir, { recursive: true });
+    writeFileSync(join(seedDir, "seed-snapshot.db.gz"), Buffer.alloc(64, 1));
+    expect(await findSeedPath(join(dir, "dev.db"), {}, dir, dir)).toBe(
+      join(seedDir, "seed-snapshot.db.gz"),
+    );
+  });
+
+  it("falls back to the primary default when no candidate holds a seed", async () => {
+    expect(await findSeedPath(join(dir, "dev.db"), {}, dir, dir)).toBe(
+      join(dir, "seed-snapshot.db.gz"),
     );
   });
 });
@@ -278,5 +322,36 @@ describeSqlite("ensureDatabaseReady (boot self-heal)", () => {
     expect(report.action).toBe("restore-failed");
     expect(report.error).toBeTruthy();
     expect(existsSync(dbPath)).toBe(false);
+  });
+});
+
+/**
+ * The whole point of b141: a real publish has NO dev.db and the seed sitting in
+ * `dist/backend/prisma/`. Boot must restore it without DB_SEED_PATH or an
+ * explicit seedPath — exactly how `app.ts` calls ensureDatabaseReady().
+ */
+describeSqlite("ensureDatabaseReady from the published artifact layout", () => {
+  it("restores from dist/backend/prisma when the live DB is missing", async () => {
+    const site = mkdtempSync(join(tmpdir(), "selfheal-publish-"));
+    const seedDir = join(site, "dist", "backend", "prisma");
+    mkdirSync(seedDir, { recursive: true });
+    const src = join(site, "seed-source.db");
+    makeDb(src, "SEED");
+    await gzipFile(src, join(seedDir, "seed-snapshot.db.gz"));
+
+    const prevCwd = process.cwd();
+    process.chdir(site);
+    try {
+      resetSelfHealState();
+      const report = await ensureDatabaseReady({ env: { DATABASE_URL: "file:./dev.db" } });
+      expect(report.action).toBe("restored");
+      expect(report.seedPath).toBe(join(seedDir, "seed-snapshot.db.gz"));
+      expect(report.counts?.User).toBe(1);
+      expect(report.counts?.EmbroideryPattern).toBe(1);
+      expect(existsSync(join(site, "dev.db"))).toBe(true);
+    } finally {
+      process.chdir(prevCwd);
+      resetSelfHealState();
+    }
   });
 });
