@@ -3,7 +3,8 @@ import path from "node:path";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { healthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter } from "./infrastructure/routes";
+import { createHealthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter, createAdminDbSeedRouter } from "./infrastructure/routes";
+import { ensureDatabaseReady } from "./infrastructure/db/dbSelfHeal";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
 
 /** Structured event logger using standard console with metadata. */
@@ -21,6 +22,13 @@ function log(event: string, meta?: Record<string, unknown>): void {
  */
 export async function createApp(): Promise<express.Application> {
   const app = express();
+
+  // Boot-time database self-heal — MUST run before the Prisma client is
+  // constructed: Prisma's SQLite connector silently creates an EMPTY database
+  // file when the file is missing, after which every query fails with
+  // "no such table" (the 11-10 outage). Restores from the seed shipped in the
+  // deploy artifact; never overwrites a usable database.
+  await ensureDatabaseReady();
 
   // Database setup
   const prisma = new PrismaClient();
@@ -58,7 +66,7 @@ export async function createApp(): Promise<express.Application> {
   const quiltBlockRepo = new PrismaQuiltBlockRepo(prisma);
 
   // Routes
-  app.use("/api", healthRouter);
+  app.use("/api", createHealthRouter(prisma));
   app.use("/api", createAuthRouter(prisma));
   app.use("/api", createInquiryRouter(inquiryRepo));
   app.use("/api", createWorkshopRouter(workshopRepo));
@@ -79,6 +87,7 @@ export async function createApp(): Promise<express.Application> {
   app.use("/api", createPatternsRouter());
   app.use("/api/library", createPatternGrantRouter(prisma));
   app.use("/api", createAdminDbBackupRouter(prisma));
+  app.use("/api", createAdminDbSeedRouter(prisma));
   app.use("/api/patterns", createPatternPersistenceRouter(prisma));
   app.use("/api/patterns", createPatternEditorRouter(prisma));
   app.use("/api/patterns", createPatternExportRouter(prisma));

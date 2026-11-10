@@ -1,4 +1,4 @@
-export { healthRouter } from "./health";
+export { createHealthRouter } from "./health";
 export { createInquiryRouter } from "./inquiry";
 export { inquiryRouter } from "./inquiry";
 export { createWorkshopRouter } from "./workshop";
@@ -23,3 +23,4 @@ export { createPatternPersistenceRouter } from "./patternPersistence";
 export { createPatternsRouter } from "./patterns";
 export { createPatternGrantRouter } from "./patternGrants";
 export { createAdminDbBackupRouter } from "./adminDbBackup";
+export { createAdminDbSeedRouter } from "./adminDbSeed";
