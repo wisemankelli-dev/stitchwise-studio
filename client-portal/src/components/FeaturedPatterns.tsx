@@ -166,8 +166,9 @@ export const FeaturedPatterns: React.FC<{
           </span>
         </h2>
         <p className="mt-5 text-lg leading-8 text-slate-500">
-          Buy individual patterns for small projects — no account or subscription
-          needed. Each purchase includes everything you need to stitch it yourself.
+          Buy individual patterns for small projects — no subscription. Checkout
+          needs no account: after you buy, log in or create one with the same
+          email, and your pattern opens in the Designer or the Collage studio.
         </p>
       </div>
 
@@ -195,7 +196,8 @@ export const FeaturedPatterns: React.FC<{
             <h3 className="text-lg font-bold text-slate-800 mb-2">Couldn't load the Pattern Library</h3>
             <p className="text-sm text-slate-500 mb-6">
               We couldn't reach the library just now — please check back in a bit.
-              No account needed to buy individual patterns.
+              Checkout needs no account — after you buy, log in with the same email
+              to open your pattern.
             </p>
             <button
               onClick={() => window.location.reload()}
@@ -213,7 +215,8 @@ export const FeaturedPatterns: React.FC<{
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-2">The Pattern Library is being stocked</h3>
             <p className="text-sm text-slate-500">
-              Check back soon. No account needed — buy individual patterns for small projects.
+              Check back soon. Buy individual patterns for small projects — checkout
+              needs no account.
             </p>
           </div>
         )}

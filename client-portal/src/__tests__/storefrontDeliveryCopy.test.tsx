@@ -38,6 +38,18 @@ import { resolve } from 'node:path';
 import { PatternLibrary } from '../pages/PatternLibrary';
 
 const pageSrc = readFileSync(resolve(process.cwd(), 'src/pages/PatternLibrary.tsx'), 'utf8');
+// The Home page's "Featured Patterns" promo is the other shop window, and it
+// carried the same two false promises: "no account or subscription needed" and
+// "everything you need to stitch it yourself".
+const featuredSrc = readFileSync(
+  resolve(process.cwd(), 'src/components/FeaturedPatterns.tsx'),
+  'utf8',
+);
+
+/** JSX wraps copy across source lines; collapse whitespace so a promise cannot
+ *  hide inside a line break or a re-indent. */
+const flatten = (src: string): string => src.replace(/\s+/g, ' ');
+
 const catalogPath = resolve(
   process.cwd(),
   '../stitchwise-backend/src/infrastructure/data/patternsCatalog.ts',
@@ -276,5 +288,32 @@ describe('storefront delivery copy — promises match what the app can actually 
 
   it('the retired email-delivery promise is gone from the catalog', () => {
     expect(catalogSrc).not.toMatch(/delivered by email/i);
+  });
+
+  // ------------------------------------------- P4 (home-page promo)
+  // The Home page's "Featured Patterns" promo is the second shop window, and it
+  // carried the same two false promises. Pinned on the collapsed source so the
+  // wording cannot come back in a different line wrap.
+  it('the Featured Patterns promo makes no account promise it cannot keep', () => {
+    const promo = flatten(featuredSrc);
+    for (const [label, re] of RETIRED_STRINGS) {
+      expect(promo, `${label} came back in FeaturedPatterns.tsx`).not.toMatch(re);
+    }
+    // "no account needed to buy" reads as "no account needed at all", and the
+    // login IS the delivery.
+    expect(promo, '"no account needed" came back in FeaturedPatterns.tsx').not.toMatch(
+      /no account (?:is )?(?:needed|required)/i,
+    );
+  });
+
+  it('the Featured Patterns promo states checkout-then-login and no delivery timeframe', () => {
+    const promo = flatten(featuredSrc);
+    // Checkout needs no account — then the buyer logs in, or creates one, with
+    // the same email, and the pattern opens in the studio that matches it.
+    expect(promo).toMatch(/checkout needs no account/i);
+    expect(promo).toMatch(/log in or create one with the same email/i);
+    expect(promo).toMatch(/Designer or the Collage studio/i);
+    // No SLA exists, so no promo branch may promise a time.
+    expect(promo).not.toMatch(TIMEFRAME);
   });
 });
