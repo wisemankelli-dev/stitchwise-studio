@@ -27,6 +27,7 @@ import {
 } from "../infrastructure/data/patternGrantData";
 
 const COLLAGE_ID = "rainbow-trout-collage";
+const ROOSTER_ID = "rooster-collage";
 const EMAIL = "buyer@example.com";
 const USER = "user-1";
 
@@ -73,6 +74,7 @@ function stageAsset(dir: string, opts: { collage?: boolean } = {}) {
   );
   if (opts.collage !== false) {
     writeFileSync(join(dir, `${COLLAGE_ID}.json`), JSON.stringify(collagePayload()));
+    writeFileSync(join(dir, `${ROOSTER_ID}.json`), JSON.stringify(collagePayload()));
   }
 }
 
@@ -177,6 +179,27 @@ describe("collage delivery — a purchase materialises in the Collage studio", (
 
     expect(prisma.state.purchases[0].granted).toBe(true);
     expect(prisma.state.patterns).toHaveLength(0);
+  });
+
+  it("the Rooster Collage is granted from the same registry (b144 — no manual email)", async () => {
+    const dir = join(scratch, "grants");
+    stageAsset(dir);
+    const state = loadGrantData({ env: { GRANT_DATA_DIR: dir }, cwd: scratch });
+    expect(state.missingCollages).not.toContain(ROOSTER_ID);
+
+    const prisma = makePrisma([{ id: "p1", email: EMAIL, patternId: ROOSTER_ID }]);
+    const repo = makeCollageRepo();
+
+    const granted = await materializePendingPurchases(prisma, EMAIL, USER, repo);
+
+    expect(granted).toBe(1);
+    expect(repo.projects).toHaveLength(1);
+    expect(repo.projects[0].name).toBe("Rooster Collage");
+
+    const data = JSON.parse(repo.projects[0].data);
+    expect(data.layers).toHaveLength(1);
+    expect(data.grantId).toBe(ROOSTER_ID);
+    expect(prisma.state.purchases[0].granted).toBe(true);
   });
 
   it("a second login does not duplicate the project", async () => {

@@ -90,6 +90,11 @@ export const COLLAGE_GRANTS: Record<string, CollageGrantDef> = {
     name: "Rainbow Trout Collage",
     file: "rainbow-trout-collage.json",
   },
+  "rooster-collage": {
+    id: "rooster-collage",
+    name: "Rooster Collage",
+    file: "rooster-collage.json",
+  },
 };
 
 export const COLLAGE_GRANT_IDS = Object.keys(COLLAGE_GRANTS);

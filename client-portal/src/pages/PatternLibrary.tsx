@@ -84,7 +84,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">2. Log in</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    After checkout, follow the delivery note on your receipt: grid patterns appear in your Designer when you log in with your checkout email, the Rainbow Trout Collage appears in your Collage studio when you log in with the same email, and the Rooster Collage PDF cutting guide is emailed to you.
+                    After checkout, follow the delivery note on your receipt: grid patterns appear in your Designer when you log in with your checkout email, and the Rainbow Trout Collage and the Rooster Collage appear in your Collage studio when you log in with the same email.
                   </p>
                 </div>
               </div>
@@ -95,7 +95,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">3. Stitch</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    Rainbow Trout: open it in the Designer, adjust it, and export the pattern sheet — chart, DMC colour key, instructions. Rainbow Trout Collage: open it in your Collage studio, arrange the 69 pieces and cut. Rooster Collage: the PDF cutting guide is emailed to you.
+                    Rainbow Trout: open it in the Designer, adjust it, and export the pattern sheet — chart, DMC colour key, instructions. Rainbow Trout Collage: open it in your Collage studio, arrange the 69 pieces and cut. Rooster Collage: open it in your Collage studio, arrange the 94 pieces and export the numbered cutting guide as a PDF.
                   </p>
                 </div>
               </div>
@@ -214,7 +214,7 @@ export const PatternLibrary: React.FC = () => {
         {status === 'ready' && patterns.length > 0 && (
           <p className="text-center text-xs text-slate-400 mt-10 flex items-center justify-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-blush-400" />
-            Secure one-off checkout · Grid patterns appear in your account · The Rainbow Trout Collage appears in your Collage studio on login · The Rooster PDF guide arrives by email · No subscription required
+            Secure one-off checkout · Grid patterns appear in your account · The Rainbow Trout Collage and the Rooster Collage appear in your Collage studio on login · No subscription required
           </p>
         )}
       </div>

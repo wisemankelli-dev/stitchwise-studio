@@ -6,26 +6,24 @@
  * will be waiting in your Designer" / "Pattern delivered to your account". That is
  * true for grid patterns (a human runs POST /api/library/admin/grant, and
  * materializePendingPurchases() puts the pattern in the Designer on the buyer's next
- * login with their checkout email) — but it is FALSE for the Rooster Collage:
- *   - `rooster-collage` is NOT in PATTERN_GRANTS (rainbow-trout + blank-stocking only)
- *   - the grant endpoint rejects a collage with 400 (collages are not grids)
- *   - the 22-page PDF cutting guide is emailed BY HAND
- * So a Rooster buyer paid, followed the on-page instructions, and found an empty
- * Designer. There is also no email transport and no purchase detection in the app,
- * and no delivery SLA has been agreed by the owner — so no copy may promise
- * automatic or *timed* delivery either.
+ * login with their checkout email) — but it was FALSE for the Rooster Collage,
+ * which for months was emailed by hand as a 22-page PDF cutting guide while the
+ * page told buyers it would be waiting for them. There is also no email transport
+ * and no purchase detection in the app, and no delivery SLA has been agreed by the
+ * owner — so no copy may promise automatic or *timed* delivery either.
  *
- * The Rainbow Trout Collage (`rainbow-trout-collage`, $4.50) is the first collage
- * that DOES materialise by itself: a recorded purchase becomes a CollageProject in
- * the buyer's Collage studio on login. Its copy must therefore state the login
- * path — and must never fall back to the emailed-PDF promise (that is the Rooster's
- * manual path) or to "the Designer" (a collage is not a grid).
+ * Both collages now materialise by themselves: a recorded purchase becomes a
+ * CollageProject in the buyer's Collage studio on login — the Rainbow Trout
+ * Collage (`rainbow-trout-collage`) and, since b144, the Rooster Collage
+ * (`rooster-collage`), whose payload is granted from the same registry. Their copy
+ * must therefore state the login path — and must never fall back to the retired
+ * emailed-PDF promise or to "the Designer" (a collage is not a grid).
  *
  * These tests pin three promises that must survive any future copy edit:
- *   P1. Rooster copy never claims the pattern appears in the Designer / account.
+ *   P1. No collage copy claims the pattern appears in the Designer / account.
  *   P2. No delivery-timeframe wording anywhere in the storefront copy.
  *   P3. Each product states its REAL path: grid → Designer on login,
- *       trout collage → Collage studio on login, rooster → PDF by email.
+ *       both collages → Collage studio on login.
  *
  * Hermetic: reads the two source files as text, stubs `fetch`, renders the page.
  * No network, no database, no admin/grant calls.
@@ -138,23 +136,23 @@ describe('storefront delivery copy — promises match what the app can actually 
   it('states both delivery paths in header steps 2 and 3', async () => {
     const text = await renderStorefrontText();
 
-    // Step 2: grid patterns land in the Designer, the trout collage in the
-    // Collage studio, the Rooster's guide by email.
+    // Step 2: grid patterns land in the Designer, both collages in the Collage
+    // studio.
     expect(text).toContain('grid patterns appear in your Designer');
-    expect(text).toContain('the Rainbow Trout Collage appears in your Collage studio');
-    expect(text).toContain('the Rooster Collage PDF cutting guide is emailed to you');
+    expect(text).toContain('the Rainbow Trout Collage and the Rooster Collage appear in your Collage studio');
 
     // Step 3: named per product, not one shared promise.
     expect(text).toContain('Rainbow Trout: open it in the Designer');
     expect(text).toContain('Rainbow Trout Collage: open it in your Collage studio');
-    expect(text).toContain('Rooster Collage: the PDF cutting guide is emailed to you');
+    expect(text).toContain('Rooster Collage: open it in your Collage studio');
   });
 
   it('footer names every path instead of one account delivery', async () => {
     const text = await renderStorefrontText();
     expect(text).toContain('Grid patterns appear in your account');
-    expect(text).toContain('The Rainbow Trout Collage appears in your Collage studio on login');
-    expect(text).toContain('The Rooster PDF guide arrives by email');
+    expect(text).toContain(
+      'The Rainbow Trout Collage and the Rooster Collage appear in your Collage studio on login',
+    );
   });
 
   it('does not over-claim what a purchase contains', async () => {
@@ -165,23 +163,26 @@ describe('storefront delivery copy — promises match what the app can actually 
   });
 
   // ------------------------------------------------------------ P1 (catalog)
-  it('the Rooster Collage copy never claims the pattern appears in the Designer', () => {
+  it('the Rooster Collage copy states the Collage-studio login path', () => {
     const byId = catalogById();
     const rooster = byId['rooster-collage'];
     expect(rooster).toBeTruthy();
 
-    // The false promise, and every synonym of it.
+    // It materialises in the Collage studio on login...
+    expect(rooster).toMatch(/log ?in/i);
+    expect(rooster).toMatch(/Collage studio/i);
+
+    // ...so it must not claim to land in the Designer, promise the retired
+    // emailed-PDF delivery, or say no account is needed (the login IS the
+    // delivery).
     expect(rooster).not.toMatch(/designer/i);
     expect(rooster).not.toMatch(/\byour account\b/i);
-    expect(rooster).not.toMatch(/log ?in/i);
-    expect(rooster).not.toMatch(/subscription/i);
-
-    // ...and it says what actually happens.
-    expect(rooster).toMatch(/we email your 22-page PDF cutting guide/i);
-    expect(rooster).toMatch(/no account needed/i);
+    expect(rooster).not.toMatch(/\bwe email\b|emailed|by email|delivered/i);
+    expect(rooster).not.toMatch(/no account needed/i);
 
     // The facts that must survive the copy edit.
     expect(rooster).toContain('94 cuttable pieces');
+    expect(rooster).toContain('base layer');
     expect(rooster).toMatch(/numbered Piece Cutting Guide \(6 per page\)/);
     expect(rooster).toContain('full-page overview');
   });
@@ -195,7 +196,7 @@ describe('storefront delivery copy — promises match what the app can actually 
     expect(troutCollage).toMatch(/log ?in/i);
     expect(troutCollage).toMatch(/Collage studio/i);
 
-    // ...so it must not borrow the Rooster's manual email path, promise a PDF,
+    // ...so it must not borrow the retired manual email path, promise a PDF,
     // or claim to land in the Designer (a collage is not a grid).
     expect(troutCollage).not.toMatch(/pdf/i);
     // ("checkout email" is the login identity, not a delivery promise — what may

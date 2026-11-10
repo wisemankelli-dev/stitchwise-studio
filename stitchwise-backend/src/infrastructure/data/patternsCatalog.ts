@@ -51,7 +51,7 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     id: "rooster-collage",
     title: "Rooster",
     description:
-      "A bold farmhouse rooster in rich reds, golds, teals and black — a collage quilting pattern. 94 cuttable pieces with a numbered Piece Cutting Guide (6 per page) plus a full-page overview. We email your 22-page PDF cutting guide to your checkout address. No account needed.",
+      "A bold farmhouse rooster in rich reds, golds, teals and black — a collage quilting pattern. 94 cuttable pieces on a fabric base layer, ready to arrange, cut and assemble, with a numbered Piece Cutting Guide (6 per page) plus a full-page overview that exports as a PDF. Log in with your checkout email after purchase and the project appears in your Collage studio, ready to edit and cut. No subscription required.",
     priceLabel: "$4.50",
     imageUrl: "/patterns/rooster-collage.png",
     paymentUrl: "https://buy.stripe.com/aFa6oJ9drfF537t28L9EI04",
