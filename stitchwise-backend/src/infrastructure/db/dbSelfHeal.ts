@@ -7,7 +7,12 @@
  * `prisma/dev.db` had vanished). The deploy artifact therefore carries a
  * gzipped seed snapshot next to the database:
  *
- *     <db dir>/seed-snapshot.db.gz        (default; override: DB_SEED_PATH)
+ *     <db dir>/seed-snapshot.db.gz        (primary default; override: DB_SEED_PATH)
+ *
+ * The deployed artifact carries the seed where `scripts/build-db-seed.sh` wrote
+ * it — `<site>/dist/backend/prisma/seed-snapshot.db.gz` — so the lookup also
+ * searches the working / entry directories and their `prisma/` and
+ * `dist/backend/prisma/` subdirectories (see `resolveSeedCandidates`).
  *
  * `ensureDatabaseReady()` runs BEFORE the Prisma client is constructed, because
  * Prisma's SQLite connector happily creates an EMPTY file when the database is
@@ -69,6 +74,8 @@ export type BootReport = {
   dbPath: string;
   seedPath: string;
   seedPresent: boolean;
+  /** Locations searched for the seed (only on a seed-missing report). */
+  seedCandidates?: string[];
   stashedTo?: string;
   sha256?: string;
   counts?: Record<string, number>;
@@ -114,6 +121,85 @@ export function resolveSeedPath(
   const explicit = (env.DB_SEED_PATH ?? "").trim();
   if (explicit) return isAbsolute(explicit) ? explicit : resolve(process.cwd(), explicit);
   return join(dirname(dbPath), SEED_FILENAME);
+}
+
+/** Directory of the running entry script (e.g. `<site>/serve.ts`), if known. */
+function entryDir(): string | undefined {
+  const argv1 = process.argv?.[1];
+  if (!argv1 || !isAbsolute(argv1)) return undefined;
+  return dirname(argv1);
+}
+
+/**
+ * Every path the deployed artifact might carry the seed at, in preference order.
+ *
+ * b140 shipped the seed at `<site>/dist/backend/prisma/seed-snapshot.db.gz`
+ * (what `scripts/build-db-seed.sh` writes) while the runtime resolved it as
+ * `<db dir>/seed-snapshot.db.gz` — in the live container DATABASE_URL is
+ * cwd-relative, so the self-heal looked at `<site>/seed-snapshot.db.gz`, found
+ * nothing and could not fire (b140 boot: action "seed-missing"). The lookup
+ * therefore walks the layouts the artifact has actually used:
+ *
+ *     <dir>/seed-snapshot.db.gz                      (default; publish.sh copy)
+ *     <dir>/prisma/seed-snapshot.db.gz               (next to schema.prisma)
+ *     <dir>/dist/backend/prisma/seed-snapshot.db.gz  (build-db-seed.sh output)
+ *
+ * for the database directory, the working directory and the entry-script
+ * directory (plus one parent of each). DB_SEED_PATH still wins outright.
+ */
+export function resolveSeedCandidates(
+  dbPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+  entry: string | undefined = entryDir(),
+): string[] {
+  const explicit = (env.DB_SEED_PATH ?? "").trim();
+  if (explicit) return [isAbsolute(explicit) ? explicit : resolve(cwd, explicit)];
+
+  const bases: string[] = [];
+  const addBase = (dir: string | undefined, depth = 1): void => {
+    if (!dir) return;
+    let cur = resolve(dir);
+    for (let level = 0; level < depth; level++) {
+      if (!bases.includes(cur)) bases.push(cur);
+      const parent = dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
+    }
+  };
+  addBase(dirname(dbPath), 2); // the DB may sit one level below the site root
+  addBase(cwd, 2);
+  addBase(entry);
+
+  const candidates: string[] = [];
+  for (const base of bases) {
+    for (const rel of [
+      SEED_FILENAME,
+      join("prisma", SEED_FILENAME),
+      join("dist", "backend", "prisma", SEED_FILENAME),
+    ]) {
+      const candidate = join(base, rel);
+      if (!candidates.includes(candidate)) candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+/**
+ * First candidate that actually holds a seed. Falls back to the primary
+ * default (`resolveSeedPath`) when none does, so reports always name the
+ * intended location rather than a random search path.
+ */
+export async function findSeedPath(
+  dbPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+  entry: string | undefined = entryDir(),
+): Promise<string> {
+  for (const candidate of resolveSeedCandidates(dbPath, env, cwd, entry)) {
+    if ((await readSeedInfo(candidate)).present) return candidate;
+  }
+  return resolveSeedPath(dbPath, env);
 }
 
 // ─── sqlite3 CLI helpers ────────────────────────────────────────────────────
@@ -379,7 +465,9 @@ export type EnsureOptions = {
 export async function ensureDatabaseReady(opts: EnsureOptions = {}): Promise<BootReport> {
   const env = opts.env ?? process.env;
   const dbPath = opts.dbPath ?? resolveDbPath(env);
-  const seedPath = opts.seedPath ?? resolveSeedPath(dbPath, env);
+  // An explicit seedPath is honoured exactly; otherwise search every layout the
+  // deployed artifact has carried the seed at (see resolveSeedCandidates).
+  const seedPath = opts.seedPath ?? (await findSeedPath(dbPath, env));
   const at = new Date().toISOString();
 
   const disabled =
@@ -429,6 +517,7 @@ export async function ensureDatabaseReady(opts: EnsureOptions = {}): Promise<Boo
 
   const seed = await readSeedInfo(seedPath);
   if (!seed.present) {
+    const searched = resolveSeedCandidates(dbPath, env);
     bootReport = {
       at,
       action: "seed-missing",
@@ -436,10 +525,11 @@ export async function ensureDatabaseReady(opts: EnsureOptions = {}): Promise<Boo
       dbPath,
       seedPath,
       seedPresent: false,
-      error: `database needs restoring (${decision.reason}) but the seed snapshot ${seedPath} is missing`,
+      seedCandidates: searched,
+      error: `database needs restoring (${decision.reason}) but the seed snapshot ${seedPath} is missing (searched ${searched.length} locations)`,
     };
     console.error(
-      `[db-selfheal] DATABASE NEEDS RESTORING (${decision.reason}) but no seed snapshot at ${seedPath} — starting anyway; restore via POST /api/admin/db-restore`,
+      `[db-selfheal] DATABASE NEEDS RESTORING (${decision.reason}) but no seed snapshot at ${seedPath} — searched: ${searched.join(", ")} — starting anyway; restore via POST /api/admin/db-restore`,
     );
     console.error(JSON.stringify({ event: "db_selfheal_seed_missing", ...bootReport }));
     return bootReport;

@@ -3,10 +3,10 @@ import { basename } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import {
   COUNTED_TABLES,
+  findSeedPath,
   getBootReport,
   readSeedInfo,
   resolveDbPath,
-  resolveSeedPath,
 } from "../db/dbSelfHeal";
 
 /**
@@ -64,7 +64,9 @@ export function createHealthRouter(prisma: PrismaClient): Router {
     const db = await checkDatabase(prisma);
 
     const dbPath = resolveDbPath();
-    const seedPath = resolveSeedPath(dbPath);
+    // Same lookup the boot self-heal uses, so health reports the seed that can
+    // actually be restored from (not just the primary default path).
+    const seedPath = await findSeedPath(dbPath);
     const seed = await readSeedInfo(seedPath);
     const boot = getBootReport();
 
@@ -81,6 +83,7 @@ export function createHealthRouter(prisma: PrismaClient): Router {
       seed: {
         present: seed.present,
         file: basename(seedPath),
+        path: seedPath,
         size: seed.size,
         ...(seed.updatedAt ? { updatedAt: seed.updatedAt } : {}),
       },
@@ -90,6 +93,7 @@ export function createHealthRouter(prisma: PrismaClient): Router {
             reason: boot.reason,
             at: boot.at,
             ...(boot.error ? { error: boot.error } : {}),
+            ...(boot.seedCandidates ? { seedCandidates: boot.seedCandidates } : {}),
           }
         : { action: "unknown", reason: "self-heal has not run in this process" },
     });
