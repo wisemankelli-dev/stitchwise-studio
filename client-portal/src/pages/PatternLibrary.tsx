@@ -136,8 +136,8 @@ export const PatternLibrary: React.FC = () => {
             </div>
             <h2 className="text-lg font-bold text-slate-800 mb-2">Couldn't load the Pattern Library</h2>
             <p className="text-sm text-slate-500 mb-6">
-              We couldn't reach the library just now — please check back in a bit. No account needed
-              to buy individual patterns for small projects.
+              We couldn't reach the library just now — please check back in a bit. Checkout needs no
+              account — then log in with the same email.
             </p>
             <button
               onClick={() => window.location.reload()}
@@ -155,7 +155,7 @@ export const PatternLibrary: React.FC = () => {
             </div>
             <h2 className="text-lg font-bold text-slate-800 mb-2">The Pattern Library is being stocked</h2>
             <p className="text-sm text-slate-500">
-              Check back soon. No account needed — buy individual patterns for small projects.
+              Check back soon. Checkout needs no account — then log in with the same email.
             </p>
           </div>
         )}
