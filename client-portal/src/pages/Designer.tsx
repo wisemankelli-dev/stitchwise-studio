@@ -20,6 +20,11 @@ import ShapePicker from '../components/ShapePicker';
 import { api, type SavedPatternSummary, type SavedPatternCell } from '../services/api';
 import type { ProductGuide, ProductGuideType } from '../data/guides';
 import { stockingPointsInBox } from '../data/guides';
+import {
+  maskGridVerdict,
+  MASK_FOR_INFERRED_SHAPE,
+  type MaskKind,
+} from '../data/maskMinGrid';
 
 interface StitchStyle { id: string; name: string; description: string; }
 
@@ -823,7 +828,15 @@ const TOOLS: { id: EditTool; icon: React.ReactNode; label: string }[] = [
  *  Grid size = inches × fabricCount (e.g. 3″ ornament on 14ct = 42×42 stitches).
  *  `guide` (optional) names the product shape shown as a dashed overlay on the
  *  canvas so customers can design within it. */
-interface CanvasPreset { name: string; inchW: number; inchH: number; guide?: ProductGuideType; }
+interface CanvasPreset {
+  name: string;
+  inchW: number;
+  inchH: number;
+  guide?: ProductGuideType;
+  /** Which mask this preset applies — the key into MASK_MIN_GRID
+   *  (data/maskMinGrid.ts). No guide means no mask. */
+  mask?: MaskKind;
+}
 
 /** Map the active product-guide type to the backend's accepted shape enum
  *  ('circle' → 'ornament', 'roundedRect' → 'pillow', else passthrough).
@@ -872,14 +885,14 @@ export const CANVAS_PRESETS: CanvasPreset[] = [
   // no detail because the preset had no `guide`. Wiring 'circle' gives the dashed
   // overlay, the client-side maskGridToGuide circle clip, and the backend
   // shape=ornament (circle mask + small-grid face-feature guard at 28×28).
-  { name: 'Bag Charm', inchW: 2, inchH: 2, guide: 'circle' },
-  { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle' },
-  { name: 'Large Ornament', inchW: 5, inchH: 5, guide: 'circle' },
-  { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect' },
-  { name: '8×10 Frame', inchW: 8, inchH: 10, guide: 'rect' },
-  { name: 'Pillow', inchW: 6, inchH: 6, guide: 'roundedRect' },
-  { name: 'Stocking', inchW: 11, inchH: 17, guide: 'stocking' },
-  { name: 'Large Pillow', inchW: 8, inchH: 8, guide: 'roundedRect' },
+  { name: 'Bag Charm', inchW: 2, inchH: 2, guide: 'circle', mask: 'charm' },
+  { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle', mask: 'ornament' },
+  { name: 'Large Ornament', inchW: 5, inchH: 5, guide: 'circle', mask: 'ornament' },
+  { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect', mask: 'frame' },
+  { name: '8×10 Frame', inchW: 8, inchH: 10, guide: 'rect', mask: 'frame' },
+  { name: 'Pillow', inchW: 6, inchH: 6, guide: 'roundedRect', mask: 'pillow' },
+  { name: 'Stocking', inchW: 11, inchH: 17, guide: 'stocking', mask: 'stocking' },
+  { name: 'Large Pillow', inchW: 8, inchH: 8, guide: 'roundedRect', mask: 'pillow' },
   { name: 'Wall Hanging', inchW: 8, inchH: 16 },
 ];
 
@@ -1127,6 +1140,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [restoredDraft, setRestoredDraft] = useState<DesignerDraft | null>(null);
   // pendingPreset - ask before a preset click clears stitches off a canvas.
   const [pendingPreset, setPendingPreset] = useState<{ preset: CanvasPreset; stitchW: number; stitchH: number } | null>(null);
+
+  // CREATE-YOUR-OWN MODE (owner doctrine 10-26/10-29). Entered from the
+  // below-floor steering: the AI mask flow is put away, no mask is applied and
+  // the canvas is the user's to draw on. A preset click or "Use AI again"
+  // leaves it. Defaults to false, so every existing flow is untouched.
+  const [createOwnMode, setCreateOwnMode] = useState(false);
   // pendingSaveConfirm - one-click confirm before saving a canvas that has no
   // AI source image (no previewUrl) so a restored-stale-grid save can't happen
   // silently.
@@ -1193,10 +1212,38 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // the canvas dims so mask + overlay line up.
   const inferredShape = React.useMemo(() => inferShapeFromPrompt(aiPrompt), [aiPrompt]);
   const effectiveGuide: ProductGuide | null = React.useMemo(() => {
+    // Create-Your-Own is the manual path: no mask at all, not even an inferred one.
+    if (createOwnMode) return null;
     if (activeGuide) return activeGuide;
     if (!inferredShape) return null;
     return { type: guideTypeForShape(inferredShape), colW: gridWidth, rowH: gridHeight };
-  }, [activeGuide, inferredShape, gridWidth, gridHeight]);
+  }, [activeGuide, inferredShape, gridWidth, gridHeight, createOwnMode]);
+
+  // WHICH MASK IS ABOUT TO BE APPLIED — the preset's mask wins; on a custom
+  // canvas a prompt that names a product shape infers one (same rule the mask
+  // itself follows). null = no mask, so no floor to enforce.
+  const activeMask: MaskKind | null = React.useMemo(() => {
+    if (createOwnMode) return null;
+    if (activePreset) {
+      const preset = CANVAS_PRESETS.find(
+        (p) => p.inchW === activePreset.inchW && p.inchH === activePreset.inchH,
+      );
+      return preset?.mask ?? null;
+    }
+    return inferredShape ? MASK_FOR_INFERRED_SHAPE[inferredShape] : null;
+  }, [activePreset, inferredShape, createOwnMode]);
+
+  // THE PER-MASK MINIMUM-GRID VERDICT (data/maskMinGrid.ts). When the chosen
+  // grid is below the mask's floor the Designer says so in plain words,
+  // pauses Generate and offers Create-Your-Own instead of quietly producing a
+  // pattern the mask can't hold.
+  const maskSteering = maskGridVerdict({
+    mask: activeMask,
+    gridWidth,
+    gridHeight,
+    fabricCount,
+    prompt: aiPrompt,
+  });
 
   // Keep the whole canvas visible when the panel resizes (owner report 08-17:
   // shrinking the window after picking the Stocking cut the toe off). Only ever
@@ -1833,6 +1880,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
 
   /** Single-phase generation: prompt → pattern (handles sync 200 and async 202 with polling) */
   const handleGenerate = useCallback(async () => {
+    // Below the mask's minimum grid the button is disabled — Enter must not
+    // slip past it (the steering panel offers a route instead).
+    if (maskSteering.below) return;
     if (!aiPrompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setAiError('');
@@ -2063,7 +2113,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // stays true (and so a spent allowance is caught before the next click).
       void refreshAIUsage();
     }
-  }, [aiPrompt, isGenerating, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
+  }, [aiPrompt, isGenerating, maskSteering.below, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
@@ -2097,6 +2147,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     // source-less 54x54 charm was still loaded when she picked the stocking
     // preset, so Generate sent the charm's id and 400'd). Identity cleared.
     clearLoadedRegenSource();
+    setCreateOwnMode(false); // picking a mask means the AI flow again
     setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
     setAdoptedGuideDims(null); // b136: a fresh preset canvas has no DD-adopted dims
     setPendingPreset(null);
@@ -2154,6 +2205,32 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     } else {
       applyResize(newW, newH);
     }
+  };
+
+  // ONE-CLICK CREATE-YOUR-OWN (the steering route, owner doctrine 10-26/10-29):
+  // drop the mask, put the AI bar away and leave the canvas — at the size the
+  // user already chose — to be drawn by hand.
+  const startCreateOwn = () => {
+    setCreateOwnMode(true);
+    setActivePreset(null);
+    setAdoptedGuideDims(null);
+    setPendingPreset(null);
+  };
+
+  // ONE-CLICK "make it big enough": the mask's floor, aspect preserved, so the
+  // same mask can do its job. A preset canvas restarts at the new dims (like a
+  // preset click) and the guide is drawn at those dims, not the preset inches.
+  const useMaskFloorSize = () => {
+    const { width, height } = maskSteering.target;
+    const preset = activePreset
+      ? CANVAS_PRESETS.find((p) => p.inchW === activePreset.inchW && p.inchH === activePreset.inchH)
+      : undefined;
+    if (preset) {
+      startFreshPresetCanvas(preset, width, height);
+    } else {
+      requestResize(width, height);
+    }
+    setAdoptedGuideDims({ colW: width, rowH: height });
   };
 
 
@@ -2797,6 +2874,26 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
 
               {/* AI Prompt Bar */}
               <div className="w-full mb-4 p-3 bg-gradient-to-r from-purple-50 to-blush-50 rounded-xl border border-purple-200">
+                {createOwnMode ? (
+                  <div data-testid="create-own-banner" className="flex items-start gap-2">
+                    <Paintbrush className="h-4 w-4 text-blush-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-700">Create-Your-Own</p>
+                      <p className="text-[10px] text-slate-600">
+                        No AI and no mask — this canvas is yours. Pick a colour and a tool and draw it
+                        stitch by stitch, at the size you want.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreateOwnMode(false)}
+                      className="ml-auto shrink-0 rounded-lg bg-white border border-purple-200 text-[10px] font-bold text-slate-600 px-2 py-1 hover:bg-purple-50 transition-all"
+                    >
+                      Use AI again
+                    </button>
+                  </div>
+                ) : (
+                <>
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
                   <input
@@ -2810,8 +2907,14 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   />
                   <button
                     onClick={handleGenerate}
-                    disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked}
-                    title={generationNotice.blocked ? generationNotice.text : undefined}
+                    disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked || maskSteering.below}
+                    title={
+                      generationNotice.blocked
+                        ? generationNotice.text
+                        : maskSteering.below
+                          ? maskSteering.title
+                          : undefined
+                    }
                     className="px-4 py-2 rounded-lg bg-gradient-to-r from-blush-600 to-blush-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all shrink-0 hover:from-blush-700 hover:to-blush-600"
                   >
                     {isGenerating ? (
@@ -2831,6 +2934,37 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 >
                   {generationNotice.text}
                 </p>
+
+                {maskSteering.below && (
+                  <div
+                    data-testid="mask-min-grid-steering"
+                    className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2"
+                  >
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-bold text-amber-800">{maskSteering.title}</p>
+                        <p className="text-[10px] text-amber-700">{maskSteering.message}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={startCreateOwn}
+                        className="flex-1 rounded-lg bg-white border border-amber-300 text-amber-800 text-[10px] font-bold py-1.5 hover:bg-amber-100 transition-all"
+                      >
+                        {maskSteering.createOwnLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={useMaskFloorSize}
+                        className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold py-1.5 transition-all"
+                      >
+                        {maskSteering.resizeLabel}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <p className="mt-2 text-[10px] text-slate-500">
                   💡 Tip: descriptive prompts give the best patterns — name the subject and add a few details (colors, texture, pose). Short prompts work too, but specifics come out richer.
@@ -2885,6 +3019,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     </p>
                     <img src={aiArtworkUrl} alt="AI-generated artwork" className="w-full rounded-lg border border-slate-100" />
                   </div>
+                )}
+                </>
                 )}
               </div>
 
