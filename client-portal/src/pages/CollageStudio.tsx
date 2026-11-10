@@ -52,9 +52,12 @@ export const CollageStudio: React.FC = () => {
   // Real work-surface dimension (px). Default 500; "Large canvas" grows to ~950
   // so there is real room to arrange pieces. All piece geometry scales with this.
   const [canvasSize, setCanvasSize] = useState(CANVAS_WIDTH);
-  // Piece view: 'spread' = non-overlapping grid (default after generate);
-  // 'assembled' = each cutout back at its original artwork position.
-  const [layoutView, setLayoutView] = useState<'spread' | 'assembled'>('spread');
+  // Piece view: 'spread' = non-overlapping grid; 'assembled' = each cutout back
+  // at its original artwork position (the default — see below).
+  // Default to Assembled: the studio should open on the actual design, not a
+  // scattered shelf of cutouts (owner 2026-11-10: "the screen to default to
+  // Assembled pattern so as to not confuse the user as the design").
+  const [layoutView, setLayoutView] = useState<'spread' | 'assembled'>('assembled');
   // Pattern sheet style: 'value' = gray-tone value guide (CollageQuilter convention),
   // 'color' = true fabric colors, 'outline' = blank black-and-white coloring book.
   const [patternStyle, setPatternStyle] = useState<'value' | 'color' | 'outline'>('value');
@@ -207,6 +210,8 @@ export const CollageStudio: React.FC = () => {
         setPlacedPieces(project.pieces);
         setAvailablePieces(project.pieces.map(p => p.piece));
         setSelectedPieceId(null);
+        // A loaded project opens on the design too, whatever view was active.
+        setLayoutView('assembled');
       }
       if (project.referenceArt) setReferenceArt(project.referenceArt);
       setSaveMessage(`Loaded "${project.name}"`);
@@ -706,9 +711,11 @@ export const CollageStudio: React.FC = () => {
         };
       });
       setAvailablePieces(subjectPieces);
-      // Default to the non-overlapping spread grid so many pieces never hide each other.
-      setPlacedPieces(spreadPlacements(placed, canvasSize));
-      setLayoutView('spread');
+      // Land assembled: a freshly traced/generated image must open on the real
+      // picture, not a scattered pile (owner 2026-11-10). Spread is still one
+      // click away via the Spread pieces / Assembled toggle.
+      setPlacedPieces(placed);
+      setLayoutView('assembled');
       setSelectedPieceId(null);
     }
   };
