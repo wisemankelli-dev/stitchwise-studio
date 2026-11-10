@@ -207,8 +207,9 @@ describe('Designer wiring — the cost is visible before the click', () => {
   });
 
   it('disables Generate when the allowance is known to be spent', () => {
-    expect(designerSrc).toContain('disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked}');
-    expect(designerSrc).toContain('title={generationNotice.blocked ? generationNotice.text : undefined}');
+    // (b146+ mask floor steering adds one more reason the button is disabled.)
+    expect(designerSrc).toContain('disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked || maskSteering.below}');
+    expect(designerSrc).toContain('generationNotice.blocked\n                        ? generationNotice.text');
   });
 
   it('fetches the allowance on mount and re-reads it after every generation', () => {
