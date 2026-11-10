@@ -37,7 +37,7 @@ const RESTORE_LIMIT_MB = 64;
  * database. Use that as the source of truth — it is the file that was
  * checkpointed and is being served by this process.
  */
-async function liveSqlitePath(prisma: PrismaClient): Promise<string> {
+export async function liveSqlitePath(prisma: PrismaClient): Promise<string> {
   // [{ name: "main", file: "/abs/path/to/dev.db" }, ...]
   const rows = await prisma.$queryRawUnsafe<Array<{ name: string; file: string | null }>>(
     "PRAGMA database_list",

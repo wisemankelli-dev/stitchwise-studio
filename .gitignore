@@ -3,6 +3,10 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+# Boot-time self-heal seed: generated at staging time from the private snapshot
+# (it contains real user rows, so it is never committed) — see scripts/build-db-seed.sh
+*.db.gz
+*.db.gz.sha256
 .env
 coverage/
 __pycache__/
