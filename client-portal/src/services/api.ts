@@ -854,15 +854,20 @@ class ApiClient {
   }
 
   /**
-   * Generates a Stripe Checkout session link for the given tier and billing period.
+   * Generates a Stripe Checkout session link for the given tier.
+   *
+   * Monthly only: Stripe holds no annual price for these tiers and
+   * `/api/payments/create-checkout-session` takes no billing interval — it always
+   * creates a monthly session. Do not add a billing-period parameter back until
+   * real annual prices exist in Stripe.
    */
-  async createCheckoutSession(tier: string, billingPeriod: 'monthly' | 'annually'): Promise<{ success: boolean; url?: string; error?: string }> {
+  async createCheckoutSession(tier: string): Promise<{ success: boolean; url?: string; error?: string }> {
     if (this.isLiveBackend) {
       try {
         const response = await fetch(`${this.apiBaseUrl}/payments/create-checkout-session`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ tier, billingPeriod })
+          body: JSON.stringify({ tier })
         });
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
