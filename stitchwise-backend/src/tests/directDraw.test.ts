@@ -130,7 +130,7 @@ describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
     const h = hist(g);
     expect(h["#113b69"] ?? 0).toBeGreaterThan(40); // ornament ring
     expect(h["#5d3c2e"] ?? 0).toBeGreaterThan(200); // bear head
-    expect(h["#3c3c3c"] ?? 0).toBeGreaterThan(20); // eyes/nose/smile
+    expect(h["#3c3c3c"] ?? 0).toBeGreaterThan(20); // nose/smile (eyes are DMC 310 black)
     expect(h["#ffffff"] ?? 0).toBeGreaterThan(100); // muzzle + inside-ring bg
   });
 
@@ -138,14 +138,15 @@ describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
     // Owner pick 2026-10-29 (B2, +18 % face): the b134 sweater band is GONE —
     // paper fills the ornament below the chin — while the ornament rim and the
     // crown loop stay cell-for-cell identical (that is why #113b69 is still 173).
-    // 2916 cells = 1254 empty + 173 navy + 794 white + 561 brown + 64 inner + 70 dark
+    // 2916 cells = 1254 empty + 173 navy + 796 white + 561 brown + 64 inner + 38 black eyes + 30 dark
     expect(hist(g)).toEqual({
       "": 1254, // outside the ornament
       "#113b69": 173, // rim + crown loop (UNCHANGED)
-      "#ffffff": 794, // muzzle + the paper inside the rim
+      "#ffffff": 796, // muzzle + paper inside the rim + the 2 eye glints
       "#5d3c2e": 561, // head + ears
       "#8a6c54": 64, // inner ears
-      "#3c3c3c": 70, // eyes + nose + smile
+      "#000000": 38, // eyes — DMC 310 (owner variant C, 2026-11-10)
+      "#3c3c3c": 30, // nose + smile only
     });
     expect(hist(g)["#254267"] ?? 0).toBe(0); // the sweater no longer exists
   });
@@ -170,7 +171,7 @@ describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
   });
 
   it("keeps ≥1 cell of paper between the face and the rim, and the exact 5-colour palette", () => {
-    const face = new Set(["#5d3c2e", "#8a6c54", "#3c3c3c"]);
+    const face = new Set(["#5d3c2e", "#8a6c54", "#3c3c3c", "#000000"]);
     const faceCells: Array<[number, number]> = [];
     const rimCells: Array<[number, number]> = [];
     for (let r = 0; r < 54; r++)
@@ -204,17 +205,17 @@ describe("direct-draw CHARM (bear-family ornament, 54×54 floor)", () => {
       for (let c = 10; c <= 43; c++) {
         const v = colorAt(g, r, c).toLowerCase();
         if (v === "#ffffff") white++;
-        else if (v === "#5d3c2e" || v === "#3c3c3c") dark++;
+        else if (v === "#5d3c2e" || v === "#3c3c3c" || v === "#000000") dark++;
       }
     }
     expect(white).toBeLessThan(dark);
   });
 
-  it("has SYMMETRIC dark eyes — ≥1 dark cell in EACH half-face at eye rows", () => {
+  it("has SYMMETRIC black eyes (DMC 310) — ≥1 black cell in EACH half-face at eye rows", () => {
     let left = 0, right = 0;
     for (const r of [27, 28, 29, 30, 31, 32, 33]) {
-      for (let c = 10; c <= 25; c++) if (colorAt(g, r, c).toLowerCase() === "#3c3c3c") left++;
-      for (let c = 28; c <= 43; c++) if (colorAt(g, r, c).toLowerCase() === "#3c3c3c") right++;
+      for (let c = 10; c <= 25; c++) if (colorAt(g, r, c).toLowerCase() === "#000000") left++;
+      for (let c = 28; c <= 43; c++) if (colorAt(g, r, c).toLowerCase() === "#000000") right++;
     }
     expect(left).toBeGreaterThan(0);
     expect(right).toBeGreaterThan(0);
@@ -296,7 +297,8 @@ describe("retest2 response-dims + palette contract (#203)", () => {
     expect(h["#113b69"]).toBeGreaterThan(0);  // ring + crown
     expect(h["#254267"] ?? 0).toBe(0);        // NO sweater (B2: paper below the chin)
     expect(h["#ffffff"]).toBeGreaterThan(0);  // muzzle
-    expect(h["#3c3c3c"]).toBeGreaterThan(0);  // face
+    expect(h["#3c3c3c"]).toBeGreaterThan(0);  // nose + smile
+    expect(h["#000000"]).toBeGreaterThan(0);  // eyes (DMC 310)
   });
   it("palette hexes are the DL-7 the client tests assert (exact set anchor)", () => {
     const g = tryDirectDraw({ shape: "stocking", patternName: "x", canvasWidth: 154, canvasHeight: 238 })!;

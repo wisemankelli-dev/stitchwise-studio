@@ -162,10 +162,11 @@ describe('RENDERED-PIXEL GATE — DD charm 54x54 bear through the FIXED pipeline
     // (head 12.2 → 14.4 cells). The ornament rim + crown are cell-for-cell
     // unchanged, which is why #113b69 stays at 173.
     expect(counts['#113b69']).toBe(173);   // ring + crown (unchanged)
-    expect(counts['#ffffff']).toBe(794);   // muzzle + inside-ring bg (MASK NOT APPLIED)
+    expect(counts['#ffffff']).toBe(796);   // muzzle + inside-ring bg + 2 eye glints (MASK NOT APPLIED)
     expect(counts['#5d3c2e']).toBe(561);   // head + ears
     expect(counts['#8a6c54']).toBe(64);    // inner ears
-    expect(counts['#3c3c3c']).toBe(70);    // symmetric eyes + nose + smile
+    expect(counts['#000000']).toBe(38);    // DMC 310: symmetric eyes (owner variant C, 2026-11-10)
+    expect(counts['#3c3c3c']).toBe(30);    // nose + smile only (eyes are no longer #3c3c3c)
     expect(counts['#254267']).toBeUndefined(); // NO sweater: paper below the chin
     expect(counts[PAPER]).toBe(1254);      // outside empty = paper at full canvas
   });
@@ -279,7 +280,7 @@ describe('RENDERED-PIXEL GATE — PNG artifacts for human review', () => {
       path.join(OUT, 'qa-render-pins.json'),
       JSON.stringify(
         {
-          charm: { dims: '54x54', hexes: { '#113b69': 173, '#5d3c2e': 561, '#3c3c3c': 70, '#ffffff': 794, '#8a6c54': 64 }, empty: 1254 },
+          charm: { dims: '54x54', hexes: { '#113b69': 173, '#5d3c2e': 561, '#000000': 38, '#3c3c3c': 30, '#ffffff': 796, '#8a6c54': 64 }, empty: 1254 },
           stocking: { dims: '238x154', body: 12083, shade: 4715, white: 2335, stars: 1005, empty: 16514, total: 36652 },
         },
         null,
