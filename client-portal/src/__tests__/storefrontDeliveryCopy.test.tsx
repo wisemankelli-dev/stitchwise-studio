@@ -19,11 +19,14 @@
  * must therefore state the login path — and must never fall back to the retired
  * emailed-PDF promise or to "the Designer" (a collage is not a grid).
  *
- * These tests pin three promises that must survive any future copy edit:
+ * These tests pin four promises that must survive any future copy edit:
  *   P1. No collage copy claims the pattern appears in the Designer / account.
  *   P2. No delivery-timeframe wording anywhere in the storefront copy.
  *   P3. Each product states its REAL path: grid → Designer on login,
  *       both collages → Collage studio on login.
+ *   P4. Checkout is described as needing no account — followed by the real
+ *       delivery step (log in, or create an account, with the same email) and
+ *       never by a "delivery note on your receipt" we do not send.
  *
  * Hermetic: reads the two source files as text, stubs `fetch`, renders the page.
  * No network, no database, no admin/grant calls.
@@ -97,6 +100,15 @@ const RETIRED_STRINGS: Array<[string, RegExp]> = [
   ['"delivered by email"', /delivered by email/i],
   ['"waiting in your Designer"', /waiting in your Designer/i],
   ['"everything you need to stitch"', /everything you need to stitch/i],
+  // Checkout itself is anonymous, but delivery is login-only: the buyer must
+  // then log in — or create an account — with the same email. So the page may
+  // never claim an account is unnecessary, or the first-time buyer is stranded.
+  ['"no account or subscription needed"', /no account or subscription (?:is )?needed/i],
+  ['"no account or subscription required"', /no account or subscription (?:is )?required/i],
+  // Nothing is emailed: there is no email transport, so no receipt carries a
+  // delivery note. The login step is the delivery step.
+  ['"follow the delivery note on your receipt"', /delivery note/i],
+  ['"on your receipt"', /on your receipt/i],
 ];
 
 /** Render the page with the real shipping descriptions, return its visible text. */
@@ -153,6 +165,20 @@ describe('storefront delivery copy — promises match what the app can actually 
     expect(text).toContain(
       'The Rainbow Trout Collage and the Rooster Collage appear in your Collage studio on login',
     );
+  });
+
+  // ---------------------------------------------------------------- P4 (page)
+  it('says checkout needs no account, then names the login-or-create step', async () => {
+    const text = await renderStorefrontText();
+
+    // Checkout is anonymous...
+    expect(text).toContain('checkout needs no account');
+    expect(text).toContain('pay without an account');
+
+    // ...and the buyer is told the real delivery step: log in, or create an
+    // account, with the email they paid with.
+    expect(text).toContain('log in or create one with the same email you paid with');
+    expect(text).toContain('Log in — or create an account — with the email you paid with');
   });
 
   it('does not over-claim what a purchase contains', async () => {

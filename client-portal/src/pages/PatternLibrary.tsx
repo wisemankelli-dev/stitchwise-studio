@@ -17,8 +17,9 @@ type LoadStatus = 'loading' | 'ready' | 'error';
 
 /**
  * Pattern Library — public storefront for one-off pattern purchases.
- * Anyone can browse and buy individual patterns the owner ships; no account
- * or subscription is required. Consumes the public GET /api/library/patterns
+ * Anyone can browse and buy individual patterns the owner ships without an
+ * account; delivery is login-only, so the copy says to log in (or create an
+ * account) with the same email used at checkout. Consumes the public GET /api/library/patterns
  * endpoint (kept under /api/library/ so it never collides with the Designer's
  * authenticated /api/patterns persistence routes).
  */
@@ -61,8 +62,9 @@ export const PatternLibrary: React.FC = () => {
               Pattern <span className="text-transparent bg-clip-text bg-gradient-to-r from-blush-500 to-blush-300">Library</span>
             </h1>
             <p className="text-base text-slate-500 max-w-2xl mx-auto">
-              Buy individual patterns for small projects — no account or subscription needed.
-              Each purchase is a complete, ready-to-use pattern file for the product described on its card.
+              Buy individual patterns for small projects — checkout needs no account, then log in or create
+              one with the same email you paid with. Each purchase is a complete, ready-to-use pattern file
+              for the product described on its card.
             </p>
             {/* What you receive — process explained */}
             <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
@@ -73,7 +75,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">1. Buy</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    Secure one-off checkout — no account or subscription required.
+                    Secure one-off checkout — pay without an account, using the email you'll log in with.
                   </p>
                 </div>
               </div>
@@ -84,7 +86,7 @@ export const PatternLibrary: React.FC = () => {
                 <div>
                   <p className="text-sm font-bold text-slate-800">2. Log in</p>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    After checkout, follow the delivery note on your receipt: grid patterns appear in your Designer when you log in with your checkout email, and the Rainbow Trout Collage and the Rooster Collage appear in your Collage studio when you log in with the same email.
+                    Log in — or create an account — with the email you paid with: grid patterns appear in your Designer when you log in with your checkout email, and the Rainbow Trout Collage and the Rooster Collage appear in your Collage studio when you log in with the same email.
                   </p>
                 </div>
               </div>
