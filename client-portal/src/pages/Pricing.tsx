@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Check, X, Sparkles, Scissors, HelpCircle, ShieldCheck, ArrowRight } from 'lucide-react';
 import { api } from '../services/api';
 
-interface PricingPlan {
+export interface PricingPlan {
   id: string;
   name: string;
-  priceMonthly: number;
-  priceAnnually: number;
+  /**
+   * Monthly price in CENTS — the exact amount Stripe charges. This is the single
+   * source of truth for the price on the card, and it must stay equal to
+   * `TIER_AMOUNTS` in stitchwise-backend/src/infrastructure/services/stripeClient.ts.
+   * `honestStorefront.test.tsx` fails the build if the two drift apart.
+   */
+  priceMonthlyCents: number;
   description: string;
   badge?: string;
   features: string[];
@@ -16,9 +21,67 @@ interface PricingPlan {
   className?: string;
 }
 
+/** Render a cents amount as the dollars the card is actually charged. */
+export const formatMonthlyPrice = (cents: number): string =>
+  cents === 0 ? '$0' : `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * Every feature line here must be something the app does TODAY. Removed in b145
+ * because no code existed behind them: machine exports (.DST/.PES/.EXP), live
+ * collaborative workshops, priority AI speeds, the bulk image-to-stitch queue,
+ * multi-user seats, custom branding palettes, developer API / affiliate access,
+ * a dedicated success manager, per-tier grid-size caps and project caps.
+ * The generation caps below match AI_LIMITS in middleware/aiRateLimit.ts.
+ */
+export const PRICING_PLANS: PricingPlan[] = [
+  {
+    id: 'Hobbyist',
+    name: 'Hobbyist',
+    priceMonthlyCents: 0,
+    description: 'Perfect for hand embroidery lovers and casual crafters.',
+    features: [
+      '2 AI pattern generations per day (10/month)',
+      'Pattern Designer, Collage Studio & Quilt Block',
+      'PDF pattern sheets & PNG export',
+      'DMC Thread Box with thread usage estimator',
+    ],
+    ctaText: 'Current Plan',
+    highlighted: false,
+  },
+  {
+    id: 'Pro Crafter',
+    name: 'Pro Crafter',
+    priceMonthlyCents: 1999,
+    badge: 'Most Popular',
+    description: 'For passionate crafters who need more AI design time each month.',
+    features: [
+      '15 AI pattern generations per day (100/month)',
+      'Everything in Hobbyist',
+      'Unlimited active projects',
+      'Satin stitch & back-stitch design tools',
+    ],
+    ctaText: 'Upgrade to Pro',
+    highlighted: true,
+  },
+  {
+    id: 'Design Studio',
+    name: 'Design Studio',
+    priceMonthlyCents: 5999,
+    description: 'For professional digitizers, craft shops, and commercial studios.',
+    features: [
+      '30 AI pattern generations per day (200/month)',
+      'Everything in Pro Crafter',
+      'Premium AI art model option (higher per-image cost)',
+      'Full commercial use license',
+    ],
+    className: 'ring-2 ring-blush-200',
+    ctaText: 'Upgrade to Studio',
+    highlighted: false,
+  },
+];
+
 export const Pricing: React.FC = () => {
   const navigate = useNavigate();
-  const [billingPeriod, setPricePeriod] = useState<'monthly' | 'annually'>('monthly');
   const [currentTier, setCurrentTier] = useState<string>('Hobbyist');
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [selectedPlanName, setSelectedPlanName] = useState<string>('');
@@ -56,64 +119,7 @@ export const Pricing: React.FC = () => {
     }
   }, []);
 
-  const plans: PricingPlan[] = [
-    {
-      id: 'Hobbyist',
-      name: 'Hobbyist',
-      priceMonthly: 0,
-      priceAnnually: 0,
-      description: 'Perfect for hand embroidery lovers and casual crafters.',
-      features: [
-        'Basic 16x16 fabric grid editor',
-        'Standard DMC thread palettes',
-        'PDF pattern export (Hand Embroidery)',
-        '2 AI pattern generations per day (10/month)',
-        'Up to 3 active projects',
-        'Public workshop view access'
-      ],
-      ctaText: 'Current Plan',
-      highlighted: false
-    },
-    {
-      id: 'Pro Crafter',
-      name: 'Pro Crafter',
-      priceMonthly: 19,
-      priceAnnually: 15,
-      badge: 'Most Popular',
-      description: 'For passionate crafters needing premium AI design & machine file outputs.',
-      features: [
-        '15 AI pattern generations per day (100/month)',
-        'Machine exports (.DST, .PES, .EXP)',
-        'Thread usage & DMC skein estimator',
-        'Advanced design tools (Satin stitch auto-fill)',
-        'Unlimited active projects',
-        'Start live collaborative workshops',
-        'Premium DMC thread palettes'
-      ],
-      ctaText: 'Upgrade to Pro',
-      highlighted: true
-    },
-    {
-      id: 'Design Studio',
-      name: 'Design Studio',
-      priceMonthly: 59,
-      priceAnnually: 49,
-      description: 'For professional digitizers, craft shops, and commercial studios.',
-      features: [
-        '30 AI pattern generations per day (200/month)',
-        'Priority AI generation speeds',
-        'Full commercial use licenses',
-        'Bulk image-to-stitch processing queue',
-        'Multi-user accounts (Up to 5 seats)',
-        'Custom color branding palettes',
-        'Developer API & Affiliate integration access',
-        'Dedicated customer success manager'
-      ],
-      className: 'ring-2 ring-blush-200',
-      ctaText: 'Upgrade to Studio',
-      highlighted: false
-    }
-  ];
+  const plans = PRICING_PLANS;
 
   const handleUpgrade = async (planId: string, planName: string) => {
     if (planId === 'Hobbyist') {
@@ -129,11 +135,13 @@ export const Pricing: React.FC = () => {
       }
       return;
     }
-    
+
     setIsRedirecting(true);
     setErrorMsg('');
     try {
-      const res = await api.createCheckoutSession(planName, billingPeriod);
+      // Monthly only: Stripe holds no annual price and the checkout endpoint takes
+      // no billing interval, so there is nothing to choose here.
+      const res = await api.createCheckoutSession(planName);
       if (res.success && res.url) {
         window.location.href = res.url;
       } else {
@@ -166,7 +174,7 @@ export const Pricing: React.FC = () => {
   return (
     <div className="bg-floral-soft min-h-screen py-16 px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        
+
         {/* Title / Hero Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blush-50 text-blush-700 mb-4 animate-pulse">
@@ -177,29 +185,11 @@ export const Pricing: React.FC = () => {
             Simple, Transparent Pricing
           </h1>
           <p className="mt-4 text-base text-blush-600/80 leading-relaxed">
-            Every crafter's dream is to bring their thoughts to life. Select the tier that matches your passion, from standard free grids to AI digitizers and machine format exports.
+            Every crafter&apos;s dream is to bring their thoughts to life. Select the tier that matches your passion, from a free starter plan to more AI pattern generations every month.
           </p>
-
-          {/* Monthly / Annual Toggle Switch */}
-          <div className="mt-10 flex justify-center items-center gap-4">
-            <span className={`text-sm font-semibold transition-colors ${billingPeriod === 'monthly' ? 'text-slate-800' : 'text-blush-400'}`}>
-              Monthly
-            </span>
-            <button
-              onClick={() => setPricePeriod(billingPeriod === 'monthly' ? 'annually' : 'monthly')}
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-blush-200 hover:bg-blush-300 transition-colors duration-200 ease-in-out focus:outline-none"
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-blush-500 shadow ring-0 transition duration-200 ease-in-out ${billingPeriod === 'annually' ? 'translate-x-5 bg-blush-600' : 'translate-x-0'}`}
-              />
-            </button>
-            <span className="text-sm text-slate-500 font-semibold flex items-center gap-1.5">
-              Yearly Bill 
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-600/10">
-                Save 20%
-              </span>
-            </span>
-          </div>
+          <p className="mt-3 text-xs font-semibold text-slate-500">
+            All plans are billed monthly at the price shown. Annual billing is not available yet.
+          </p>
 
           {/* Manage Subscription / Customer Portal Link */}
           {currentTier !== 'Hobbyist' && (
@@ -243,8 +233,7 @@ export const Pricing: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch mb-24">
           {plans.map((plan) => {
             const isCurrentPlan = currentTier.toLowerCase() === plan.name.toLowerCase();
-            const price = billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceAnnually;
-            
+
             return (
               <div
                 key={plan.id}
@@ -263,9 +252,9 @@ export const Pricing: React.FC = () => {
                   </div>
 
                   <div className="flex items-baseline text-slate-800 border-b border-blush-100 pb-6">
-                    <span className="text-5xl font-extrabold tracking-tight">${price}</span>
+                    <span className="text-5xl font-extrabold tracking-tight">{formatMonthlyPrice(plan.priceMonthlyCents)}</span>
                     <span className="ml-1 text-sm font-semibold text-slate-500">
-                      {plan.priceMonthly === 0 ? '' : billingPeriod === 'monthly' ? '/mo' : '/mo, billed annually'}
+                      {plan.priceMonthlyCents === 0 ? '' : '/mo'}
                     </span>
                   </div>
 
@@ -290,7 +279,7 @@ export const Pricing: React.FC = () => {
                 <div className="mt-8 pt-6 border-t border-slate-50">
                   <button
                     onClick={() => handleUpgrade(plan.id, plan.name)}
-                    disabled={isRedirecting || (isCurrentPlan && plan.priceMonthly === 0)}
+                    disabled={isRedirecting || (isCurrentPlan && plan.priceMonthlyCents === 0)}
                     className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 ${isRedirecting ? 'opacity-50 cursor-not-allowed' : ''} ${isCurrentPlan ? 'bg-blush-50 text-blush-400 border border-blush-200 cursor-default' : plan.highlighted ? 'bg-blush-500 hover:bg-blush-600 text-white hover:scale-[1.02] hover:shadow-blush' : 'bg-blush-100 hover:bg-blush-200 text-blush-700'}`}
                   >
                     {isCurrentPlan ? 'Active Plan' : plan.ctaText}
@@ -302,16 +291,16 @@ export const Pricing: React.FC = () => {
           })}
         </div>
 
-        {/* Detailed Comparison Table */}
+        {/* Detailed Comparison Table — only capabilities that exist today */}
         <div className="mb-24 bg-white rounded-3xl border border-blush-100 overflow-hidden shadow-sm">
           <div className="p-6 bg-gradient-to-r from-blush-50 to-white text-slate-800">
             <h3 className="text-lg font-bold flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-blush-500" />
               Full Tier Feature Comparison
             </h3>
-            <p className="text-xs text-blush-600/70 mt-1">Compare premium needlework features and administrative tools side by side.</p>
+            <p className="text-xs text-blush-600/70 mt-1">Compare the features that are available in StitchWise Studio today.</p>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
@@ -324,33 +313,33 @@ export const Pricing: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-blush-50 text-slate-700">
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-800">Embroidery Canvas Grid Size</td>
-                  <td className="p-4 text-center text-slate-500">Basic (16x16 Max)</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">Standard (Up to 48x48)</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">Commercial (Unlimited)</td>
-                </tr>
-                <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">AI Imagine-to-Pattern Digitizer</td>
                   <td className="p-4 text-center text-slate-500">2/day · 10/mo</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">15/day · 100/mo</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">30/day · 200/mo + Priority</td>
+                  <td className="p-4 text-center text-slate-900 font-semibold">30/day · 200/mo</td>
                 </tr>
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Machine Embroidery Exports (.PES, .DST, .EXP)</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
+                  <td className="p-4 pl-6 font-medium text-slate-900">Designer, Collage Studio & Quilt Block</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Satin Stitch Auto-Fill Detailer</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
+                  <td className="p-4 pl-6 font-medium text-slate-900">PDF Pattern Sheet & PNG Export</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
                   <td className="p-4 pl-6 font-medium text-slate-900">Thread Skein & DMC Usage Estimator</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                </tr>
+                <tr>
+                  <td className="p-4 pl-6 font-medium text-slate-900">Premium AI Art Model (higher per-image cost)</td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
+                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
@@ -358,18 +347,6 @@ export const Pricing: React.FC = () => {
                   <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center text-slate-500">Personal Only</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">Full Commercial License</td>
-                </tr>
-                <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Multi-User Seat Collaboration</td>
-                  <td className="p-4 text-center text-slate-500">View Only</td>
-                  <td className="p-4 text-center text-slate-500">Up to 2 editors</td>
-                  <td className="p-4 text-center text-slate-900 font-semibold">5 accounts + full workspace</td>
-                </tr>
-                <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Developer API Access</td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
-                  <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
               </tbody>
             </table>
@@ -391,9 +368,16 @@ export const Pricing: React.FC = () => {
           </div>
 
           <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">What formats are supported for machine exports?</h4>
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Do you offer annual billing?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              With our Pro Crafter and Design Studio plans, you can export patterns directly to machine-readable formats. Currently, we fully support **.PES** (Brother, Babylock, Bernina domestic loops), **.DST** (Tajima industrial machines), and **.EXP** (Melco/Bernina commercial loops).
+              Not yet. Every plan is billed monthly at the price shown on this page. There is no annual price to opt into.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">What can I export today?</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Your designs export as a printable PDF pattern sheet and as a PNG image, from the Designer, the Collage Studio and the Quilt Block studio. Machine embroidery files for home or industrial machines are not available yet.
             </p>
           </div>
 
@@ -411,7 +395,7 @@ export const Pricing: React.FC = () => {
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 bg-blush-950/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-blush-100 text-center animate-fade-in relative">
-            
+
             <div className="h-16 w-16 bg-blush-50 rounded-full flex items-center justify-center text-blush-500 mx-auto mb-6">
               <Sparkles className="h-8 w-8 text-blush-500 animate-pulse" />
             </div>
@@ -432,7 +416,7 @@ export const Pricing: React.FC = () => {
                 Go to Dashboard
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
-              
+
               <button
                 onClick={() => {
                   setShowUpgradeModal(false);

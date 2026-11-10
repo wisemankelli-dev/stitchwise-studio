@@ -51,7 +51,7 @@ export const Home: React.FC = () => {
     },
   ];
   const highlights = [
-    'Stitch-perfect output files (.PES, .DST, .EXP) optimized for home & industrial machines.',
+    'Print-ready pattern sheets (PDF) and PNG exports of every design you make.',
     'Simple, modern, highly intuitive layout suited for crafters of all skill levels.',
     'Built-in inventory manager to track thread counts, needle colors, and active steps.',
     'Rich user community to share creative designs, hand-crafted feedback, and tutorials.',

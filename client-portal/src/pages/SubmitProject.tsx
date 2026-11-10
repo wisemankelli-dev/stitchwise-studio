@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
-  Flower2, Sparkles, Scissors, Grid3X3,
-  Heart, CheckCircle2,
+  Sparkles, Scissors, Grid3X3,
+  Heart,
   UploadCloud, Mail, User,
   Ruler, Plus, Trash2, ArrowLeft, AlertTriangle
 } from 'lucide-react';
@@ -19,15 +19,6 @@ interface CustomRequestForm {
   colors: string[];
   customColorHex: string;
   referenceImages: File[];
-}
-
-interface FormErrors {
-  crafterName?: string;
-  email?: string;
-  patternSize?: string;
-  designType?: string;
-  description?: string;
-  colors?: string;
 }
 
 const PRESET_COLORS = [
@@ -70,32 +61,9 @@ export const SubmitProject: React.FC = () => {
     referenceImages: [],
   });
 
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {};
-    if (!formData.crafterName.trim() || formData.crafterName.trim().length < 2)
-      newErrors.crafterName = 'Name must be at least 2 characters';
-    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
-      newErrors.email = 'Please enter a valid email address';
-    if (!formData.patternSize) newErrors.patternSize = 'Please select a pattern size';
-    if (!formData.designType) newErrors.designType = 'Please select a design type';
-    if (!formData.description.trim() || formData.description.trim().length < 20)
-      newErrors.description = 'Description must be at least 20 characters';
-    if (formData.colors.length === 0) newErrors.colors = 'Please select at least one color';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setIsSubmitted(true);
-  };
 
   const toggleColor = (hex: string) => {
     setFormData(prev => ({
@@ -136,51 +104,6 @@ export const SubmitProject: React.FC = () => {
   const handleDragLeave = () => setIsDraggingOver(false);
   const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDraggingOver(false); handleFilesAdded(e.dataTransfer.files); };
 
-  if (isSubmitted) {
-    const sizeLabel = SIZE_OPTIONS.find(s => s.id === formData.patternSize)?.label || formData.patternSize;
-    const typeLabel = DESIGN_TYPES.find(d => d.id === formData.designType)?.label || formData.designType;
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-blush-50 via-white to-blush-50 py-16 px-6 relative overflow-hidden">
-        <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]">
-          <svg className="w-full h-full"><defs><pattern id="success-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
-            <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="80" cy="80" r="16" fill="#f472b6" />
-          </pattern></defs><rect width="100%" height="100%" fill="url(#success-floral)" /></svg>
-        </div>
-        <div className="max-w-lg mx-auto relative z-10">
-          <FloralDivider />
-          <div className="bg-white rounded-3xl shadow-2xl shadow-blush-100/60 p-10 text-center border border-blush-100 mt-8">
-            <div className="flex justify-center mb-6">
-              <div className="h-20 w-20 rounded-full bg-blush-50 flex items-center justify-center">
-                <Heart className="h-10 w-10 text-blush-500 fill-blush-300" />
-              </div>
-            </div>
-            <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Pattern Request Received!</h2>
-            <div className="inline-flex items-center gap-1.5 bg-emerald-50 rounded-full px-4 py-1.5 border border-emerald-100 mb-6">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span className="text-xs font-bold text-emerald-700">Submitted successfully</span>
-            </div>
-            <p className="text-slate-600 text-sm mb-2">Thank you, <span className="font-bold text-blush-700">{formData.crafterName}</span>!</p>
-            <p className="text-slate-500 text-sm mb-6">
-              We've received your request for a <strong className="text-slate-700">{sizeLabel}</strong>{' '}
-              <strong className="text-slate-700">{typeLabel}</strong> using{' '}
-              <strong className="text-slate-700">{formData.colors.length} colors</strong>.
-            </p>
-            <div className="bg-blush-50 rounded-2xl p-5 border border-blush-100 mb-8 text-left text-sm text-slate-600 space-y-1">
-              <p>✉️ We'll contact you at <strong className="text-blush-700">{formData.email}</strong></p>
-              <p>⏱️ Our design team will review your specs within 24 hours</p>
-              <p>📎 You'll receive a custom pattern draft for your review</p>
-            </div>
-            <button onClick={() => setIsSubmitted(false)}
-              className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blush-200/50 hover:from-blush-600 hover:to-blush-500 hover:shadow-xl hover:shadow-blush-300/50 transition-all duration-200 flex items-center justify-center gap-2">
-              <Flower2 className="h-4 w-4" /> Request Another Pattern
-            </button>
-          </div>
-          <FloralDivider />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-blush-50 via-white to-blush-50 py-12 px-6 lg:px-8 relative overflow-hidden">
       {/* Floral watermark */}
@@ -210,23 +133,37 @@ export const SubmitProject: React.FC = () => {
             <span className="text-slate-800">Pattern Request</span>
           </h1>
           <p className="mt-3 text-lg text-slate-600 max-w-2xl mx-auto">
-            🪡 Every crafter&apos;s dream starts with a vision — share yours and we&apos;ll bring it to life, stitch by stitch.
+            🪡 Every crafter&apos;s dream starts with a vision — here is what a custom pattern request will ask you for.
           </p>
+        </div>
+
+        {/* HONESTY NOTICE — custom requests are not open yet and this form sends nothing. */}
+        <div
+          role="status"
+          className="mb-10 max-w-3xl mx-auto flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-left"
+        >
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs leading-relaxed text-amber-900">
+            <p className="font-extrabold">Custom pattern requests are not being taken yet.</p>
+            <p className="mt-1">
+              This page is a preview of the form that will open when they are. Submitting it does not
+              send anything to us — nothing is transmitted, stored, or received, and no one will reply.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* SIDEBAR */}
           <div className="lg:col-span-4 space-y-6 order-2 lg:order-1">
-            {/* How it works */}
+            {/* What a custom request will be */}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg shadow-blush-100/40 border border-blush-100">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-blush-500" /> How It Works
+                <Sparkles className="h-4 w-4 text-blush-500" /> What A Custom Request Will Be
               </h3>
               <div className="space-y-5">
                 {[
                   { num: '①', title: 'Tell Us Your Vision', desc: 'Size, colors, and pattern details' },
-                  { num: '②', title: "We'll Design It", desc: 'Expert digitizers craft your perfect pattern' },
-                  { num: '③', title: 'You Receive & Stitch', desc: 'Download-ready in 24 hours' },
+                  { num: '②', title: 'We Design It', desc: 'A hand-digitized pattern made to your brief — once requests open' },
                 ].map((step) => (
                   <div key={step.num} className="flex gap-3">
                     <span className="text-lg shrink-0">{step.num}</span>
@@ -245,7 +182,7 @@ export const SubmitProject: React.FC = () => {
                 <span className="text-lg">💡</span> Pro Tip
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                &ldquo;Include fabric type and machine model for best results!&rdquo;
+                &ldquo;Include fabric type and weave for best results!&rdquo;
               </p>
             </div>
 
@@ -255,7 +192,7 @@ export const SubmitProject: React.FC = () => {
                 <Scissors className="h-4 w-4 text-blush-500" /> What We Support
               </h3>
               <ul className="space-y-1.5 text-xs text-slate-600">
-                {['.PES, .DST, .EXP file formats', 'Brother, Singer, Janome machines', 'Aida 11–18 count, linen', 'DMC thread color mapping'].map((item) => (
+                {['Aida 11–18 count, linen', 'DMC thread color mapping'].map((item) => (
                   <li key={item} className="flex items-center gap-2">
                     <span className="h-1 w-1 rounded-full bg-blush-400 shrink-0" />
                     {item}
@@ -267,7 +204,7 @@ export const SubmitProject: React.FC = () => {
 
           {/* FORM PANEL */}
           <div className="lg:col-span-8 order-1 lg:order-2">
-            <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-2xl shadow-blush-100/50 p-8 sm:p-10 border border-blush-100 space-y-7">
+            <form className="bg-white rounded-3xl shadow-2xl shadow-blush-100/50 p-8 sm:p-10 border border-blush-100 space-y-7">
               {/* Pattern Size */}
               <fieldset>
                 <legend className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-3">
@@ -302,7 +239,6 @@ export const SubmitProject: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {errors.patternSize && <p className="text-xs text-rose-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.patternSize}</p>}
               </fieldset>
 
               {/* Design Type */}
@@ -326,7 +262,6 @@ export const SubmitProject: React.FC = () => {
                     );
                   })}
                 </div>
-                {errors.designType && <p className="text-xs text-rose-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.designType}</p>}
               </fieldset>
 
               {/* Colors */}
@@ -359,7 +294,6 @@ export const SubmitProject: React.FC = () => {
                     </button>
                   </div>
                 )}
-                {errors.colors && <p className="text-xs text-rose-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.colors}</p>}
               </fieldset>
 
               {/* Description */}
@@ -372,8 +306,7 @@ export const SubmitProject: React.FC = () => {
                   placeholder="Describe your dream pattern in detail... What's the main subject? Any specific elements or motifs? Fabric type and weave?"
                   className="w-full rounded-xl border-blush-100 text-sm text-slate-800 shadow-sm focus:border-blush-500 focus:ring-blush-500 placeholder:text-blush-300 resize-none" />
                 <div className="flex justify-between mt-1">
-                  <span className="text-[10px] text-slate-400">{formData.description.length} / 1000 (min 20)</span>
-                  {errors.description && <span className="text-[10px] text-rose-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.description}</span>}
+                  <span className="text-[10px] text-slate-400">{formData.description.length} / 1000 characters</span>
                 </div>
               </fieldset>
 
@@ -421,7 +354,6 @@ export const SubmitProject: React.FC = () => {
                     placeholder="Your name"
                     className="w-full rounded-xl border-blush-100 text-sm text-slate-800 pl-10 pr-4 py-2.5 focus:border-blush-500 focus:ring-blush-500" />
                 </div>
-                {errors.crafterName && <p className="text-xs text-rose-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.crafterName}</p>}
               </div>
 
               {/* Email */}
@@ -436,15 +368,18 @@ export const SubmitProject: React.FC = () => {
                     placeholder="you@example.com"
                     className="w-full rounded-xl border-blush-100 text-sm text-slate-800 pl-10 pr-4 py-2.5 focus:border-blush-500 focus:ring-blush-500" />
                 </div>
-                {errors.email && <p className="text-xs text-rose-600 mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors.email}</p>}
               </div>
 
-              {/* Submit */}
-              <div className="pt-2">
-                <button type="submit"
-                  className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blush-200/50 hover:from-blush-600 hover:to-blush-500 hover:shadow-xl hover:shadow-blush-300/50 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2">
-                  <Heart className="h-4 w-4 fill-white/30" /> Submit Pattern Request
+              {/* Submit — disabled until custom requests actually open. Nothing is sent. */}
+              <div className="pt-2 space-y-2">
+                <button type="button" disabled aria-disabled="true"
+                  className="w-full rounded-xl bg-blush-100 px-6 py-3.5 text-sm font-semibold text-blush-400 cursor-not-allowed flex items-center justify-center gap-2">
+                  <Heart className="h-4 w-4" /> Requests Not Open Yet
                 </button>
+                <p className="text-[10px] text-center text-slate-500 leading-relaxed">
+                  This form is a preview. It is not connected to anything, so nothing you type or
+                  upload here is sent to StitchWise Studio or stored anywhere.
+                </p>
               </div>
             </form>
           </div>
