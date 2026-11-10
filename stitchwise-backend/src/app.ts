@@ -4,7 +4,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
 import { createHealthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter, createAdminDbSeedRouter } from "./infrastructure/routes";
-import { ensureDatabaseReady } from "./infrastructure/db/dbSelfHeal";
+import { ensureDatabaseReady, ensureDatabaseUsable } from "./infrastructure/db/dbSelfHeal";
 import { loadGrantData } from "./infrastructure/data/patternGrantData";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
 
@@ -40,7 +40,20 @@ export async function createApp(): Promise<express.Application> {
   // Database setup
   const prisma = new PrismaClient();
   await prisma.$connect();
-  log("db_connected");
+
+  // Post-connect verification — the pre-connect pass heals the path derived
+  // from DATABASE_URL + cwd, but Prisma resolves a relative `file:` URL against
+  // its generated schema directory. When those disagree (b142 publish) the heal
+  // restored a file nobody reads while Prisma served an EMPTY one. Only the
+  // connected client knows the real path (`PRAGMA database_list`), so verify
+  // through it and heal that file when it is unusable.
+  const dbState = await ensureDatabaseUsable(prisma);
+  log("db_connected", {
+    path: dbState.path,
+    usable: dbState.ok,
+    ...(dbState.healed ? { healed: true } : {}),
+    ...(dbState.error ? { dbError: dbState.error } : {}),
+  });
 
   // CORS — allow configured origins (default: all in dev)
   const corsOrigins = process.env.CORS_ORIGINS
