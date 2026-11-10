@@ -7,14 +7,15 @@
  * into the buyer's account — an EmbroideryPattern in their Designer — the
  * next time an account with that email signs up or logs in.
  *
- * The recovered original grids live in PATTERN_GRANTS (server-side only;
- * never exposed by the public GET /api/library/patterns endpoint).
+ * The recovered original grids live in the private grant asset loaded at boot
+ * (see infrastructure/data/patternGrantData.ts — server-side only, never exposed
+ * by the public GET /api/library/patterns endpoint and never committed).
  */
 import type { PrismaClient } from "@prisma/client";
 import type { StitchGrid, DmcUsage } from "./stitch/types";
 import { serializeGrid, serializePalette } from "./stitch/patternDataModel";
 import { closestDmcColor, hexToRgb } from "./stitch/dmcColors";
-import { PATTERN_GRANTS } from "../infrastructure/data/patternGrantData";
+import { getPatternGrants } from "../infrastructure/data/patternGrantData";
 
 const CHARS = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -83,7 +84,7 @@ export async function materializePendingPurchases(
     if (pending.length === 0) return 0;
     let granted = 0;
     for (const purchase of pending) {
-      const grant = PATTERN_GRANTS[purchase.patternId];
+      const grant = getPatternGrants()[purchase.patternId];
       if (!grant) {
         console.error({
           event: "pattern_grant_unknown",

@@ -8,12 +8,13 @@
  * account has no webhooks the app could receive directly).
  *
  * Body: { email: string, patternId: string } — patternId must exist in
- * PATTERN_GRANTS. Creating the same (email, patternId) twice is rejected.
+ * the grant registry (grid patterns, and collages once their payload is staged).
+ * Creating the same (email, patternId) twice is rejected.
  */
 import { Router, type Request, type Response } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { PATTERN_GRANTS } from "../data/patternGrantData";
+import { grantKindOf } from "../data/patternGrantData";
 
 const GrantSchema = z.object({
   email: z.string().email("Valid email is required"),
@@ -42,7 +43,7 @@ export function createPatternGrantRouter(prisma: PrismaClient): Router {
       }
       const email = parsed.data.email.toLowerCase().trim();
       const { patternId } = parsed.data;
-      if (!PATTERN_GRANTS[patternId]) {
+      if (!grantKindOf(patternId)) {
         res.status(400).json({ error: `Unknown pattern id: ${patternId}` });
         return;
       }
