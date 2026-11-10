@@ -15,10 +15,17 @@
  * and no delivery SLA has been agreed by the owner — so no copy may promise
  * automatic or *timed* delivery either.
  *
+ * The Rainbow Trout Collage (`rainbow-trout-collage`, $4.50) is the first collage
+ * that DOES materialise by itself: a recorded purchase becomes a CollageProject in
+ * the buyer's Collage studio on login. Its copy must therefore state the login
+ * path — and must never fall back to the emailed-PDF promise (that is the Rooster's
+ * manual path) or to "the Designer" (a collage is not a grid).
+ *
  * These tests pin three promises that must survive any future copy edit:
  *   P1. Rooster copy never claims the pattern appears in the Designer / account.
  *   P2. No delivery-timeframe wording anywhere in the storefront copy.
- *   P3. Each product states its REAL path: grid → Designer on login, collage → PDF by email.
+ *   P3. Each product states its REAL path: grid → Designer on login,
+ *       trout collage → Collage studio on login, rooster → PDF by email.
  *
  * Hermetic: reads the two source files as text, stubs `fetch`, renders the page.
  * No network, no database, no admin/grant calls.
@@ -131,19 +138,23 @@ describe('storefront delivery copy — promises match what the app can actually 
   it('states both delivery paths in header steps 2 and 3', async () => {
     const text = await renderStorefrontText();
 
-    // Step 2: grid patterns land in the Designer, collages arrive as a PDF.
+    // Step 2: grid patterns land in the Designer, the trout collage in the
+    // Collage studio, the Rooster's guide by email.
     expect(text).toContain('grid patterns appear in your Designer');
-    expect(text).toContain('collage patterns arrive as a PDF by email');
+    expect(text).toContain('the Rainbow Trout Collage appears in your Collage studio');
+    expect(text).toContain('the Rooster Collage PDF cutting guide is emailed to you');
 
     // Step 3: named per product, not one shared promise.
     expect(text).toContain('Rainbow Trout: open it in the Designer');
+    expect(text).toContain('Rainbow Trout Collage: open it in your Collage studio');
     expect(text).toContain('Rooster Collage: the PDF cutting guide is emailed to you');
   });
 
-  it('footer names both paths instead of one account delivery', async () => {
+  it('footer names every path instead of one account delivery', async () => {
     const text = await renderStorefrontText();
     expect(text).toContain('Grid patterns appear in your account');
-    expect(text).toContain('Collage guides arrive by email');
+    expect(text).toContain('The Rainbow Trout Collage appears in your Collage studio on login');
+    expect(text).toContain('The Rooster PDF guide arrives by email');
   });
 
   it('does not over-claim what a purchase contains', async () => {
@@ -173,6 +184,29 @@ describe('storefront delivery copy — promises match what the app can actually 
     expect(rooster).toContain('94 cuttable pieces');
     expect(rooster).toMatch(/numbered Piece Cutting Guide \(6 per page\)/);
     expect(rooster).toContain('full-page overview');
+  });
+
+  it('the Rainbow Trout Collage copy states the Collage-studio login path', () => {
+    const byId = catalogById();
+    const troutCollage = byId['rainbow-trout-collage'];
+    expect(troutCollage, 'rainbow-trout-collage missing from catalog').toBeTruthy();
+
+    // It materialises in the Collage studio on login...
+    expect(troutCollage).toMatch(/log ?in/i);
+    expect(troutCollage).toMatch(/Collage studio/i);
+
+    // ...so it must not borrow the Rooster's manual email path, promise a PDF,
+    // or claim to land in the Designer (a collage is not a grid).
+    expect(troutCollage).not.toMatch(/pdf/i);
+    // ("checkout email" is the login identity, not a delivery promise — what may
+    // never appear is any claim that something is emailed/delivered.)
+    expect(troutCollage).not.toMatch(/\bwe email\b|emailed|by email|delivered/i);
+    expect(troutCollage).not.toMatch(/designer/i);
+    expect(troutCollage).not.toMatch(/no account needed/i);
+
+    // The facts that must survive the copy edit.
+    expect(troutCollage).toContain('69 cuttable pieces');
+    expect(troutCollage).toContain('base layer');
   });
 
   it('grid products promise the Designer path and no longer promise email delivery', () => {

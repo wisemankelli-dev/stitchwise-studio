@@ -58,4 +58,15 @@ export const PATTERNS_CATALOG: CatalogPattern[] = [
     badge: "New",
     active: true,
   },
+  {
+    id: "rainbow-trout-collage",
+    title: "Rainbow Trout Collage",
+    description:
+      "The Rainbow Trout as a collage quilting pattern — 69 cuttable pieces on a fabric base layer, ready to arrange, cut and assemble. Log in with your checkout email after purchase and the project appears in your Collage studio, ready to edit and cut. No subscription required.",
+    priceLabel: "$4.50",
+    imageUrl: "/patterns/rainbow-trout-collage.png",
+    paymentUrl: "https://buy.stripe.com/28E6oJ1KZeB17nJ3cP9EI06",
+    badge: "New",
+    active: true,
+  },
 ];

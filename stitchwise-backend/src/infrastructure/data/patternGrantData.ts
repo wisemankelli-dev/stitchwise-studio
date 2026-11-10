@@ -84,7 +84,13 @@ export const GRANT_DATA_DIR_ENV = "GRANT_DATA_DIR";
  * Collage grants. The payloads are paid product data and are NOT in this repo —
  * only the id, the display name and the asset file name are.
  */
-export const COLLAGE_GRANTS: Record<string, CollageGrantDef> = {};
+export const COLLAGE_GRANTS: Record<string, CollageGrantDef> = {
+  "rainbow-trout-collage": {
+    id: "rainbow-trout-collage",
+    name: "Rainbow Trout Collage",
+    file: "rainbow-trout-collage.json",
+  },
+};
 
 export const COLLAGE_GRANT_IDS = Object.keys(COLLAGE_GRANTS);
 
