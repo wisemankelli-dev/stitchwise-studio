@@ -26,7 +26,7 @@ import {
   DEFAULT_MESH_CT,
   type MaskKind,
 } from '../data/maskMinGrid';
-import { CANVAS_PRESETS } from '../pages/Designer';
+import { CANVAS_PRESETS, presetStitches } from '../pages/Designer';
 
 describe('the per-mask minimum-grid table', () => {
   it('pins the charm floor at 54×54 (owner-decided 10-26)', () => {
@@ -84,7 +84,10 @@ describe('the per-mask minimum-grid table', () => {
 });
 
 describe('maskGridVerdict — steering instead of a bad pattern', () => {
-  it('steers the 28×28 Bag Charm preset (14ct) to Create-Your-Own, in plain words', () => {
+  it('steers a charm canvas typed at 28×28 (14ct) to Create-Your-Own, in plain words', () => {
+    // The Bag Charm PRESET no longer lands here (it starts at 54×54), but a grid
+    // typed below the charm floor — or an image dropped onto a charm canvas —
+    // still must be steered, with the same plain words.
     const v = maskGridVerdict({
       mask: 'charm', gridWidth: 28, gridHeight: 28, fabricCount: 14, prompt: 'a red rose',
     });
@@ -163,6 +166,50 @@ describe('maskGridVerdict — steering instead of a bad pattern', () => {
   });
 });
 
+describe('the Bag Charm preset is already at the charm floor (owner 10-26)', () => {
+  const charm = CANVAS_PRESETS.find((p) => p.name === 'Bag Charm')!;
+
+  it('starts at 54×54 on the default 14ct mesh — not the 28×28 of its inches', () => {
+    expect(presetStitches(charm, 14)).toEqual({ w: 54, h: 54 });
+    // The inches are unchanged: 2in on 14ct is 28 stitches, and the FLOOR is
+    // what lifts the preset to 54 — the same lift the server applies.
+    expect(Math.round(charm.inchW * 14)).toBe(28);
+    expect(Math.round(charm.inchH * 14)).toBe(28);
+  });
+
+  it('takes its floor from the one table the steering panel reads', () => {
+    expect(charm.stitchFloor).toBe(MASK_MIN_GRID.charm.fixedFloor);
+    expect(charm.stitchFloor).toBe(54);
+  });
+
+  it('never drops below 54 on a coarser mesh, and grows on a finer one', () => {
+    expect(presetStitches(charm, 11)).toEqual({ w: 54, h: 54 });
+    expect(presetStitches(charm, 13)).toEqual({ w: 54, h: 54 });
+    expect(presetStitches(charm, 18)).toEqual({ w: 54, h: 54 });
+    expect(presetStitches(charm, 36)).toEqual({ w: 72, h: 72 });
+  });
+
+  it('leaves every other preset exactly at its inches × count', () => {
+    for (const p of CANVAS_PRESETS) {
+      if (p.stitchFloor) continue;
+      expect(presetStitches(p, 14), p.name).toEqual({
+        w: Math.round(p.inchW * 14),
+        h: Math.round(p.inchH * 14),
+      });
+    }
+  });
+
+  it('so picking it never trips the panel — no warning, Generate stays live', () => {
+    const dims = presetStitches(charm, 14);
+    const v = maskGridVerdict({
+      mask: 'charm', gridWidth: dims.w, gridHeight: dims.h, fabricCount: 14,
+    });
+    expect(v.below).toBe(false);
+    expect(v.title).toBe('');
+    expect(v.message).toBe('');
+  });
+});
+
 // ── Component wiring ────────────────────────────────────────────────────────
 // A correct table is worth nothing if the Designer never renders the verdict or
 // still lets Generate fire below the floor. These assertions read the source.
@@ -231,6 +278,20 @@ describe('Designer wiring — the floor is enforced and the route exists', () =>
     expect(bodyOf('startFreshPresetCanvas')).toContain('setCreateOwnMode(false);');
     // And a create-own canvas carries no guide/mask at all.
     expect(bodyOf('effectiveGuide')).toContain('if (createOwnMode) return null;');
+  });
+
+  it('sizes the preset label, the fresh canvas and the AI target from ONE helper', () => {
+    // The preset card label, the fresh preset canvas, the AI target size, the
+    // guide dims and a fabric-count change all read presetStitches — so a
+    // "54×54" label can never sit over a 28×28 canvas (or the reverse).
+    expect(designerSrc).toContain('stitchFloor: MASK_MIN_GRID.charm.fixedFloor');
+    expect(designerSrc).toContain('const { w: stitchW, h: stitchH } = presetStitches(preset, fabricCount);');
+    expect(designerSrc).toContain('presetStitches(activePreset, fabricCount)');
+    expect(designerSrc).toContain('presetStitches(activePreset, newCount)');
+    expect(designerSrc).toContain('setActivePreset({ inchW: preset.inchW, inchH: preset.inchH, stitchFloor: preset.stitchFloor });');
+    // The label's inches are derived from the stitches actually produced, so it
+    // reads "3.9″" for the charm's 54 on 14ct instead of a 2″ that is not true.
+    expect(designerSrc).toContain('{fmtInches(stitchW, fabricCount)}″×{fmtInches(stitchH, fabricCount)}″');
   });
 
   it('also offers the one-click "make it big enough" canvas', () => {

@@ -120,8 +120,9 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
 
   it('saving an AI-generated pattern (has sourceImage) skips the confirm', async () => {
     renderDesigner();
-    // Give the canvas AI provenance by generating (mocked) on a fresh Bag Charm 28×28.
-    const gen = vi.spyOn(api, 'generatePatternFromText').mockResolvedValue(aiResponse(28, 28));
+    // Give the canvas AI provenance by generating (mocked) on a fresh Bag Charm
+    // canvas — 54×54, the charm floor the preset now starts at.
+    const gen = vi.spyOn(api, 'generatePatternFromText').mockResolvedValue(aiResponse(54));
     fireEvent.click(screen.getByRole('button', { name: /^Bag Charm/ }));
     fireEvent.change(screen.getByPlaceholderText(/Describe your pattern in detail/), { target: { value: 'a bear' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -136,12 +137,12 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
 
   // ── (d) AI success replaces the stale pre-AI draft ──────────────────────
   it('a fresh AI generation replaces the stored draft (old stick figure gone)', async () => {
-    const gen = vi.spyOn(api, 'generatePatternFromText').mockResolvedValue(aiResponse(28, 28));
+    const gen = vi.spyOn(api, 'generatePatternFromText').mockResolvedValue(aiResponse(54));
     localStorage.setItem(DRAFT_KEY, STALE_DRAFT);
     renderDesigner();
     expect(screen.getByText(/Restored draft from your last session/)).toBeInTheDocument();
 
-    // Generate on a Bag Charm fresh canvas (28×28) — target dims match the response.
+    // Generate on a Bag Charm fresh canvas (54×54) — target dims match the response.
     fireEvent.click(screen.getByRole('button', { name: /^Bag Charm/ }));
     fireEvent.change(screen.getByPlaceholderText(/Describe your pattern in detail/), { target: { value: 'a teddy' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -154,16 +155,16 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
     const draft = JSON.parse(raw as string);
     expect(draft.hasAiArtwork).toBe(true);
     expect(draft.aiPrompt).toBe('a teddy');
-    expect(draft.gridWidth).toBe(28);
-    expect(draft.gridHeight).toBe(28);
+    expect(draft.gridWidth).toBe(54);
+    expect(draft.gridHeight).toBe(54);
     // The pre-AI stick figure (old-format cells) is replaced by the fresh
     // result — the stored draft must NOT be the old grid anymore. The bear is
     // centered (inside the Bag Charm circle mask), so all 4 cells persist.
     expect(draft.grid).toEqual({
-      '13,13': '#e11d48',
-      '13,14': '#1e293b',
-      '14,13': '#1e293b',
-      '14,14': '#e11d48',
+      '26,26': '#e11d48',
+      '26,27': '#1e293b',
+      '27,26': '#1e293b',
+      '27,27': '#e11d48',
     });
   });
 });
@@ -174,7 +175,7 @@ describe('Designer — draft restore guard (owner 09-14)', () => {
  *  task 16e05580) — a corner bear would be clipped to nothing. */
 function aiResponse(size: number, preview = 'data:image/png;base64,QUlTQU1QTEU='): AIPatternResponse {
   const grid: string[][] = Array.from({ length: size }, () => Array<string>(size).fill(''));
-  const c = Math.floor(size / 2) - 1; // 28 → 13: 2×2 bear at the 28×28 center
+  const c = Math.floor(size / 2) - 1; // 54 → 26: 2×2 bear at the 54×54 center
   grid[c][c] = '#e11d48';
   grid[c][c + 1] = '#1e293b';
   grid[c + 1][c] = '#1e293b';

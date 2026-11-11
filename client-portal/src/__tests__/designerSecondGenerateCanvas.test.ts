@@ -25,6 +25,7 @@ import {
   resolvePostGenerationCanvas,
   buildManualGridData,
   inchesToStitches,
+  presetStitches,
   CANVAS_PRESETS,
 } from '../pages/Designer';
 import fixtures from './fixtures-r2-directdraw-grids.json';
@@ -58,8 +59,10 @@ function generateOnce(
 ) {
   const canvasW = canvas.w;
   const canvasH = canvas.h;
-  const presetW = opts.preset ? inchesToStitches(opts.preset.inchW, opts.fabricCount) : canvasW;
-  const presetH = opts.preset ? inchesToStitches(opts.preset.inchH, opts.fabricCount) : canvasH;
+  // The handler's own helper: inches × count, lifted to the preset's floor.
+  const dims = opts.preset ? presetStitches(opts.preset, opts.fabricCount) : { w: canvasW, h: canvasH };
+  const presetW = dims.w;
+  const presetH = dims.h;
 
   const newGrid = toRecord(opts.rows);
   const newW = opts.rows[0]?.length ?? 0;
@@ -90,9 +93,13 @@ function generateOnce(
 }
 
 describe('Bag Charm preset dims (fixture sanity for the owner scenario)', () => {
-  it('2in @ 14ct = 28 (the canvas her first generate starts from)', () => {
+  it('2in @ 14ct = 28 stitches, but the preset STARTS at the 54×54 charm floor', () => {
+    // The raw inch math is still 28…
     expect(inchesToStitches(BAG_CHARM.inchW, 14)).toBe(28);
     expect(inchesToStitches(BAG_CHARM.inchH, 14)).toBe(28);
+    // …and the preset lifts it to the floor the server enforces, so picking
+    // Bag Charm no longer creates a 28×28 canvas at all.
+    expect(presetStitches(BAG_CHARM, 14)).toEqual({ w: 54, h: 54 });
   });
   it('the direct-draw contract is 54x54 (3in @ 18ct, owner floor)', () => {
     expect(charmRows.length).toBe(54);
@@ -129,9 +136,10 @@ describe('b136 — SECOND generate in one session must not re-shrink a 54x54 DD 
     // lost the muzzle/crown ring: the full 54x54 canvas keeps all 2916 cells.
     expect(g2.saved.grid.flat().length).toBe(2916);
     // every contract colour still present after the second generate (the B2
-    // palette is exactly these five — the b134 #254267 sweater no longer exists)
+    // palette plus the variant-C eye black, DMC 310, the owner approved —
+    // the b134 #254267 sweater no longer exists)
     const hexes = new Set(g2.saved.grid.flat().map((c) => c.color).filter(Boolean));
-    const B2 = ['#113b69', '#ffffff', '#5d3c2e', '#8a6c54', '#3c3c3c'];
+    const B2 = ['#113b69', '#ffffff', '#5d3c2e', '#8a6c54', '#3c3c3c', '#000000'];
     for (const hex of B2) {
       expect(hexes.has(hex)).toBe(true);
     }
