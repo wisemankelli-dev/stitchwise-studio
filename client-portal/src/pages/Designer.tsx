@@ -23,6 +23,7 @@ import { stockingPointsInBox } from '../data/guides';
 import {
   maskGridVerdict,
   MASK_FOR_INFERRED_SHAPE,
+  MASK_MIN_GRID,
   type MaskKind,
 } from '../data/maskMinGrid';
 import {
@@ -842,6 +843,12 @@ interface CanvasPreset {
   /** Which mask this preset applies — the key into MASK_MIN_GRID
    *  (data/maskMinGrid.ts). No guide means no mask. */
   mask?: MaskKind;
+  /** Hard stitch floor this preset's canvas may never go below, whatever
+   *  inches × fabric count works out to. The charm is the one case: 2″ on 14ct
+   *  is 28 stitches, but a charm cannot hold detail under 54 — the same floor
+   *  the server enforces (owner 10-26). Taken from MASK_MIN_GRID so there is
+   *  ONE number, and the preset can never disagree with the steering panel. */
+  stitchFloor?: number;
 }
 
 /** Map the active product-guide type to the backend's accepted shape enum
@@ -890,8 +897,11 @@ export const CANVAS_PRESETS: CanvasPreset[] = [
   // Bag Charm is a 2″ circle — owner P0 (10-08): it generated a SQUARE with
   // no detail because the preset had no `guide`. Wiring 'circle' gives the dashed
   // overlay, the client-side maskGridToGuide circle clip, and the backend
-  // shape=ornament (circle mask + small-grid face-feature guard at 28×28).
-  { name: 'Bag Charm', inchW: 2, inchH: 2, guide: 'circle', mask: 'charm' },
+  // shape=ornament (circle mask + small-grid face-feature guard).
+  // `stitchFloor` (owner 10-26): the server floors every charm to 54×54, so the
+  // preset must START at 54×54 too — otherwise picking "Bag Charm" on 14ct made
+  // a 28×28 canvas and immediately tripped "a bag charm needs at least 54×54".
+  { name: 'Bag Charm', inchW: 2, inchH: 2, guide: 'circle', mask: 'charm', stitchFloor: MASK_MIN_GRID.charm.fixedFloor },
   { name: 'Ornament', inchW: 3, inchH: 3, guide: 'circle', mask: 'ornament' },
   { name: 'Large Ornament', inchW: 5, inchH: 5, guide: 'circle', mask: 'ornament' },
   { name: '5×7 Frame', inchW: 5, inchH: 7, guide: 'rect', mask: 'frame' },
@@ -911,6 +921,30 @@ export function chartSymbolForIndex(index: number): string {
 
 export function inchesToStitches(inches: number, fabricCount: number): number {
   return Math.max(6, Math.min(240, Math.round(inches * fabricCount)));
+}
+
+/**
+ * The stitch dims a preset ACTUALLY produces on a given mesh — inches × fabric
+ * count, lifted to the preset's `stitchFloor` when it has one. Every place that
+ * needs a preset's canvas size (the button label, the fresh canvas, the AI
+ * target size, the guide dims, a fabric-count change) goes through here, so the
+ * preset label, the canvas and the min-grid panel can never disagree.
+ */
+export function presetStitches(
+  preset: Pick<CanvasPreset, 'inchW' | 'inchH' | 'stitchFloor'>,
+  fabricCount: number,
+): { w: number; h: number } {
+  const floor = preset.stitchFloor ?? 0;
+  return {
+    w: Math.max(floor, inchesToStitches(preset.inchW, fabricCount)),
+    h: Math.max(floor, inchesToStitches(preset.inchH, fabricCount)),
+  };
+}
+
+/** Physical size of a stitch grid on a given mesh, 1 decimal (3.9″, not 3.857″). */
+export function fmtInches(stitches: number, fabricCount: number): string {
+  if (!Number.isFinite(fabricCount) || fabricCount <= 0) return '—';
+  return String(Math.round((stitches / fabricCount) * 10) / 10);
 }
 
 /**
@@ -1180,7 +1214,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [fabricCount, setFabricCount] = useState(14);
   
   // Active preset tracking (physical inches) — when set, fabric count changes recalc grid
-  const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number } | null>(null);
+  const [activePreset, setActivePreset] = useState<{ inchW: number; inchH: number; stitchFloor?: number } | null>(null);
 
   // DIRECT-DRAW ADOPTED CANVAS (b136): a direct-draw response adopts its own
   // grid dims verbatim, so the preset's inch-derived guide dims no longer
@@ -1202,10 +1236,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     // b136: on a direct-draw adopt the guide is drawn at the ADOPTED canvas dims
     // (the preset's inches no longer describe the canvas). adoptedGuideDims is
     // null on every non-DD flow, so those stay byte-identical to before.
+    const dims = presetStitches(activePreset, fabricCount);
     return {
       type: preset.guide,
-      colW: adoptedGuideDims ? adoptedGuideDims.colW : inchesToStitches(activePreset.inchW, fabricCount),
-      rowH: adoptedGuideDims ? adoptedGuideDims.rowH : inchesToStitches(activePreset.inchH, fabricCount),
+      colW: adoptedGuideDims ? adoptedGuideDims.colW : dims.w,
+      rowH: adoptedGuideDims ? adoptedGuideDims.rowH : dims.h,
     };
   }, [activePreset, fabricCount, adoptedGuideDims]);
   // Prompt-driven product shape (owner 10-19 P0 c9f3e630): on a CUSTOM
@@ -1918,8 +1953,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // earlier generation). Computed BEFORE the API call so the backend can
       // generate art at the exact canvas aspect/size (owner 09-03: a square
       // 200x200 art crushed into a 154x238 stocking lost coverage -> 27% fill).
-      const presetW = activePreset ? inchesToStitches(activePreset.inchW, fabricCount) : canvasW;
-      const presetH = activePreset ? inchesToStitches(activePreset.inchH, fabricCount) : canvasH;
+      const presetDims = activePreset ? presetStitches(activePreset, fabricCount) : null;
+      const presetW = presetDims ? presetDims.w : canvasW;
+      const presetH = presetDims ? presetDims.h : canvasH;
       const targetW = presetW;
       const targetH = presetH;
       // Legacy gridSize stays for backward compat; the backend uses
@@ -2160,7 +2196,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     // preset, so Generate sent the charm's id and 400'd). Identity cleared.
     clearLoadedRegenSource();
     setCreateOwnMode(false); // picking a mask means the AI flow again
-    setActivePreset({ inchW: preset.inchW, inchH: preset.inchH });
+    setActivePreset({ inchW: preset.inchW, inchH: preset.inchH, stitchFloor: preset.stitchFloor });
     setAdoptedGuideDims(null); // b136: a fresh preset canvas has no DD-adopted dims
     setPendingPreset(null);
     clearHistory(); // a fresh preset canvas is a new baseline
@@ -2493,8 +2529,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Preset Sizes</label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {CANVAS_PRESETS.map((preset) => {
-                    const stitchW = inchesToStitches(preset.inchW, fabricCount);
-                    const stitchH = inchesToStitches(preset.inchH, fabricCount);
+                    const { w: stitchW, h: stitchH } = presetStitches(preset, fabricCount);
                     const isActive = activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH;
                     return (
                       <button
@@ -2521,7 +2556,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                       >
                         <div className="text-[10px] font-bold leading-tight">{preset.name}</div>
                         <div className={`text-[9px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
-                          {stitchW}×{stitchH} st · {preset.inchW}″×{preset.inchH}″ on {fabricCount}ct
+                          {stitchW}×{stitchH} st · {fmtInches(stitchW, fabricCount)}″×{fmtInches(stitchH, fabricCount)}″ on {fabricCount}ct
                         </div>
                       </button>
                     );
@@ -2638,8 +2673,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     setFabricCount(newCount);
                     // If a preset is active, recalculate grid from physical dimensions
                     if (activePreset) {
-                      const newW = inchesToStitches(activePreset.inchW, newCount);
-                      const newH = inchesToStitches(activePreset.inchH, newCount);
+                      const { w: newW, h: newH } = presetStitches(activePreset, newCount);
                       requestResize(newW, newH);
                       // Keep the whole design (e.g. the stocking toe) visible at the new count
                       const el = canvasRef.current;
