@@ -12,6 +12,8 @@ import { QuiltBlockStudio } from './pages/QuiltBlockStudio';
 import { PatternLibrary } from './pages/PatternLibrary';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
+import { Refunds, Terms, Privacy, Contact } from './pages/Policies';
+import { PolicyLinks } from './components/PolicyLinks';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Scissors, Heart, Sparkles, ShieldCheck, LayoutDashboard, CreditCard, Flower2, Camera, Grid3X3, LogIn, UserPlus, LogOut, User, ShoppingBag } from 'lucide-react';
@@ -179,6 +181,12 @@ function AppContent() {
           <Route path="/showcase" element={<CommunityShowcase />} />
           <Route path="/quilt-block" element={<QuiltBlockStudio />} />
           <Route path="/collage" element={<CollageStudio />} />
+
+          {/* ===== PUBLIC POLICY PAGES (no login required) ===== */}
+          <Route path="/refunds" element={<Refunds />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/contact" element={<Contact />} />
         </Routes>
       </main>
 
@@ -259,6 +267,9 @@ function AppContent() {
               </span>
             </div>
           </div>
+
+          {/* Policy links — on every public page */}
+          <PolicyLinks className="mt-6" />
         </div>
       </footer>
 
