@@ -46,6 +46,7 @@ const submitSrc = readSrc('src/pages/SubmitProject.tsx');
 const apiSrc = readSrc('src/services/api.ts');
 const homeSrc = readSrc('src/pages/Home.tsx');
 const dashboardSrc = readSrc('src/pages/Dashboard.tsx');
+const loginSrc = readSrc('src/pages/Login.tsx');
 
 /** The amounts Stripe actually charges, straight out of the backend. */
 const stripeSrc = readSrc('../stitchwise-backend/src/infrastructure/services/stripeClient.ts');
@@ -72,6 +73,11 @@ const PHANTOM_CLAIMS: Array<[string, RegExp]> = [
   ['machine exports (.EXP)', /\.EXP\b/],
   ['live collaborative workshops', /collaborative workshop/i],
   ['workshops at all', /workshop/i],
+  [
+    'the retired login line ("unlock collaborative workshops, AI-powered pattern generation, and secure DMC color matching databases")',
+    /Authorized credentials unlock collaborative workshops/i,
+  ],
+  ['a secure DMC color matching database', /DMC color matching database/i],
   ['priority AI speeds', /priority AI/i],
   ['bulk image-to-stitch queue', /bulk image/i],
   ['multi-user seats', /\bseats?\b/i],
@@ -200,7 +206,7 @@ describe('custom pattern request — no fabricated receipt', () => {
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const customerCopy = [pricingSrc, homeSrc, dashboardSrc].map(stripComments);
+const customerCopy = [pricingSrc, homeSrc, dashboardSrc, loginSrc].map(stripComments);
 
 describe('storefront — no capability the app cannot deliver', () => {
   for (const [label, re] of PHANTOM_CLAIMS) {

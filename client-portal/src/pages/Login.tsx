@@ -169,7 +169,7 @@ export const Login: React.FC = () => {
               <Sparkles className="h-5 w-5 text-blush-500 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-500 leading-relaxed">
                 <span className="font-semibold text-slate-700 block">StitchWise Cloud Security</span>
-                Authorized credentials unlock collaborative workshops, AI-powered pattern generation, and secure DMC color matching databases.
+                Authorized credentials unlock your saved patterns and projects, AI pattern generation within your plan's allowance, and the DMC thread colours in the Designer.
               </p>
             </div>
           </div>
