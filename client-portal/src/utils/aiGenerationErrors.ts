@@ -25,6 +25,9 @@ export function describeAiGenerationError(err: unknown, fallback: string): strin
     if (e.status === 402 || e.status === 403) {
       return 'AI generation is not available on your current plan. Please upgrade to keep creating.';
     }
+    if (e.status === 404) {
+      return 'That generation was lost before it finished. Please generate again.';
+    }
     if (e.name === 'AbortError' || e.name === 'TimeoutError') {
       return 'This took longer than expected, so it was stopped. Please try again.';
     }
