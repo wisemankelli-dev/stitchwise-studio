@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Loader2, Paintbrush, Sparkles } from 'lucide-react';
+import ConfirmPanel from '../ConfirmPanel';
 
 export interface BasicOptionChip {
   id: string;
@@ -13,6 +14,8 @@ export interface MaskSteeringNote {
   message: string;
   createOwnLabel: string;
   resizeLabel: string;
+  /** The size "make it big enough" restarts the canvas at — named in the confirm. */
+  target: { width: number; height: number };
 }
 
 export interface AiPanelProps {
@@ -26,7 +29,16 @@ export interface AiPanelProps {
 
   prompt: string;
   onPromptChange: (value: string) => void;
+  /** Asks first when the canvas already holds stitches. */
   onGenerate: () => void;
+  /** Generate overwrites drawn work, so the Designer's confirm opens here. */
+  pendingGenerate: boolean;
+  onConfirmGenerate: () => void;
+  onCancelGenerate: () => void;
+  /** "Use 54×54" restarts the canvas — same confirm, same panel. */
+  pendingMaskFloor: boolean;
+  onConfirmMaskFloor: () => void;
+  onCancelMaskFloor: () => void;
   isGenerating: boolean;
   /** `Generating…` / the poll status — the button's own label while busy. */
   generatingLabel: string;
@@ -68,6 +80,12 @@ export const AiPanel: React.FC<AiPanelProps> = ({
   prompt,
   onPromptChange,
   onGenerate,
+  pendingGenerate,
+  onConfirmGenerate,
+  onCancelGenerate,
+  pendingMaskFloor,
+  onConfirmMaskFloor,
+  onCancelMaskFloor,
   isGenerating,
   generatingLabel,
   canGenerate,
@@ -159,6 +177,18 @@ export const AiPanel: React.FC<AiPanelProps> = ({
           {isGenerating ? generatingLabel : 'Generate'}
         </button>
 
+        {pendingGenerate && (
+          <ConfirmPanel
+            testId="confirm-generate"
+            phone
+            title="Replace what's on the canvas?"
+            message="Generating a new pattern clears the stitches you have drawn. It still uses one allowance unit."
+            confirmLabel="Generate anyway"
+            onConfirm={onConfirmGenerate}
+            onCancel={onCancelGenerate}
+          />
+        )}
+
         {maskSteering.below && (
           <div data-testid="mask-min-grid-steering" className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
             <div className="flex items-start gap-2">
@@ -177,6 +207,18 @@ export const AiPanel: React.FC<AiPanelProps> = ({
               </button>
             </div>
           </div>
+        )}
+
+        {pendingMaskFloor && (
+          <ConfirmPanel
+            testId="confirm-mask-floor"
+            phone
+            title="Make room for the mask?"
+            message={`This restarts the canvas at ${maskSteering.target.width}×${maskSteering.target.height}, so the stitches you have drawn will be cleared.`}
+            confirmLabel={maskSteering.resizeLabel}
+            onConfirm={onConfirmMaskFloor}
+            onCancel={onCancelMaskFloor}
+          />
         )}
 
         {isStudioTier && (

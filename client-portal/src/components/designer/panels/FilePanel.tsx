@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Download, Eye, Loader2, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
+import ConfirmPanel from '../ConfirmPanel';
 
 export interface SavedPatternRow {
   id: string;
@@ -28,7 +29,12 @@ export interface FilePanelProps {
   onExportPdf: () => void;
 
   fileInputId: string;
+  /** Asks first when the canvas already holds stitches. */
   onUploadImage: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Tracing an image replaces the grid, so the Designer's confirm opens here. */
+  pendingUpload: boolean;
+  onConfirmUpload: () => void;
+  onCancelUpload: () => void;
   isProcessingImage: boolean;
   numColors: number;
   onNumColorsChange: (value: number) => void;
@@ -65,6 +71,9 @@ export const FilePanel: React.FC<FilePanelProps> = ({
   onExportPdf,
   fileInputId,
   onUploadImage,
+  pendingUpload,
+  onConfirmUpload,
+  onCancelUpload,
   isProcessingImage,
   numColors,
   onNumColorsChange,
@@ -216,6 +225,18 @@ export const FilePanel: React.FC<FilePanelProps> = ({
       </div>
       <p className="text-[11px] text-slate-400 mt-1.5">The image is traced to your colour count and laid under the grid as a reference.</p>
     </div>
+
+    {pendingUpload && (
+      <ConfirmPanel
+        testId="confirm-upload"
+        phone
+        title="Replace what's on the canvas?"
+        message="Tracing an image replaces the stitches you have drawn with the image's colours."
+        confirmLabel="Upload and replace"
+        onConfirm={onConfirmUpload}
+        onCancel={onCancelUpload}
+      />
+    )}
 
     {/* Reference image */}
     {hasReferenceImage && (

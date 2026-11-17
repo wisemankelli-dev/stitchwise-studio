@@ -175,7 +175,10 @@ describe('Designer.tsx wiring', () => {
       'handleClearGrid', // Clear canvas
       'handleClearDraft', // "start blank" from the restore banner
       'handleKeepDraft', // restore a local draft
-      'handleImageUpload', // import a new image
+      // import a new image — the work lives in convertImageFile, which is what
+      // actually replaces the grid once the "replace what's on the canvas?"
+      // confirm is answered (handleImageUpload only asks first)
+      'convertImageFile',
     ];
     for (const name of paths) {
       expect(bodyOf(name), `${name} must clear the loaded regenerate source`).toContain(
