@@ -7,12 +7,12 @@ export interface BottomBarProps {
   /** Label of the armed tool, shown on the Tools button. */
   activeToolLabel: string;
   /** Which sheet tab is open (null when the sheet is closed). */
-  openTab: 'colour' | 'tools' | null;
+  openTab: string | null;
   onOpenColour: () => void;
   onPaint: () => void;
   onErase: () => void;
   onOpenTools: () => void;
-  /** Only rendered when the AI tab exists (part 2). */
+  /** The ✨ AI tab. It only opens the sheet — Generate lives inside it. */
   onOpenAi?: () => void;
 }
 
@@ -85,7 +85,13 @@ export const BottomBar: React.FC<BottomBarProps> = ({
           type="button"
           onClick={onOpenAi}
           aria-label="AI design"
-          className="h-12 flex-1 shrink-0 flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blush-500 to-purple-500 text-white text-xs font-bold"
+          aria-expanded={openTab === 'ai'}
+          data-testid="phone-bar-ai"
+          className={`h-12 flex-1 shrink-0 flex items-center justify-center gap-1.5 rounded-xl text-white text-xs font-bold ${
+            openTab === 'ai'
+              ? 'bg-gradient-to-r from-blush-600 to-purple-600 ring-2 ring-purple-300'
+              : 'bg-gradient-to-r from-blush-500 to-purple-500'
+          }`}
         >
           <Sparkles className="h-4 w-4" /> AI
         </button>

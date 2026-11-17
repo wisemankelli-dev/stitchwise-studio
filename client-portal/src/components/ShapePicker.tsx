@@ -8,6 +8,8 @@ export interface ShapePickerProps {
   selectedColor: string;
   onSelectShape: (shape: ClipartShape) => void;
   className?: string;
+  /** Phone sheet opens collapsed; desktop keeps its expanded default. */
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -21,8 +23,9 @@ export default function ShapePicker({
   selectedColor,
   onSelectShape,
   className = '',
+  defaultExpanded = true,
 }: ShapePickerProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [category, setCategory] = useState<ShapeCategory>('Animals');
 
   const grouped = getShapesByCategory();
