@@ -245,6 +245,45 @@ const INITIAL_PROJECTS: Project[] = [
   }
 ];
 
+/**
+ * A pattern request that a real backend refused (or that never reached one).
+ * `status` is the HTTP status when the server answered, so callers can tell a
+ * 401 (sign in again) from a 500 (server fault) without re-parsing the text.
+ */
+export class PatternRequestError extends Error {
+  readonly status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'PatternRequestError';
+    this.status = status;
+  }
+}
+
+/** Turns a non-2xx pattern response into a sentence the user can act on. */
+async function describePatternRejection(res: Response): Promise<string> {
+  let detail = '';
+  try {
+    const body = await res.json() as { error?: string; message?: string };
+    detail = body?.error || body?.message || '';
+  } catch { /* body was not JSON */ }
+  if (res.status === 401 || res.status === 403) {
+    return 'Your sign-in has expired. Sign in again, then retry.';
+  }
+  if (res.status === 404) {
+    return 'The server could not find that pattern.';
+  }
+  if (res.status === 413) {
+    return 'That pattern is too large for the server to store.';
+  }
+  if (res.status === 429) {
+    return 'Too many requests — wait a moment and try again.';
+  }
+  if (res.status >= 500) {
+    return `The server returned an error (${res.status}).`;
+  }
+  return detail || `The server refused the request (${res.status}).`;
+}
+
 class ApiClient {
   public isLiveBackend: boolean = true; // Auto-detect — try backend first, fall to mock on failure
   private apiBaseUrl: string = '/api';
@@ -2266,6 +2305,41 @@ class ApiClient {
   }
   // ==================== PATTERN PERSISTENCE ====================
   private patternStore: SavedPatternDetail[] = [];
+
+  /**
+   * Runs one pattern request and says exactly what happened:
+   * - `{ served: true, value }` — a real backend answered 2xx.
+   * - `{ served: false }` — there is genuinely no backend (local dev / demo),
+   *   so the caller may use the in-memory store.
+   * - throws `PatternRequestError` — a backend answered and refused, or a live
+   *   request never landed. A refusal must never look like success
+   *   (designer-hardening.md Batch A: the Designer reported "Saved!" for a 401).
+   */
+  private async patternRequest<T>(
+    path: string,
+    init: RequestInit,
+    parse: (res: Response) => Promise<T>,
+  ): Promise<{ served: true; value: T } | { served: false }> {
+    if (!this.isLiveBackend) return { served: false };
+    let res: Response;
+    try {
+      res = await fetch(`${this.apiBaseUrl}${path}`, init);
+    } catch {
+      // The request never reached the server. Re-probe once: if the backend is
+      // really gone this is local dev and the mock may serve. If it is still
+      // there, the failure is real and the user must be told.
+      await this.checkBackendHealth();
+      if (!this.isLiveBackend) return { served: false };
+      throw new PatternRequestError(
+        'Could not reach the server. Check your connection and try again.',
+      );
+    }
+    if (!res.ok) {
+      throw new PatternRequestError(await describePatternRejection(res), res.status);
+    }
+    return { served: true, value: await parse(res) };
+  }
+
   async savePattern(
     name: string,
     grid: SavedPatternCell[][],
@@ -2274,19 +2348,20 @@ class ApiClient {
     stitchCount: number,
     provenance?: { prompt?: string; sourceImage?: string },
   ): Promise<SavedPatternSummary> {
-    if (this.isLiveBackend) {
-      try {
-        // Backend SaveSchema already accepts optional prompt + sourceImage and
-        // persists them (patternPersistence.ts) — forward so saved designs
-        // keep their AI prompt + source artwork (owner 09-03 save provenance).
-        const res = await fetch(`${this.apiBaseUrl}/patterns`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify({ name, grid, palette, gridSize, stitchCount, ...(provenance || {}) }),
-        });
-        if (res.ok) return await res.json();
-      } catch { /* fall through to mock */ }
-    }
+    // Backend SaveSchema already accepts optional prompt + sourceImage and
+    // persists them (patternPersistence.ts) — forward so saved designs
+    // keep their AI prompt + source artwork (owner 09-03 save provenance).
+    const saved = await this.patternRequest<SavedPatternSummary>(
+      '/patterns',
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ name, grid, palette, gridSize, stitchCount, ...(provenance || {}) }),
+      },
+      res => res.json(),
+    );
+    if (saved.served) return saved.value;
+    // No backend at all — local dev mock store.
     const now = new Date().toISOString();
     const rec: SavedPatternDetail = {
       id: `pattern-${Date.now()}`,
@@ -2303,29 +2378,32 @@ class ApiClient {
     return rec;
   }
   async listPatterns(): Promise<SavedPatternSummary[]> {
-    if (this.isLiveBackend) {
-      try {
-        const res = await fetch(`${this.apiBaseUrl}/patterns`, { headers: this.getHeaders() });
-        if (res.ok) return (await res.json()).patterns;
-      } catch { /* fall through to mock */ }
-    }
+    const listed = await this.patternRequest<SavedPatternSummary[]>(
+      '/patterns',
+      { headers: this.getHeaders() },
+      async res => (await res.json()).patterns,
+    );
+    if (listed.served) return listed.value;
     return this.patternStore.map(({ grid: _g, palette: _p, ...summary }) => summary);
   }
   async loadPattern(id: string): Promise<SavedPatternDetail | null> {
-    if (this.isLiveBackend) {
-      try {
-        const res = await fetch(`${this.apiBaseUrl}/patterns/${id}`, { headers: this.getHeaders() });
-        if (res.ok) return await res.json();
-      } catch { /* fall through to mock */ }
-    }
+    const loaded = await this.patternRequest<SavedPatternDetail>(
+      `/patterns/${encodeURIComponent(id)}`,
+      { headers: this.getHeaders() },
+      res => res.json(),
+    );
+    if (loaded.served) return loaded.value;
     return this.patternStore.find(p => p.id === id) || null;
   }
   async deletePattern(id: string): Promise<void> {
-    if (this.isLiveBackend) {
-      try {
-        await fetch(`${this.apiBaseUrl}/patterns/${id}`, { method: 'DELETE', headers: this.getHeaders() });
-      } catch { /* fall through to mock */ }
-    }
+    // Resolves only once the server confirmed the delete; a refusal throws so
+    // the caller cannot drop the row for a pattern that still exists.
+    const deleted = await this.patternRequest<void>(
+      `/patterns/${encodeURIComponent(id)}`,
+      { method: 'DELETE', headers: this.getHeaders() },
+      async () => undefined,
+    );
+    if (deleted.served) return;
     this.patternStore = this.patternStore.filter(p => p.id !== id);
   }
 }
