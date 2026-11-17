@@ -2458,7 +2458,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   };
 
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : isDesktop ? 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden' : 'bg-white h-[100dvh] max-h-[100dvh] overflow-hidden relative'}`}>
+    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : isDesktop ? 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden' : 'bg-white flex-1 min-h-0 overflow-hidden relative'}`}>
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
         <svg className="w-full h-full"><defs><pattern id="des-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
           <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />

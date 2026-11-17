@@ -29,6 +29,14 @@ function AppContent() {
   /** Phone/tablet nav: the desktop row needs ~1250px, so it collapses below xl. */
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  /**
+   * The phone Designer is exactly viewport height: the grid sits under the
+   * header and the tool bar is pinned to the screen bottom, so the page itself
+   * must not scroll (owner 11-17: "the tools still need scrolling"). Below lg
+   * the shell is locked to 100dvh and the footer is dropped; desktop keeps the
+   * normal scrolling document.
+   */
+  const isDesignerRoute = location.pathname === '/designer';
 
   // Any navigation closes the panel, so a tap never leaves it open behind the page.
   useEffect(() => {
@@ -36,7 +44,11 @@ function AppContent() {
   }, [location.pathname]);
 
   return (
-    <div className="flex flex-col min-h-screen text-slate-800 bg-gradient-to-b from-white via-blush-50/30 to-white">
+    <div
+      className={`flex flex-col text-slate-800 bg-gradient-to-b from-white via-blush-50/30 to-white ${
+        isDesignerRoute ? 'h-[100dvh] overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible' : 'min-h-screen'
+      }`}
+    >
       
       {/* ===== GLOBAL FLORAL PATTERN WATERMARK ===== */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
@@ -172,7 +184,7 @@ function AppContent() {
               aria-expanded={menuOpen}
               aria-controls="mobile-nav"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-              className="xl:hidden shrink-0 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-blush-200/70 bg-blush-50/70 text-blush-700 hover:bg-blush-100 transition-colors"
+              className="xl:hidden shrink-0 inline-flex items-center justify-center h-11 w-11 rounded-xl border border-blush-200/70 bg-blush-50/70 text-blush-700 hover:bg-blush-100 transition-colors"
             >
               {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -244,7 +256,7 @@ function AppContent() {
       </header>
 
       {/* ===== PAGE CONTENT ===== */}
-      <main className="flex-grow relative z-10">
+      <main className={`relative z-10 ${isDesignerRoute ? 'flex flex-col flex-grow min-h-0' : 'flex-grow'}`}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -271,7 +283,7 @@ function AppContent() {
       </main>
 
       {/* ===== FOOTER ===== */}
-      <footer className="relative z-10 bg-gradient-to-t from-blush-50/80 to-white/80 backdrop-blur-sm border-t border-blush-100 text-slate-500 pt-16 pb-8">
+      <footer className={`relative z-10 bg-gradient-to-t from-blush-50/80 to-white/80 backdrop-blur-sm border-t border-blush-100 text-slate-500 pt-16 pb-8 ${isDesignerRoute ? 'hidden lg:block' : ''}`}>
         {/* Decorative top divider */}
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blush-300 to-transparent" />
         

@@ -1247,7 +1247,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       {/* Canvas container */}
       <div
         ref={containerRef}
-        className={compact ? 'flex items-center justify-center flex-1 min-h-0' : 'flex items-center justify-center min-h-[200px]'}
+        className={compact ? 'flex items-start justify-center flex-1 min-h-0' : 'flex items-center justify-center min-h-[200px]'}
       >
         <canvas
           ref={canvasRef}
