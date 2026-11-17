@@ -119,6 +119,14 @@ describe('owner-approved copy', () => {
     expect(screen.getByText('Changes.')).toBeInTheDocument();
   });
 
+  it('Terms: what you make is yours — the maker owns the finished piece', () => {
+    renderAt(<Terms />);
+    expect(screen.getByText('What you make is yours.')).toBeInTheDocument();
+    expect(screen.getByText(/are tools, not claims on your work/i)).toBeInTheDocument();
+    expect(screen.getByText(/No royalty, no permission needed, no credit required/i)).toBeInTheDocument();
+    expect(screen.getByText(/We are a tool, not a\s+collaborator\./i)).toBeInTheDocument();
+  });
+
   it('Privacy: what we hold, Stripe, Gemini, deletion', () => {
     renderAt(<Privacy />);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Privacy');

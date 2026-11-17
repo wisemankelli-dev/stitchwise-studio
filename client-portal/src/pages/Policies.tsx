@@ -97,6 +97,12 @@ export const Terms: React.FC = () => (
       You keep ownership of the patterns you create and the images you upload. You are responsible for having
       the right to use any image you upload — please do not upload artwork that belongs to someone else.
     </Section>
+    <Section lead="What you make is yours.">
+      Patterns and designs you buy or create here are tools, not claims on your work. Whatever you make with
+      them — the finished quilt, the stitched piece, the collage — belongs to you. Sell it, gift it, show it,
+      enter it in a show. No royalty, no permission needed, no credit required. We are a tool, not a
+      collaborator.
+    </Section>
     <Section lead="Acceptable use.">
       Do not use StitchWise Studio to copy or redistribute other people&apos;s copyrighted artwork, or to
       resell our patterns as your own.
