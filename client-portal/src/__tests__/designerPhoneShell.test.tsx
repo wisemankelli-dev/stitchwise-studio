@@ -5,7 +5,7 @@
  * closed by default. Desktop must keep the two-column DOM it has today.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { Designer } from '../pages/Designer';
 
@@ -131,7 +131,12 @@ describe('Designer — phone shell', () => {
     stubViewport(false);
     renderDesigner();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Canvas' }));
+    // The sheet is closed on first paint, so open it from the bar and switch
+    // tabs — the five tabs are announced as tabs, with the active one selected.
+    fireEvent.click(screen.getByTestId('phone-bar-tools'));
+    const canvasTab = screen.getByRole('tab', { name: 'Canvas' });
+    fireEvent.click(canvasTab);
+    expect(canvasTab.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByTestId('phone-canvas-panel')).toBeInTheDocument();
 
     // The nine product presets the desktop left column has.
@@ -150,13 +155,18 @@ describe('Designer — phone shell', () => {
     stubViewport(false);
     renderDesigner();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'File' }));
+    fireEvent.click(screen.getByTestId('phone-bar-tools'));
+    const fileTab = screen.getByRole('tab', { name: 'File' });
+    fireEvent.click(fileTab);
+    expect(fileTab.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByTestId('phone-file-panel')).toBeInTheDocument();
+    const filePanel = screen.getByTestId('phone-file-panel');
     expect(screen.getByTestId('phone-file-save').className).toContain('h-11');
     expect(screen.getByTestId('phone-file-export-pdf')).toBeInTheDocument();
     expect(screen.getByText('Upload Image')).toBeInTheDocument();
     expect(screen.getByLabelText('Number of colors')).toBeInTheDocument();
-    expect(screen.getByLabelText('Pattern name')).toBeInTheDocument();
+    // The top bar also carries a "Pattern name" field, so scope to the panel.
+    expect(within(filePanel).getByLabelText('Pattern name')).toBeInTheDocument();
   });
 
   it('keeps the desktop two-column DOM on desktop', () => {

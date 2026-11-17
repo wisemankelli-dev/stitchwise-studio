@@ -36,22 +36,26 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTab
         <span className="h-1 w-9 rounded-full bg-slate-200" />
       </div>
       <div className="shrink-0 flex items-center gap-1 px-2 pb-1">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onTabChange(t.id)}
-            aria-selected={tab === t.id}
-            role="tab"
-            className={`h-11 flex-1 rounded-lg text-xs font-bold transition-colors ${
-              tab === t.id
-                ? 'bg-blush-50 text-blush-700 ring-1 ring-blush-300'
-                : 'text-slate-500 hover:bg-blush-50/60'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+        <div role="tablist" aria-label="Designer panels" className="flex flex-1 min-w-0 items-center gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              id={`phone-sheet-tab-${t.id}`}
+              type="button"
+              onClick={() => onTabChange(t.id)}
+              aria-selected={tab === t.id}
+              aria-controls="phone-sheet-panel"
+              role="tab"
+              className={`h-11 flex-1 rounded-lg text-xs font-bold transition-colors ${
+                tab === t.id
+                  ? 'bg-blush-50 text-blush-700 ring-1 ring-blush-300'
+                  : 'text-slate-500 hover:bg-blush-50/60'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -62,6 +66,9 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTab
         </button>
       </div>
       <div
+        id="phone-sheet-panel"
+        role="tabpanel"
+        aria-labelledby={tab ? `phone-sheet-tab-${tab}` : undefined}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pt-1 pb-[calc(env(safe-area-inset-bottom)+12px)]"
         data-testid="phone-sheet-body"
       >
