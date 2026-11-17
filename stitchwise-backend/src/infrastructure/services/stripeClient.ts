@@ -112,35 +112,99 @@ export async function createCheckoutSession(
 }
 
 /**
+ * Error codes surfaced by constructWebhookEvent so the route can answer Stripe
+ * with the right status: a missing secret must be retried once it is set, a bad
+ * signature must not be retried at all.
+ */
+export const WEBHOOK_SECRET_MISSING = "WEBHOOK_SECRET_MISSING";
+export const WEBHOOK_SIGNATURE_MISSING = "WEBHOOK_SIGNATURE_MISSING";
+
+function webhookError(code: string, message: string): Error {
+  const err = new Error(message) as Error & { code?: string };
+  err.code = code;
+  return err;
+}
+
+/**
  * Constructs a Stripe event from a raw webhook payload.
+ *
+ * The payload MUST be the untouched request body (Buffer/string) — any JSON
+ * re-serialisation breaks the signature. Fails closed when no signing secret is
+ * configured, instead of comparing against a placeholder that can never match.
  */
 export function constructWebhookEvent(
   payload: string | Buffer,
   signature: string,
 ): Stripe.Event {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "whsec_placeholder";
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    throw webhookError(
+      WEBHOOK_SECRET_MISSING,
+      "STRIPE_WEBHOOK_SECRET is not configured",
+    );
+  }
+  if (!signature) {
+    throw webhookError(
+      WEBHOOK_SIGNATURE_MISSING,
+      "No Stripe signature header provided",
+    );
+  }
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+}
+
+/** Plans that a subscription can actually put a user on. */
+const PAID_TIERS = ["PRO", "STUDIO"] as const;
+export type PaidTier = (typeof PAID_TIERS)[number];
+
+/** Accepts "PRO"/"pro"/"Pro Crafter" and returns the canonical tier name. */
+export function normalizeTier(raw: unknown): PaidTier | null {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().toUpperCase();
+  if (key === "PRO" || key === "PRO CRAFTER") return "PRO";
+  if (key === "STUDIO" || key === "DESIGN STUDIO") return "STUDIO";
+  return null;
 }
 
 /**
  * Extracts subscription details from a Stripe Checkout Session event.
+ *
+ * Tier comes from the session metadata (set when the checkout session is
+ * created); `subscription_details.metadata` is accepted as a fallback because
+ * Stripe copies metadata to the subscription, not the other way round.
+ * Email falls back to `customer_details.email` — `customer_email` is null when
+ * Stripe reuses an existing customer, and an empty email used to make the
+ * upgrade silently fail.
  */
 export function extractCheckoutData(session: Stripe.Checkout.Session): {
   customerId: string;
   subscriptionId: string;
-  tier: string;
+  tier: PaidTier;
   email: string;
 } | null {
-  if (!session.customer || !session.subscription || !session.metadata?.tier) {
-    return null;
-  }
+  const subscription = session.subscription as
+    | string
+    | { id?: string; metadata?: Record<string, string> }
+    | null
+    | undefined;
+  const subscriptionId =
+    typeof subscription === "string" ? subscription : subscription?.id;
+  const customer = session.customer as string | { id?: string } | null | undefined;
+  const customerId = typeof customer === "string" ? customer : customer?.id;
 
-  return {
-    customerId: typeof session.customer === "string" ? session.customer : session.customer.id,
-    subscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription.id,
-    tier: session.metadata.tier,
-    email: session.customer_email ?? "",
-  };
+  const tier = normalizeTier(
+    (session.metadata as Record<string, string> | null | undefined)?.tier ??
+      (typeof subscription === "object" ? subscription?.metadata?.tier : undefined),
+  );
+
+  const email = (
+    session.customer_email ??
+    (session as any).customer_details?.email ??
+    ""
+  ).trim().toLowerCase();
+
+  if (!customerId || !subscriptionId || !tier || !email) return null;
+
+  return { customerId, subscriptionId, tier, email };
 }
 
 export { stripe };
