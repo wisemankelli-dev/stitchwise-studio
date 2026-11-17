@@ -1103,6 +1103,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [savedPatterns, setSavedPatterns] = useState<SavedPatternSummary[]>([]);
   const [showPatternLoad, setShowPatternLoad] = useState(false);
   const [patternSaveMsg, setPatternSaveMsg] = useState<string | null>(null);
+  // Batch A (designer-hardening.md): a failed save/load/delete must say why and
+  // stay until dismissed — never a 2.5 s flash, never a silent no-op.
+  const [patternError, setPatternError] = useState<string | null>(null);
+  const [patternsLoadError, setPatternsLoadError] = useState<string | null>(null);
+  const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
+  const [loadingPatternId, setLoadingPatternId] = useState<string | null>(null);
 
   // Editing Tools state
   const [activeTool, setActiveTool] = useState<EditTool>('select');
@@ -1797,6 +1803,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     setPollingStatus('');
   };
   // ── Pattern Save / Load (F-2) ──
+  /** The reason a pattern action failed, in words the user can act on. */
+  const patternFailureReason = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'Something went wrong. Try again.';
   const doSavePattern = async () => {
     const name = patternName.trim() || `Pattern ${new Date().toLocaleDateString()}`;
     const stitchData = buildManualGridData(grid, gridStitchTypes, gridWidth, gridHeight);
@@ -1820,6 +1829,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         : payloadGrid;
     setIsSavingPattern(true);
     setPatternSaveMsg(null);
+    setPatternError(null);
     try {
       // Save provenance: the AI prompt + source artwork (data URL) travel with
       // the design so it round-trips on load (backend persists both columns).
@@ -1831,9 +1841,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       setShowPatternLoad(false);
       setPatternSaveMsg(`Saved "${name}"!`);
       setTimeout(() => setPatternSaveMsg(null), 2500);
-    } catch {
-      setPatternSaveMsg('Save failed.');
-      setTimeout(() => setPatternSaveMsg(null), 2500);
+    } catch (err) {
+      // A backend that answered and refused (401/500/…) lands here and the
+      // message stays until the user dismisses it.
+      setPatternError(`Save failed. ${patternFailureReason(err)}`);
     } finally {
       setIsSavingPattern(false);
     }
@@ -1857,20 +1868,31 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     }
     await doSavePattern();
   };
-  const handleLoadPatterns = async () => {
+  const loadPatternList = async () => {
+    setIsLoadingPatterns(true);
+    setPatternsLoadError(null);
     try {
       const patterns = await api.listPatterns();
       setSavedPatterns(patterns);
-    } catch {
-      setSavedPatterns([]);
+    } catch (err) {
+      // Never render a failed list as "No saved patterns yet" — that reads as
+      // "you have none" (Batch A).
+      setPatternsLoadError(patternFailureReason(err));
+    } finally {
+      setIsLoadingPatterns(false);
     }
+  };
+  const handleLoadPatterns = async () => {
+    await loadPatternList();
     setShowPatternLoad(prev => !prev);
   };
   const handleLoadPattern = async (id: string) => {
     setRestoredDraft(null); // an explicit library load wins over any pending draft
+    setPatternError(null);
+    setLoadingPatternId(id);
     try {
       const p = await api.loadPattern(id);
-      if (!p) return;
+      if (!p) throw new Error('That pattern is no longer in your library.');
       // Restore grid dims + cells from the persisted grid
       const height = p.grid.length;
       const width = p.grid[0]?.length || p.gridSize;
@@ -1914,15 +1936,22 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       setShowPatternLoad(false);
       setPatternSaveMsg(`Loaded "${p.name}" (${width}×${height}).`);
       setTimeout(() => setPatternSaveMsg(null), 2500);
-    } catch {
-      setPatternSaveMsg('Load failed.');
-      setTimeout(() => setPatternSaveMsg(null), 2500);
+    } catch (err) {
+      setPatternError(`Load failed. ${patternFailureReason(err)}`);
+    } finally {
+      setLoadingPatternId(null);
     }
   };
   const handleDeletePattern = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.deletePattern(id);
-    setSavedPatterns(prev => prev.filter(p => p.id !== id));
+    setPatternError(null);
+    try {
+      // Only drop the row once the server confirmed the delete (Batch A).
+      await api.deletePattern(id);
+      setSavedPatterns(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      setPatternError(`Delete failed. ${patternFailureReason(err)}`);
+    }
   };
 
   /** Single-phase generation: prompt → pattern (handles sync 200 and async 202 with polling) */
@@ -2828,7 +2857,23 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                       </button>
                       {showPatternLoad && (
                         <div className="absolute right-0 top-full mt-1 w-60 bg-white rounded-lg shadow-lg border border-blush-100 z-50 max-h-60 overflow-y-auto">
-                          {savedPatterns.length === 0 ? (
+                          {isLoadingPatterns ? (
+                            <p className="p-3 text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                            </p>
+                          ) : patternsLoadError ? (
+                            <div className="p-3 text-center space-y-1">
+                              <p className="text-[11px] font-bold text-red-600">Couldn't load your patterns</p>
+                              <p className="text-[10px] text-red-500">{patternsLoadError}</p>
+                              <button
+                                onClick={() => { void loadPatternList(); }}
+                                className="text-[10px] font-bold text-blush-600 hover:underline"
+                                title="Try loading your patterns again"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : savedPatterns.length === 0 ? (
                             <p className="p-3 text-[11px] text-slate-400 text-center">No saved patterns yet</p>
                           ) : (
                             savedPatterns.map(p => (
@@ -2839,7 +2884,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                               >
                                 <span className="text-xs text-slate-700 truncate flex-1">
                                   {p.name}
-                                  <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                                  {loadingPatternId === p.id ? (
+                                    <Loader2 className="inline h-3 w-3 ml-2 animate-spin text-blush-500" />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 ml-2">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                                  )}
                                 </span>
                                 <button
                                   onClick={(e) => handleDeletePattern(p.id, e)}
@@ -2886,8 +2935,24 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 </div>
               </div>
 
+              {patternError && (
+                <div
+                  role="alert"
+                  className="w-full mb-4 text-[11px] px-2 py-1.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-start gap-2"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="flex-1">{patternError}</span>
+                  <button
+                    onClick={() => setPatternError(null)}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-700 shrink-0"
+                    title="Dismiss this message"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {patternSaveMsg && (
-                <p className={`w-full mb-4 text-[11px] px-2 py-1 rounded ${patternSaveMsg.startsWith('Save failed') || patternSaveMsg.startsWith('Load failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+                <p className="w-full mb-4 text-[11px] px-2 py-1 rounded bg-green-50 text-green-700">
                   {patternSaveMsg}
                 </p>
               )}
