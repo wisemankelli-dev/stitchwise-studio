@@ -20,9 +20,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_DIR="${SITE_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 # rel_path|expected_target
+# NOTE (b151): client-portal/node_modules is deliberately NOT symlinked.
+# A symlink there makes `vite build` fail with ERR_MODULE_NOT_FOUND on its
+# generated .vite-temp config (Node resolves 'vite' from the symlink target's
+# parent, which has no node_modules), and publish then ships the STALE bundle
+# silently. It must stay a real directory under the site tree.
 ENTRIES=(
   "node_modules|/tmp/site-node_modules"
-  "client-portal/node_modules|/tmp/client-portal-node_modules"
 )
 
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
