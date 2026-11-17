@@ -1204,6 +1204,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // AI pattern generation state (single-phase, handles both sync 200 and async 202)
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  // Single-flight guard for Generate. It must be a REF, not the isGenerating
+  // state: React state updates are async, so a double-click (or Enter racing a
+  // click) both read isGenerating === false and start two generations — two
+  // allowance units for one pattern. The ref flips synchronously on call 1.
+  const generatingRef = useRef(false);
   const [aiError, setAiError] = useState('');
   const [aiStats, setAiStats] = useState<{ stitches: number; colors: number; backstitch: number; crossStitch: number } | null>(null);
   const [aiArtworkUrl, setAiArtworkUrl] = useState<string | null>(null);
@@ -2069,7 +2074,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     // Below the mask's minimum grid the button is disabled — Enter must not
     // slip past it (the steering panel offers a route instead).
     if (maskSteering.below) return;
-    if (!aiPrompt.trim() || isGenerating) return;
+    if (!aiPrompt.trim() || generatingRef.current) return;
+    generatingRef.current = true;
     setIsGenerating(true);
     setAiError('');
     setAiStats(null);
@@ -2295,12 +2301,13 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       setAiError(describeAiGenerationError(err, 'Failed to generate pattern. Please try again.'));
       setPollingStatus('');
     } finally {
+      generatingRef.current = false;
       setIsGenerating(false);
       // A generation just spent a unit - re-read the allowance so the cost line
       // stays true (and so a spent allowance is caught before the next click).
       void refreshAIUsage();
     }
-  }, [aiPrompt, isGenerating, maskSteering.below, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
+  }, [aiPrompt, maskSteering.below, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
 
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
