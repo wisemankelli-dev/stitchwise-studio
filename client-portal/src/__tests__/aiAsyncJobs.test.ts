@@ -3,8 +3,8 @@
  * API layer:
  * - generateCollageFromText: polls GET /api/ai/jobs/:id and normalizes the result
  * - generateArt: polls the job and returns { imageDataUrl, pipeline }
- * - submitAndPollAIJob: retries the submission once when the first job errors,
- *   then surfaces the error if the retry also fails
+ * - submitAndPollAIJob: (removed) one POST is one allowance unit — a failed poll
+ *   is reported, never re-submitted
  *
  * These mirror the backend aiJobs tests — together they cover the full
  * request path that survives the platform gateway's ~30s upstream timeout.
@@ -93,34 +93,43 @@ describe('async AI job pattern (202 + polling)', () => {
     expect(result.pipeline).toBe('dall-e');
   });
 
-  it('retries the submission once when the first job errors, then succeeds', async () => {
+  it('never submits a second job when the first job errors (one POST = one allowance)', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail' }, 202)) // submit 1
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail', status: 'error', error: 'boom' })) // poll 1 → error
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-ok' }, 202)) // submit 2 (retry)
+      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail' }, 202)) // the only POST
+      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail', status: 'error', error: 'boom' })) // poll → error
+      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-ok' }, 202)) // must never be used
       .mockResolvedValueOnce(
         jsonResponse({ jobId: 'job-ok', status: 'done', result: { success: true, data: { layers: [], canvasWidth: 500, canvasHeight: 500 } } }),
-      ); // poll 2 → done
+      );
 
     const promise = api.generateCollageFromText('heart');
-    await vi.advanceTimersByTimeAsync(2000); // poll 1 → error, triggers retry POST
-    await vi.advanceTimersByTimeAsync(2000); // poll 2 → done
-    const result = await promise;
+    const rejected = expect(promise).rejects.toThrow('boom');
+    await vi.advanceTimersByTimeAsync(2000); // poll → error
+    await rejected;
 
-    expect(result.success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    // Exactly one POST to the collage endpoint: a retry would spend a second
+    // allowance unit for the same image.
+    const collagePosts = fetchMock.mock.calls.filter(call =>
+      String(call[0]).includes('/ai/collage/text-to-collage'),
+    );
+    expect(collagePosts).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('throws the last error when both attempts fail', async () => {
+  it('reports a lost job instead of resubmitting when polling 404s', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail' }, 202))
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail', status: 'error', error: 'boom' }))
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail2' }, 202))
-      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-fail2', status: 'error', error: 'boom again' }));
+      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-gone' }, 202)) // the only POST
+      .mockResolvedValueOnce(jsonResponse({ error: 'Job not found' }, 404)) // poll → gone
+      .mockResolvedValueOnce(jsonResponse({ jobId: 'job-2' }, 202)); // must never be used
 
     const promise = api.generateCollageFromText('sun');
+    const rejected = expect(promise).rejects.toThrow(/lost before it finished/i);
     await vi.advanceTimersByTimeAsync(2000);
-    await vi.advanceTimersByTimeAsync(2000);
-    await expect(promise).rejects.toThrow('boom again');
+    await rejected;
+
+    const collagePosts = fetchMock.mock.calls.filter(call =>
+      String(call[0]).includes('/ai/collage/text-to-collage'),
+    );
+    expect(collagePosts).toHaveLength(1);
   });
 });

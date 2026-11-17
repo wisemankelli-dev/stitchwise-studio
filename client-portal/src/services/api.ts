@@ -971,31 +971,15 @@ class ApiClient {
       headers: this.getHeaders(),
       body: JSON.stringify({ prompt }),
     });
-    // Async job pattern (202 { jobId }): poll until done, retry once on error
-    // (the retry re-POSTs so the backend creates a fresh job).
+    // Async job pattern (202 { jobId }): poll the job the POST already created
+    // until it is done. Never re-POST — one POST is one allowance unit.
     if (response.status === 202) {
       const { jobId } = await response.json();
-      return this.submitAndPollAIJob(
-        async () => {
-          const res = await fetch(`${this.apiBaseUrl}/ai/generate-art`, {
-            method: 'POST',
-            headers: this.getHeaders(),
-            body: JSON.stringify({ prompt }),
-          });
-          if (res.status !== 202) {
-            throw new Error('AI art generation did not return an async job');
-          }
-          const { jobId: id } = await res.json();
-          if (!id) throw new Error('AI art generation failed: missing jobId');
-          return id;
-        },
-        result => {
-          const r = (result ?? {}) as { imageDataUrl?: string; pipeline?: string };
-          if (!r.imageDataUrl) throw new Error('AI art generation returned no image');
-          return { imageDataUrl: r.imageDataUrl, pipeline: r.pipeline || 'dall-e' };
-        },
-        jobId,
-      );
+      return this.pollAIJobResult(jobId).then(result => {
+        const r = (result ?? {}) as { imageDataUrl?: string; pipeline?: string };
+        if (!r.imageDataUrl) throw new Error('AI art generation returned no image');
+        return { imageDataUrl: r.imageDataUrl, pipeline: r.pipeline || 'dall-e' };
+      });
     }
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
@@ -1192,25 +1176,60 @@ class ApiClient {
   /**
    * Poll an async AI job (GET /api/ai/jobs/:id) every 2s until it finishes.
    * Throws on error/failed status or when the deadline passes.
+   *
+   * ONE POST = ONE ALLOWANCE UNIT: a poll hiccup (dropped request, 5xx, bad
+   * body) is ridden out by retrying the GET a few times — never by submitting a
+   * new job. A job the backend no longer knows about (404) is reported as lost.
    */
   private async pollAIJob(jobId: string, timeoutMs = 300_000): Promise<{ status: string; result: unknown; error?: string }> {
     const POLL_INTERVAL = 2000; // 2 seconds
+    const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+    let consecutiveFailures = 0;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-      const response = await fetch(`${this.apiBaseUrl}/ai/jobs/${jobId}`, {
-        headers: this.getHeaders(),
-      });
+
+      let response: Response;
+      try {
+        response = await fetch(`${this.apiBaseUrl}/ai/jobs/${jobId}`, {
+          headers: this.getHeaders(),
+        });
+      } catch (networkErr) {
+        // Transient network blip: keep polling THIS job (a re-POST would charge).
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          throw this.generationError(networkErr, 0);
+        }
+        continue;
+      }
+
       if (response.status === 404) {
-        throw new Error('Job not found');
+        // Definitive: the job is gone (e.g. the backend restarted and its job
+        // store was wiped). Never re-POST — say what happened instead.
+        throw this.generationError(
+          new Error('This generation was lost before it finished. Please generate again.'),
+          404,
+        );
       }
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        const err = new Error(errData.error || `Job polling failed (${response.status})`) as Error & { status?: number };
-        err.status = response.status;
-        throw err;
+        // 5xx is a transient hiccup — keep polling the same job.
+        if (response.status >= 500 && ++consecutiveFailures < MAX_CONSECUTIVE_POLL_FAILURES) {
+          continue;
+        }
+        throw this.generationError(new Error(errData.error || `Job polling failed (${response.status})`), response.status);
       }
-      const job = await response.json();
+
+      let job: { status: string; result: unknown; error?: string };
+      try {
+        job = await response.json();
+      } catch (parseErr) {
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          throw this.generationError(parseErr, response.status);
+        }
+        continue;
+      }
+      consecutiveFailures = 0;
+
       if (job.status === 'done') {
         return { status: 'done', result: job.result };
       }
@@ -1222,52 +1241,17 @@ class ApiClient {
     throw new Error('AI generation timed out. Please try again.');
   }
   /**
-   * Submit an async AI job and poll it, retrying the submission once if the
-   * first job errors (the backend already retries models internally, so this
-   * covers transient/gateway failures on the POST itself).
+   * Poll the job that the single POST already created and return its result.
+   *
+   * This must NEVER submit a second job. Every POST spends one allowance unit,
+   * so the old "re-POST once when the poll fails" retry charged the customer
+   * twice for one image. Transient failures are absorbed inside pollAIJob (GET
+   * retries only); a lost job or a failed generation is reported, not resubmitted.
    */
-  private async submitAndPollAIJob<T>(
-    submit: () => Promise<string>,
-    normalize: (result: unknown) => T | Promise<T>,
-    firstJobId?: string,
-  ): Promise<T> {
-    let lastError: string | undefined;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        // First attempt reuses the job from the initial POST; a retry re-POSTs
-        // through submit() so the backend creates a fresh job.
-        const jobId = attempt === 0 && firstJobId ? firstJobId : await submit();
-        const job = await this.pollAIJob(jobId);
-        if (job.status === 'done') {
-          return await normalize(job.result);
-        }
-        lastError = job.error;
-      } catch (err) {
-        // A lost/unknown job (e.g. the backend restarted and the in-memory job
-        // store was wiped, so polling 404s) must NOT abort the generation — the
-        // retry below re-POSTs and creates a fresh job on the running backend.
-        lastError = err instanceof Error ? err.message : String(err);
-      }
-    }
-    throw new Error(lastError || 'AI generation failed. Please try again.');
-  }
-  /**
-   * POST text-to-collage and return the async jobId (throws on error/validation).
-   * Used for the initial submit and for the one-shot retry (fresh job each time).
-   */
-  private async postCollageJob(prompt: string, options?: { gridSize?: number; premiumModel?: boolean }): Promise<string> {
-    const res = await fetch(`${this.apiBaseUrl}/ai/collage/text-to-collage`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ prompt, ...options }),
-    });
-    if (res.status === 202) {
-      const { jobId } = await res.json();
-      if (!jobId) throw new Error('AI collage generation failed: missing jobId');
-      return jobId;
-    }
-    if (!res.ok) this.throwApiError('AI collage generation failed', res);
-    throw new Error('AI collage generation did not return an async job');
+  private async pollAIJobResult(jobId: string): Promise<unknown> {
+    const job = await this.pollAIJob(jobId);
+    if (job.status === 'done') return job.result;
+    throw this.generationError(new Error(job.error || 'AI generation failed. Please try again.'));
   }
   /**
    * Unwrap a collage generation result into the client-facing shape.
@@ -1452,10 +1436,10 @@ class ApiClient {
         if (response.status === 202) {
           const { jobId } = await response.json();
           clearTimeout(timeout); // no long-lived request on the async path
-          return this.submitAndPollAIJob(
-            () => this.postCollageJob(prompt, options),
-            result => this.normalizeCollageResult(result, prompt),
-            jobId,
+          // Poll the job this POST created. A failed poll is reported, never
+          // re-submitted — a second POST would spend a second allowance unit.
+          return this.pollAIJobResult(jobId).then(result =>
+            this.normalizeCollageResult(result, prompt),
           );
         }
         if (!response.ok) this.throwApiError('AI collage generation failed', response);
