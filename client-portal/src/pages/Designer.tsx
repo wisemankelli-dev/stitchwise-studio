@@ -19,6 +19,7 @@ import { ToolButtons } from '../components/designer/panels/ToolsPanel';
 import CanvasPanel from '../components/designer/panels/CanvasPanel';
 import AiPanel, { AiStatusFooter } from '../components/designer/panels/AiPanel';
 import FilePanel from '../components/designer/panels/FilePanel';
+import ConfirmPanel from '../components/designer/ConfirmPanel';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { describeAiGenerationError } from '../utils/aiGenerationErrors';
@@ -1150,10 +1151,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [showReference, setShowReference] = useState(true);
   const [referenceOpacity, setReferenceOpacity] = useState(0.20);
 
-  // Image upload → grid conversion handler
-  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Image upload → grid conversion. Split in two: convertImageFile does the
+  // work, handleImageUpload asks first when the canvas already has stitches.
+  const convertImageFile = useCallback((file: File) => {
     setRestoredDraft(null); // an upload replaces the canvas -- no pending draft banner
     // b137: an imported image is a NEW design — the loaded pattern's saved
     // source is no longer what this canvas came from.
@@ -1185,14 +1185,39 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         setGridStitchTypes(framed.stitchTypes);
         setCellFractions(framed.cellFractions);
         setIsProcessingImage(false);
-        
-        // Reset file input so user can re-upload the same file
-        if (fileInputRef.current) fileInputRef.current.value = '';
       };
       img.src = ev.target?.result as string;
     };
     reader.readAsDataURL(file);
   }, [gridWidth, gridHeight, numColors, clearLoadedRegenSource]);
+
+  /** Upload entry point: tracing an image replaces the grid, so ask first. */
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset the input NOW so re-picking the same file still fires onChange
+    // (the File object itself is kept in hand for the confirm).
+    e.currentTarget.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (Object.keys(grid).some((k) => Boolean(grid[k]))) {
+      pendingUploadFile.current = file;
+      setPendingUpload(true);
+      return;
+    }
+    convertImageFile(file);
+  }, [grid, convertImageFile]);
+
+  const confirmImageUpload = () => {
+    const file = pendingUploadFile.current;
+    pendingUploadFile.current = null;
+    setPendingUpload(false);
+    if (file) convertImageFile(file);
+  };
+
+  const cancelImageUpload = () => {
+    pendingUploadFile.current = null;
+    setPendingUpload(false);
+  };
 
   // Drawing tools state
   const [drawStart, setDrawStart] = useState<{ row: number; col: number } | null>(null);
@@ -1218,6 +1243,21 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [restoredDraft, setRestoredDraft] = useState<DesignerDraft | null>(null);
   // pendingPreset - ask before a preset click clears stitches off a canvas.
   const [pendingPreset, setPendingPreset] = useState<{ preset: CanvasPreset; stitchW: number; stitchH: number } | null>(null);
+
+  // Destructive-action confirms (owner 11-17: nothing overwrites drawn work
+  // silently). Each asks with the same amber ConfirmPanel the preset and
+  // resize confirms use. They only appear when there is something to lose —
+  // on an empty canvas every one of these actions runs straight through.
+  const [pendingGenerate, setPendingGenerate] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState(false);
+  // Reset (canvas header) and Clear grid (toolbar / phone More menu) are the
+  // same action; the value remembers which button asked so the panel opens
+  // next to it.
+  const [pendingClear, setPendingClear] = useState<null | 'reset' | 'clear'>(null);
+  const [pendingMaskFloor, setPendingMaskFloor] = useState(false);
+  // The picked file is held here while the confirm is open, so the image is
+  // only traced if the user says yes.
+  const pendingUploadFile = useRef<File | null>(null);
 
   // CREATE-YOUR-OWN MODE (owner doctrine 10-26/10-29). Entered from the
   // below-floor steering: the AI mask flow is put away, no mask is applied and
@@ -1899,6 +1939,20 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     }
   }, [activeTool, clearCell, isMouseDown, mirrorCellEdit, mirrorEnabled, selectedColor, selectedStitch, setCell, grid, gridWidth, gridHeight, drawStart, setShapeEnd]);
 
+  /** Clear/Reset entry point: wiping a drawn canvas always asks first. */
+  const requestClearGrid = (from: 'reset' | 'clear') => {
+    if (!canvasHasStitches) {
+      handleClearGrid();
+      return;
+    }
+    setPendingClear(from);
+  };
+
+  const confirmClearGrid = () => {
+    setPendingClear(null);
+    handleClearGrid();
+  };
+
   const handleClearGrid = () => {
     // b137: Clear starts a blank design — no saved pattern owns this canvas.
     clearLoadedRegenSource();
@@ -2309,6 +2363,31 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     }
   }, [aiPrompt, maskSteering.below, gridWidth, gridHeight, fabricCount, premiumModel, isStudioTier, activePreset, effectiveGuide, loadedRegenSource, refreshAIUsage]);
 
+  /** Does the canvas hold any stitch at all? Every confirm below asks only then. */
+  const canvasHasStitches = React.useMemo(
+    () => Object.keys(grid).some((k) => Boolean(grid[k])),
+    [grid],
+  );
+
+  /**
+   * Generate entry point. A generation REPLACES whatever is on the canvas, so
+   * when stitches are already there the user is asked first — with the same
+   * panel a preset click uses. Enter in the prompt goes through here too.
+   */
+  const requestGenerate = () => {
+    if (isGenerating || generatingRef.current) return;
+    if (canvasHasStitches) {
+      setPendingGenerate(true);
+      return;
+    }
+    void handleGenerate();
+  };
+
+  const confirmGenerate = () => {
+    setPendingGenerate(false);
+    void handleGenerate();
+  };
+
   const handleExportPdf = useCallback(() => {
     const colorNames: Record<string, string> = {};
     for (const c of COLORS) colorNames[c.hex] = c.name;
@@ -2425,6 +2504,24 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       requestResize(width, height);
     }
     setAdoptedGuideDims({ colW: width, rowH: height });
+  };
+
+  /**
+   * "Use 54×54" entry point. Making room for the mask restarts the canvas, so a
+   * drawn canvas is asked about first. (The target is never smaller than the
+   * current canvas, so the resize confirm cannot fire on top of this one.)
+   */
+  const requestMaskFloorSize = () => {
+    if (canvasHasStitches) {
+      setPendingMaskFloor(true);
+      return;
+    }
+    useMaskFloorSize();
+  };
+
+  const confirmMaskFloorSize = () => {
+    setPendingMaskFloor(false);
+    useMaskFloorSize();
   };
 
 
@@ -2878,7 +2975,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     <span className="text-[10px] font-bold text-slate-600 w-8 text-center">{Math.round(zoom * 100)}%</span>
                     <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))} className="p-1.5 rounded-lg hover:bg-white text-slate-500"><ZoomIn className="h-4 w-4" /></button>
                   </div>
-                  <button onClick={handleClearGrid} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
+                  <button onClick={() => requestClearGrid('reset')} className="p-2 rounded-lg hover:bg-blush-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-blush-100">
                     <RotateCcw className="h-3.5 w-3.5" /> Reset
                   </button>
                   <input
@@ -3023,6 +3120,33 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 </div>
               </div>
 
+              {pendingClear === 'reset' && (
+                <div className="w-full mb-4">
+                  <ConfirmPanel
+                    testId="confirm-clear"
+                    title="Reset this canvas?"
+                    message="Every stitch on the canvas will be deleted. Undo cannot bring them back."
+                    confirmLabel="Reset canvas"
+                    cancelLabel="Keep it"
+                    onConfirm={confirmClearGrid}
+                    onCancel={() => setPendingClear(null)}
+                  />
+                </div>
+              )}
+
+              {pendingUpload && (
+                <div className="w-full mb-4">
+                  <ConfirmPanel
+                    testId="confirm-upload"
+                    title="Replace what's on the canvas?"
+                    message="Tracing an image replaces the stitches you have drawn with the image's colours."
+                    confirmLabel="Upload and replace"
+                    onConfirm={confirmImageUpload}
+                    onCancel={cancelImageUpload}
+                  />
+                </div>
+              )}
+
               {patternError && (
                 <div
                   role="alert"
@@ -3123,13 +3247,13 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     type="text"
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleGenerate(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') requestGenerate(); }}
                     placeholder="Describe your pattern in detail — subject, colors, details (e.g. 'a teddy bear with a brown sweater')..."
                     className="flex-1 rounded-lg border-purple-200 text-xs text-slate-700 px-3 py-2 border bg-white focus:border-blush-500 focus:ring-blush-500"
                     disabled={isGenerating}
                   />
                   <button
-                    onClick={handleGenerate}
+                    onClick={requestGenerate}
                     disabled={!aiPrompt.trim() || isGenerating || generationNotice.blocked || maskSteering.below}
                     title={
                       generationNotice.blocked
@@ -3158,6 +3282,19 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   {generationNotice.text}
                 </p>
 
+                {pendingGenerate && (
+                  <div className="mt-2">
+                    <ConfirmPanel
+                      testId="confirm-generate"
+                      title="Replace what's on the canvas?"
+                      message="Generating a new pattern clears the stitches you have drawn. It still uses one allowance unit."
+                      confirmLabel="Generate anyway"
+                      onConfirm={confirmGenerate}
+                      onCancel={() => setPendingGenerate(false)}
+                    />
+                  </div>
+                )}
+
                 {maskSteering.below && (
                   <div
                     data-testid="mask-min-grid-steering"
@@ -3180,12 +3317,25 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                       </button>
                       <button
                         type="button"
-                        onClick={useMaskFloorSize}
+                        onClick={requestMaskFloorSize}
                         className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold py-1.5 transition-all"
                       >
                         {maskSteering.resizeLabel}
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {pendingMaskFloor && (
+                  <div className="mt-2">
+                    <ConfirmPanel
+                      testId="confirm-mask-floor"
+                      title="Make room for the mask?"
+                      message={`This restarts the canvas at ${maskSteering.target.width}×${maskSteering.target.height}, so the stitches you have drawn will be cleared.`}
+                      confirmLabel={maskSteering.resizeLabel}
+                      onConfirm={confirmMaskFloorSize}
+                      onCancel={() => setPendingMaskFloor(false)}
+                    />
                   </div>
                 )}
 
@@ -3268,7 +3418,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     <Redo2 className="h-3 w-3" /> Redo
                   </button>
                   <button
-                    onClick={handleClearGrid}
+                    onClick={() => requestClearGrid('clear')}
                     className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 flex items-center gap-1"
                     title="Clear entire grid and start over"
                   >
@@ -3334,6 +3484,20 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   )}
                 </div>
               </div>
+
+              {pendingClear === 'clear' && (
+                <div className="w-full mb-4">
+                  <ConfirmPanel
+                    testId="confirm-clear"
+                    title="Clear the whole grid?"
+                    message="Every stitch on the canvas will be deleted. Undo cannot bring them back."
+                    confirmLabel="Clear grid"
+                    cancelLabel="Keep it"
+                    onConfirm={confirmClearGrid}
+                    onCancel={() => setPendingClear(null)}
+                  />
+                </div>
+              )}
 
               <div
                 ref={canvasRef}
@@ -3446,7 +3610,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
             </button>
             <button
               type="button"
-              onClick={() => { setMoreOpen(false); handleClearGrid(); }}
+              onClick={() => { setMoreOpen(false); requestClearGrid('clear'); }}
               className="w-full min-h-[44px] flex items-center gap-2 px-3 text-sm font-semibold text-red-600"
             >
               <Trash2 className="h-4 w-4" /> Clear grid
@@ -3505,6 +3669,21 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           >
             {patternSaveMsg}
           </p>
+        )}
+
+        {pendingClear && (
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5" data-testid="phone-confirm-clear">
+            <ConfirmPanel
+              testId="confirm-clear"
+              phone
+              title="Clear the whole grid?"
+              message="Every stitch on the canvas will be deleted. Undo cannot bring them back."
+              confirmLabel="Clear grid"
+              cancelLabel="Keep it"
+              onConfirm={confirmClearGrid}
+              onCancel={() => setPendingClear(null)}
+            />
+          </div>
         )}
 
         {pendingSaveConfirm && (
@@ -3794,7 +3973,13 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               onApplyBasicOption={(option) => applyBasicOption(option, setAiPrompt)}
               prompt={aiPrompt}
               onPromptChange={setAiPrompt}
-              onGenerate={handleGenerate}
+              onGenerate={requestGenerate}
+              pendingGenerate={pendingGenerate}
+              onConfirmGenerate={confirmGenerate}
+              onCancelGenerate={() => setPendingGenerate(false)}
+              pendingMaskFloor={pendingMaskFloor}
+              onConfirmMaskFloor={confirmMaskFloorSize}
+              onCancelMaskFloor={() => setPendingMaskFloor(false)}
               isGenerating={isGenerating}
               generatingLabel={pollingStatus || 'Generating…'}
               canGenerate={Boolean(aiPrompt.trim()) && !generationNotice.blocked && !maskSteering.below}
@@ -3809,7 +3994,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               costExhausted={generationNotice.state === 'exhausted'}
               maskSteering={maskSteering}
               onStartCreateOwn={startCreateOwn}
-              onUseMaskFloorSize={useMaskFloorSize}
+              onUseMaskFloorSize={requestMaskFloorSize}
               isStudioTier={isStudioTier}
               premiumModel={premiumModel}
               onTogglePremium={() => setPremiumModel((v) => !v)}
@@ -3836,6 +4021,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               onExportPdf={handleExportPdf}
               fileInputId="phone-image-upload"
               onUploadImage={handleImageUpload}
+              pendingUpload={pendingUpload}
+              onConfirmUpload={confirmImageUpload}
+              onCancelUpload={cancelImageUpload}
               isProcessingImage={isProcessingImage}
               numColors={numColors}
               onNumColorsChange={setNumColors}
