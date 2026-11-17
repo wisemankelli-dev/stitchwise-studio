@@ -127,6 +127,20 @@ describe('owner-approved copy', () => {
     expect(screen.getByText(/We are a tool, not a\s+collaborator\./i)).toBeInTheDocument();
   });
 
+  it('Terms: acceptable use — no reselling the pattern file', () => {
+    renderAt(<Terms />);
+    expect(screen.getByText('Acceptable use.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/The pattern files themselves are for your own use/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/you may not resell, share or redistribute a pattern you have bought or made here/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/you may not list it as your own pattern/i)).toBeInTheDocument();
+    // The old, weaker line must be gone.
+    expect(screen.queryByText(/resell our patterns as your own/i)).not.toBeInTheDocument();
+  });
+
   it('Privacy: what we hold, Stripe, Gemini, deletion', () => {
     renderAt(<Privacy />);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Privacy');
