@@ -104,8 +104,9 @@ export const Terms: React.FC = () => (
       collaborator.
     </Section>
     <Section lead="Acceptable use.">
-      Do not use StitchWise Studio to copy or redistribute other people&apos;s copyrighted artwork, or to
-      resell our patterns as your own.
+      Do not use StitchWise Studio to copy or redistribute other people&apos;s copyrighted artwork. The
+      pattern files themselves are for your own use: you may not resell, share or redistribute a pattern
+      you have bought or made here, and you may not list it as your own pattern.
     </Section>
     <Section lead="Availability.">
       We work to keep the service running, but we do not promise uninterrupted access, and features may
