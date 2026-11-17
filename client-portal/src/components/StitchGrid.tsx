@@ -90,6 +90,15 @@ const BASE_CELL_SIZE = 12; // pixels per cell at zoom=1 (before devicePixelRatio
  *  start at (GUTTER, GUTTER) via the canvas transform; the canvas CSS/buffer
  *  size is grown by this much so the numbers sit in a clean margin strip. */
 export const GRID_GUTTER = 18;
+
+/** Pinch-zoom ceiling on touch devices. Matches the Designer's own zoom
+ *  controls, which stop at 3× (Designer.tsx zoom-in button). */
+export const PINCH_MAX_ZOOM = 3;
+
+/** How long after a touch to ignore the browser's synthesized mouse events.
+ *  A touch fires mousedown/mouseup/click after the pointer events; without this
+ *  a single tap would paint twice. A real mouse never trips it. */
+export const TOUCH_COMPAT_MOUSE_MS = 700;
 /** Gridline/number positions matching the PDF chart convention
  *  (src/utils/pdfExport.ts labelPositions): every-10 stitch boundary plus the
  *  design origin. For length N this returns [0, 10, 20, ..., N]. */
@@ -913,30 +922,52 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     ctx.setTransform(dpr * bufferScale, 0, 0, dpr * bufferScale, GRID_GUTTER * dpr * bufferScale, GRID_GUTTER * dpr * bufferScale);
     drawHoverHighlight(ctx, c * cellSize, r * cellSize, cellSize);
   }, [getCanvasTransform]);
+  const activeTouches = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
+  const touchStroke = useRef<{
+    pointerId: number;
+    startPos: { row: number; col: number } | null;
+    painted: boolean;
+    pressed: boolean;
+  } | null>(null);
+  const lastTouchAt = useRef(0);
+
   // ── Mouse event handlers ──
-  const getGridPos = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getGridPosFromPoint = useCallback(
+    (clientX: number, clientY: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
       const cellSize = BASE_CELL_SIZE * zoom;
-      return mouseToGrid(e.clientX, e.clientY, canvas, cellSize, data.width, data.height);
+      return mouseToGrid(clientX, clientY, canvas, cellSize, data.width, data.height);
     },
     [zoom, data.width, data.height],
+  );
+  const getGridPos = useCallback(
+    (e: { clientX: number; clientY: number }) => getGridPosFromPoint(e.clientX, e.clientY),
+    [getGridPosFromPoint],
+  );
+
+  /** True while the mouse events a touch leaves behind are still in flight. */
+  const isSyntheticTouchMouse = useCallback(
+    () => Date.now() - lastTouchAt.current < TOUCH_COMPAT_MOUSE_MS,
+    [],
   );
 
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (isSyntheticTouchMouse()) return; // the touch path already committed this tap
       const pos = getGridPos(e);
       // End of a click-drag cycle: clear the last hovered cell so the next drag
       // starts fresh instead of connecting a line from the previous stroke.
       lastHoveredCell.current = null;
       if (pos) onCellClick?.(pos.row, pos.col);
     },
-    [getGridPos, onCellClick],
+    [getGridPos, isSyntheticTouchMouse, onCellClick],
   );
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return;
+      if (isSyntheticTouchMouse()) return; // touch already pressed this cell
       const pos = getGridPos(e);
       if (pos) {
         if (activeTool === 'paint' || activeTool === 'erase' || activeTool === 'half') {
@@ -945,10 +976,11 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         onCellPress?.(pos.row, pos.col);
       }
     },
-    [getGridPos, onCellPress, activeTool, paintCellsDirect],
+    [getGridPos, isSyntheticTouchMouse, onCellPress, activeTool, paintCellsDirect],
   );
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (isSyntheticTouchMouse()) return; // touch stroke already painted this path
       const pos = getGridPos(e);
       if (!pos) return;
       const isCellTool = activeTool !== 'pan';
@@ -980,7 +1012,7 @@ const StitchGrid: React.FC<StitchGridProps> = ({
         }
       }
     },
-    [getGridPos, isMouseDown, onCellHover, activeTool, restoreCell, drawHoverHighlightAt, paintCellsDirect],
+    [getGridPos, isMouseDown, isSyntheticTouchMouse, onCellHover, activeTool, restoreCell, drawHoverHighlightAt, paintCellsDirect],
   );
 
   const handleCanvasMouseLeave = useCallback(() => {
@@ -989,6 +1021,116 @@ const StitchGrid: React.FC<StitchGridProps> = ({
     hoveredCell.current = null;
     lastHoveredCell.current = null;
   }, [restoreCell]);
+
+  // ── Touch / pointer input ────────────────────────────────────────────────
+  // The canvas used to bind mouse events only, so on a phone a finger drag
+  // painted nothing and pinch-zoom did not exist (only the browser's synthetic
+  // click after a tap ever painted a cell). Pointer events add touch without
+  // touching the mouse handlers above: every handler here returns immediately
+  // for pointerType 'mouse', so desktop behaviour is byte-for-byte the same.
+  /** Distance between the first two fingers on the canvas (0 if fewer than 2). */
+  const pinchDistance = () => {
+    const pts = [...activeTouches.current.values()];
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'mouse') return; // desktop keeps the mouse path
+    lastTouchAt.current = Date.now();
+    activeTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const fingers = activeTouches.current.size;
+    if (fingers === 2) {
+      // Second finger down → this is a pinch. Abandon any stroke in progress so
+      // the gesture never leaves paint behind.
+      touchStroke.current = null;
+      lastHoveredCell.current = null;
+      const dist = pinchDistance();
+      pinchStart.current = dist > 0 ? { dist, zoom } : null;
+      return;
+    }
+    if (fingers > 2) return;
+    e.preventDefault(); // no page scroll / browser zoom, no synthetic mouse events
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
+    const pos = getGridPosFromPoint(e.clientX, e.clientY);
+    touchStroke.current = { pointerId: e.pointerId, startPos: pos, painted: false, pressed: false };
+    if (pos) lastHoveredCell.current = pos;
+    // Shape tools arm their drag on press, exactly like the mouse. Paint tools
+    // wait for the first move, so a pinch that starts with one finger down
+    // cannot leave a stray stitch behind.
+    if (pos && (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line')) {
+      onCellPress?.(pos.row, pos.col);
+      touchStroke.current.pressed = true;
+    }
+  }, [activeTool, getGridPosFromPoint, onCellPress, zoom]);
+
+  const handleCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'mouse') return;
+    lastTouchAt.current = Date.now();
+    const touches = activeTouches.current;
+    if (!touches.has(e.pointerId)) return; // pointer did not start on the canvas
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinchStart.current && touches.size >= 2) {
+      const dist = pinchDistance();
+      const start = pinchStart.current;
+      if (start.dist > 0 && dist > 0) {
+        const next = start.zoom * (dist / start.dist);
+        const clamped = Math.min(PINCH_MAX_ZOOM, Math.max(MIN_ZOOM, next));
+        onZoomChange?.(Math.round(clamped * 100) / 100);
+      }
+      return; // a pinch never paints
+    }
+    const stroke = touchStroke.current;
+    if (!stroke || stroke.pointerId !== e.pointerId) return;
+    const pos = getGridPosFromPoint(e.clientX, e.clientY);
+    if (!pos) return;
+    // Same contiguous stroke the mouse paints: fill the cells between samples.
+    const cells = stroke.painted
+      ? cellsBetween(lastHoveredCell.current, pos)
+      : [...(stroke.startPos ? [stroke.startPos] : []), ...cellsBetween(stroke.startPos, pos)];
+    stroke.painted = true;
+    lastHoveredCell.current = pos;
+    if (activeTool === 'paint' || activeTool === 'erase' || activeTool === 'half') {
+      paintCellsDirect(cells);
+    }
+    for (const p of cells) onCellHover?.(p.row, p.col);
+  }, [activeTool, getGridPosFromPoint, onCellHover, onZoomChange, paintCellsDirect]);
+
+  const endTouchStroke = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>, commit: boolean) => {
+      if (e.pointerType === 'mouse') return;
+      lastTouchAt.current = Date.now();
+      activeTouches.current.delete(e.pointerId);
+      if (activeTouches.current.size < 2) pinchStart.current = null;
+      const stroke = touchStroke.current;
+      if (!stroke || stroke.pointerId !== e.pointerId) return;
+      touchStroke.current = null;
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* unsupported */ }
+      const pos = getGridPosFromPoint(e.clientX, e.clientY);
+      lastHoveredCell.current = null;
+      if (!commit) return; // cancelled gesture: nothing to commit
+      if (!stroke.painted && pos) {
+        // A tap paints like a mouse press + click on that one cell.
+        if (!stroke.pressed) {
+          if (activeTool === 'paint' || activeTool === 'erase' || activeTool === 'half') {
+            paintCellsDirect([pos]);
+          }
+          onCellPress?.(pos.row, pos.col);
+        }
+      }
+      if (pos) onCellClick?.(pos.row, pos.col);
+    },
+    [activeTool, getGridPosFromPoint, onCellClick, onCellPress, paintCellsDirect],
+  );
+
+  const handleCanvasPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => endTouchStroke(e, true),
+    [endTouchStroke],
+  );
+  const handleCanvasPointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => endTouchStroke(e, false),
+    [endTouchStroke],
+  );
 
   // ── Cursor style ──
 
@@ -1092,8 +1234,12 @@ const StitchGrid: React.FC<StitchGridProps> = ({
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseLeave={handleCanvasMouseLeave}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerUp}
+          onPointerCancel={handleCanvasPointerCancel}
           className="rounded-lg"
-          style={{ cursor: getCursorStyle() }}
+          style={{ cursor: getCursorStyle(), touchAction: 'none' }}
           aria-label={`Stitch grid: ${data.width}×${data.height}, ${data.totalStitches} stitches`}
         />
       </div>
