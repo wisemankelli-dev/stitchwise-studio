@@ -101,6 +101,64 @@ describe('Designer — phone shell', () => {
     expect(screen.queryByTestId('phone-bottom-sheet')).toBeNull();
   });
 
+  it('opens all five tabs from one sheet, and the ✨ AI button opens the AI tab', () => {
+    stubViewport(false);
+    renderDesigner();
+
+    fireEvent.click(screen.getByTestId('phone-bar-ai'));
+    expect(screen.getByTestId('phone-bottom-sheet')).toBeInTheDocument();
+    expect(screen.getByTestId('phone-ai-panel')).toBeInTheDocument();
+    for (const label of ['Colour', 'Tools', 'Canvas', 'AI', 'File']) {
+      expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
+    }
+    // The ✨ button only opens the sheet: nothing has been generated.
+    expect(screen.getByTestId('phone-bar-ai').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('puts the allowance line directly above Generate in the AI tab', () => {
+    stubViewport(false);
+    renderDesigner();
+
+    fireEvent.click(screen.getByTestId('phone-bar-ai'));
+    const cost = screen.getByTestId('ai-generation-cost');
+    const generate = screen.getByTestId('phone-generate');
+    // Cost line first in document order, and the button right after it.
+    expect(cost.compareDocumentPosition(generate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(generate.textContent).toContain('Generate');
+  });
+
+  it('reaches grid size and presets from the Canvas tab', () => {
+    stubViewport(false);
+    renderDesigner();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Canvas' }));
+    expect(screen.getByTestId('phone-canvas-panel')).toBeInTheDocument();
+
+    // The nine product presets the desktop left column has.
+    expect(screen.getByText('Bag Charm')).toBeInTheDocument();
+    expect(screen.getByText('Stocking')).toBeInTheDocument();
+
+    // Custom size + Apply, and the grid-lines / full-screen switches, all ≥44 px.
+    const apply = screen.getByTestId('phone-apply-size');
+    expect(apply.className).toContain('h-11');
+    expect(screen.getByLabelText('Grid width in stitches')).toBeInTheDocument();
+    expect(screen.getByTestId('phone-toggle-grid-lines').className).toContain('min-h-[44px]');
+    expect(screen.getByTestId('phone-toggle-fullscreen').className).toContain('min-h-[44px]');
+  });
+
+  it('reaches save, export and upload from the File tab', () => {
+    stubViewport(false);
+    renderDesigner();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'File' }));
+    expect(screen.getByTestId('phone-file-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('phone-file-save').className).toContain('h-11');
+    expect(screen.getByTestId('phone-file-export-pdf')).toBeInTheDocument();
+    expect(screen.getByText('Upload Image')).toBeInTheDocument();
+    expect(screen.getByLabelText('Number of colors')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pattern name')).toBeInTheDocument();
+  });
+
   it('keeps the desktop two-column DOM on desktop', () => {
     stubViewport(true);
     renderDesigner();

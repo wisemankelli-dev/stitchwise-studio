@@ -14,6 +14,8 @@ export interface BottomSheetProps {
   onTabChange: (id: string) => void;
   onClose: () => void;
   children: React.ReactNode;
+  /** Pinned below the scrolling body — AI errors/status live here. */
+  footer?: React.ReactNode;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface BottomSheetProps {
  * scrolls so the tabs and close button never move. The handle, the tabs and
  * the close button are all ≥ 44 px.
  */
-export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTabChange, onClose, children }) => {
+export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTabChange, onClose, children, footer }) => {
   if (!open) return null;
   return (
     <div
@@ -41,7 +43,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTab
             onClick={() => onTabChange(t.id)}
             aria-selected={tab === t.id}
             role="tab"
-            className={`h-11 flex-1 rounded-lg text-sm font-bold transition-colors ${
+            className={`h-11 flex-1 rounded-lg text-xs font-bold transition-colors ${
               tab === t.id
                 ? 'bg-blush-50 text-blush-700 ring-1 ring-blush-300'
                 : 'text-slate-500 hover:bg-blush-50/60'
@@ -65,6 +67,11 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, tab, tabs, onTab
       >
         {children}
       </div>
+      {footer && (
+        <div className="shrink-0 pb-[env(safe-area-inset-bottom)]" data-testid="phone-sheet-footer">
+          {footer}
+        </div>
+      )}
     </div>
   );
 };

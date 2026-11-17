@@ -69,6 +69,13 @@ export interface StitchGridProps {
   compact?: boolean;
   /** Set false to hide the built-in zoom/grid/fullscreen row (phone shell). */
   showToolbar?: boolean;
+  /**
+   * Controlled grid-lines visibility. The phone shell hides this component's
+   * own toolbar, so the Canvas tab owns the switch; omit both to keep the
+   * uncontrolled desktop behaviour.
+   */
+  gridLines?: boolean;
+  onGridLinesChange?: (show: boolean) => void;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -545,11 +552,24 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   guide = null,
   compact = false,
   showToolbar = true,
+  gridLines,
+  onGridLinesChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
-  const [showGridLines, setShowGridLines] = useState(true);
+  const [internalGridLines, setInternalGridLines] = useState(true);
+  // Controlled when the phone Canvas tab passes `gridLines`, uncontrolled
+  // (desktop) otherwise.
+  const showGridLines = gridLines ?? internalGridLines;
+  const setShowGridLines = useCallback(
+    (updater: boolean | ((v: boolean) => boolean)) => {
+      const next = typeof updater === 'function' ? updater(showGridLines) : updater;
+      if (onGridLinesChange) onGridLinesChange(next);
+      else setInternalGridLines(next);
+    },
+    [showGridLines, onGridLinesChange],
+  );
   const lastHoveredCell = useRef<{ row: number; col: number } | null>(null);
   const hoveredCell = useRef<{ row: number; col: number } | null>(null);
   const referenceImgRef = useRef<HTMLImageElement | null>(null);

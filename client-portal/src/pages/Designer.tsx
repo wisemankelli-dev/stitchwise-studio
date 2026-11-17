@@ -16,6 +16,9 @@ import BottomBar from '../components/designer/BottomBar';
 import BottomSheet from '../components/designer/BottomSheet';
 import { ThreadBoxPanel, StitchStylePicker } from '../components/designer/panels/ColourPanel';
 import { ToolButtons } from '../components/designer/panels/ToolsPanel';
+import CanvasPanel from '../components/designer/panels/CanvasPanel';
+import AiPanel, { AiStatusFooter } from '../components/designer/panels/AiPanel';
+import FilePanel from '../components/designer/panels/FilePanel';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { describeAiGenerationError } from '../utils/aiGenerationErrors';
@@ -43,6 +46,10 @@ import {
 interface StitchStyle { id: string; name: string; description: string; }
 
 type EditTool = 'select' | 'mirror' | 'erase' | 'clone' | 'eyedropper' | 'paint' | 'alphabet' | 'rectangle' | 'circle' | 'line' | 'fill' | 'pan' | 'half';
+
+/** The phone sheet's five tabs — every desktop control lives in one of them. */
+type PhoneSheetTab = 'colour' | 'tools' | 'canvas' | 'ai' | 'file';
+type PhoneSheet = 'closed' | PhoneSheetTab;
 
 const COLORS = [
   // Default (first) swatch stays Rose Red so a fresh canvas paints visibly.
@@ -1130,7 +1137,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // Gating on the viewport rather than CSS keeps a hidden second copy of every
   // control out of the DOM, so the desktop DOM is exactly what it was.
   const isDesktop = useIsDesktop();
-  const [phoneSheet, setPhoneSheet] = useState<'closed' | 'colour' | 'tools'>('closed');
+  /** Phone sheet: one sheet, five tabs, closed by default. */
+  const [phoneSheet, setPhoneSheet] = useState<PhoneSheet>('closed');
+  // The phone hides StitchGrid's own toolbar, so grid lines are controlled here
+  // (the Canvas tab's switch) instead of inside StitchGrid.
+  const [phoneGridLines, setPhoneGridLines] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -1385,6 +1396,49 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     if (!moreOpen) return;
     api.listPatterns().then(setSavedPatterns).catch(() => setSavedPatterns([]));
   }, [moreOpen]);
+
+  // Phone Canvas tab: the same nine presets the desktop left column shows,
+  // with their stitch size and physical size at the current fabric count.
+  const phonePresetRows = CANVAS_PRESETS.map((preset) => {
+    const { w, h } = presetStitches(preset, fabricCount);
+    return {
+      name: preset.name,
+      stitchW: w,
+      stitchH: h,
+      meta: `${w}×${h} st · ${fmtInches(w, fabricCount)}″×${fmtInches(h, fabricCount)}″ on ${fabricCount}ct`,
+      active: activePreset?.inchW === preset.inchW && activePreset?.inchH === preset.inchH,
+    };
+  });
+
+  /** The same decision the desktop preset buttons make: never wipe stitches silently. */
+  const handlePhonePreset = (name: string) => {
+    const preset = CANVAS_PRESETS.find((p) => p.name === name);
+    if (!preset) return;
+    const { w, h } = presetStitches(preset, fabricCount);
+    const hasStitches = Object.keys(grid).some((k) => grid[k]);
+    if (hasStitches) {
+      setPendingPreset({ preset, stitchW: w, stitchH: h });
+      return;
+    }
+    startFreshPresetCanvas(preset, w, h);
+  };
+
+  /** Fabric count on the phone re-derives an active preset's canvas, like desktop. */
+  const handlePhoneFabricChange = (newCount: number) => {
+    setFabricCount(newCount);
+    if (activePreset) {
+      const { w, h } = presetStitches(activePreset, newCount);
+      requestResize(w, h);
+    }
+  };
+
+  // The File tab lists saved patterns, so fetch them when it opens (the desktop
+  // Load dropdown does the same on click).
+  useEffect(() => {
+    if (phoneSheet !== 'file') return;
+    void loadPatternList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phoneSheet]);
 
   /** Arm a tool — shared by the desktop toolbar and the phone Tools tab. */
   const handleSelectTool = (id: string) => {
@@ -3517,6 +3571,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
             showReference={showReference}
             referenceOpacity={referenceOpacity}
             guide={effectiveGuide}
+            gridLines={phoneGridLines}
+            onGridLinesChange={setPhoneGridLines}
             compact
             showToolbar={false}
           />
@@ -3526,19 +3582,31 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           selectedColor={selectedColor}
           activeTool={activeTool}
           activeToolLabel={TOOLS.find((t) => t.id === activeTool)?.label ?? 'Tools'}
-          openTab={phoneSheet === 'colour' || phoneSheet === 'tools' ? phoneSheet : null}
+          openTab={phoneSheet === 'closed' ? null : phoneSheet}
           onOpenColour={() => setPhoneSheet((s) => (s === 'colour' ? 'closed' : 'colour'))}
           onPaint={() => { setActiveTool('paint'); setPhoneSheet('closed'); }}
           onErase={() => { setActiveTool('erase'); setPhoneSheet('closed'); }}
           onOpenTools={() => setPhoneSheet((s) => (s === 'tools' ? 'closed' : 'tools'))}
+          onOpenAi={() => setPhoneSheet((s) => (s === 'ai' ? 'closed' : 'ai'))}
         />
 
         <BottomSheet
-          open={phoneSheet === 'colour' || phoneSheet === 'tools'}
-          tab={phoneSheet === 'tools' ? 'tools' : 'colour'}
-          tabs={[{ id: 'colour', label: 'Colour' }, { id: 'tools', label: 'Tools' }]}
-          onTabChange={(id) => setPhoneSheet(id === 'tools' ? 'tools' : 'colour')}
+          open={phoneSheet !== 'closed'}
+          tab={phoneSheet === 'closed' ? null : phoneSheet}
+          tabs={[
+            { id: 'colour', label: 'Colour' },
+            { id: 'tools', label: 'Tools' },
+            { id: 'canvas', label: 'Canvas' },
+            { id: 'ai', label: 'AI' },
+            { id: 'file', label: 'File' },
+          ]}
+          onTabChange={(id) => setPhoneSheet(id as PhoneSheetTab)}
           onClose={() => setPhoneSheet('closed')}
+          footer={
+            phoneSheet === 'ai'
+              ? <AiStatusFooter error={aiError} status={isGenerating ? pollingStatus : ''} />
+              : undefined
+          }
         >
           {phoneSheet === 'colour' && (
             <ThreadBoxPanel
@@ -3550,6 +3618,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               onAddCustomColor={addCustomColor}
             />
           )}
+
           {phoneSheet === 'tools' && (
             <div className="space-y-4">
               <StitchStylePicker
@@ -3641,7 +3710,134 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   </button>
                 </div>
               )}
+              {/* Clipart shapes — the desktop left column's Shape Browser. It
+                  opens collapsed so it never buries the tools above it. */}
+              <ShapePicker
+                selectedShape={selectedShape}
+                selectedColor={selectedColor}
+                onSelectShape={(shape) => {
+                  setSelectedShape(shape);
+                  setActiveTool('paint');
+                }}
+                defaultExpanded={false}
+                className="bg-white"
+              />
             </div>
+          )}
+
+          {phoneSheet === 'canvas' && (
+            <CanvasPanel
+              presets={phonePresetRows}
+              onSelectPreset={handlePhonePreset}
+              pendingPreset={
+                pendingPreset
+                  ? { name: pendingPreset.preset.name, stitchW: pendingPreset.stitchW, stitchH: pendingPreset.stitchH }
+                  : null
+              }
+              onConfirmPreset={() => {
+                if (pendingPreset) {
+                  startFreshPresetCanvas(pendingPreset.preset, pendingPreset.stitchW, pendingPreset.stitchH);
+                }
+              }}
+              onCancelPreset={() => setPendingPreset(null)}
+              gridWidth={gridWidth}
+              gridHeight={gridHeight}
+              onResize={(w, h) => { setActivePreset(null); requestResize(w, h); }}
+              resizeWarning={showResizeWarning ? { w: pendingGridWidth, h: pendingGridHeight } : null}
+              onConfirmResize={() => applyResize(pendingGridWidth, pendingGridHeight)}
+              onCancelResize={() => setShowResizeWarning(false)}
+              physicalNote={
+                `Physical size on ${fabricCount}ct: ` +
+                `${stitchesToInches(gridWidth, fabricCount).toFixed(1)}″ × ` +
+                `${stitchesToInches(gridHeight, fabricCount).toFixed(1)}″` +
+                (gridWidth !== gridHeight ? ' (non-square)' : '')
+              }
+              fabricCount={fabricCount}
+              fabricCounts={FABRIC_COUNTS}
+              onFabricChange={handlePhoneFabricChange}
+              designSize={{
+                widthInches: fabricEstimates.designWidthInches,
+                widthCm: fabricEstimates.designWidthCm,
+                heightInches: fabricEstimates.designHeightInches,
+                heightCm: fabricEstimates.designHeightCm,
+              }}
+              fabricNeeded={{
+                widthInches: fabricEstimates.fabricWidthInches,
+                heightInches: fabricEstimates.fabricHeightInches,
+              }}
+              threadEstimates={colorThreadEstimates}
+              totalThreadMeters={colorThreadEstimates.reduce((s, c) => s + c.meters, 0)}
+              totalSkeins={fabricEstimates.totalSkeins}
+              dmcPalette={stitchData?.dmcPalette ?? []}
+              totalStitches={stitchData?.totalStitches ?? 0}
+              showGridLines={phoneGridLines}
+              onToggleGridLines={() => setPhoneGridLines((v) => !v)}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => setIsFullscreen((v) => !v)}
+            />
+          )}
+
+          {phoneSheet === 'ai' && (
+            <AiPanel
+              createOwnMode={createOwnMode}
+              onUseAiAgain={() => setCreateOwnMode(false)}
+              basicOptions={basicOptions}
+              basicHeading={activeMask ? basicOptionsHeading(activeMask) : ''}
+              basicCostNote={BASIC_OPTIONS_COST_NOTE}
+              onApplyBasicOption={(option) => applyBasicOption(option, setAiPrompt)}
+              prompt={aiPrompt}
+              onPromptChange={setAiPrompt}
+              onGenerate={handleGenerate}
+              isGenerating={isGenerating}
+              generatingLabel={pollingStatus || 'Generating…'}
+              canGenerate={Boolean(aiPrompt.trim()) && !generationNotice.blocked && !maskSteering.below}
+              disabledReason={
+                generationNotice.blocked
+                  ? generationNotice.text
+                  : maskSteering.below
+                    ? maskSteering.title
+                    : undefined
+              }
+              costText={generationNotice.text}
+              costExhausted={generationNotice.state === 'exhausted'}
+              maskSteering={maskSteering}
+              onStartCreateOwn={startCreateOwn}
+              onUseMaskFloorSize={useMaskFloorSize}
+              isStudioTier={isStudioTier}
+              premiumModel={premiumModel}
+              onTogglePremium={() => setPremiumModel((v) => !v)}
+              aiStats={aiStats}
+              aiArtworkUrl={aiArtworkUrl}
+            />
+          )}
+
+          {phoneSheet === 'file' && (
+            <FilePanel
+              patternName={patternName}
+              onPatternNameChange={setPatternName}
+              onSave={handleSavePattern}
+              isSaving={isSavingPattern}
+              patternError={patternError}
+              onDismissError={() => setPatternError(null)}
+              savedPatterns={savedPatterns}
+              isLoadingPatterns={isLoadingPatterns}
+              patternsLoadError={patternsLoadError}
+              loadingPatternId={loadingPatternId}
+              onLoadPattern={handleLoadPattern}
+              onDeletePattern={handleDeletePattern}
+              onRefreshPatterns={() => { void loadPatternList(); }}
+              onExportPdf={handleExportPdf}
+              fileInputId="phone-image-upload"
+              onUploadImage={handleImageUpload}
+              isProcessingImage={isProcessingImage}
+              numColors={numColors}
+              onNumColorsChange={setNumColors}
+              hasReferenceImage={Boolean(referenceImage)}
+              showReference={showReference}
+              onToggleReference={() => setShowReference((v) => !v)}
+              referenceOpacity={referenceOpacity}
+              onReferenceOpacityChange={setReferenceOpacity}
+            />
           )}
         </BottomSheet>
       </div>
