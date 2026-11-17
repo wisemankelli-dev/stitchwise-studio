@@ -6,9 +6,16 @@ import {
   Scissors, Square, ZoomIn, ZoomOut, AlertTriangle,
   Copy, Eraser, Paintbrush, Pipette, FlipHorizontal, MousePointer2, Type, Ruler,
   RectangleHorizontal, Circle, Minus, PaintBucket, Hand, Triangle, Trash2,
-  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2
+  Upload, Eye, Sparkles, Loader2, Save, FolderOpen, ChevronDown, Undo2, Redo2, Maximize
 } from 'lucide-react';
 import StitchGrid, { DmcLegend } from '../components/StitchGrid';
+import { useIsDesktop } from '../hooks/useIsDesktop';
+import PhoneTopBar from '../components/designer/PhoneTopBar';
+import CanvasToolbar from '../components/designer/CanvasToolbar';
+import BottomBar from '../components/designer/BottomBar';
+import BottomSheet from '../components/designer/BottomSheet';
+import { ThreadBoxPanel, StitchStylePicker } from '../components/designer/panels/ColourPanel';
+import { ToolButtons } from '../components/designer/panels/ToolsPanel';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
 import { describeAiGenerationError } from '../utils/aiGenerationErrors';
@@ -1110,6 +1117,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [cloneSource, setCloneSource] = useState<{ row: number; col: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // ── Phone shell (below lg) ────────────────────────────────────────────────
+  // The Designer renders two trees: the desktop two-column layout (unchanged)
+  // and the phone shell — top bar → canvas stage → bottom bar → one sheet.
+  // Gating on the viewport rather than CSS keeps a hidden second copy of every
+  // control out of the DOM, so the desktop DOM is exactly what it was.
+  const isDesktop = useIsDesktop();
+  const [phoneSheet, setPhoneSheet] = useState<'closed' | 'colour' | 'tools'>('closed');
+  const [moreOpen, setMoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [numColors, setNumColors] = useState(15); // color count for quantization
@@ -1331,6 +1347,46 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       window.removeEventListener('resize', doFit);
     };
   }, [gridWidth, gridHeight]);
+
+  /** Frame the whole grid in the phone canvas stage (Fit button). */
+  const fitCanvasToStage = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    setZoom(fitZoomFor(
+      gridWidth,
+      gridHeight,
+      Math.max(120, el.clientWidth - 16),
+      Math.max(120, el.clientHeight - 16),
+    ));
+  }, [gridWidth, gridHeight]);
+
+  // Phone: open framed. The stage is the only space there is, so a fresh
+  // canvas, a new preset and a resize all re-fit instead of leaving the user
+  // staring at a corner of an oversized grid.
+  useEffect(() => {
+    if (isDesktop) return;
+    const el = canvasRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w < 60 || h < 60) return;
+    setZoom(fitZoomFor(gridWidth, gridHeight, Math.max(120, w - 16), Math.max(120, h - 16)));
+  }, [isDesktop, gridWidth, gridHeight, fabricCount]);
+
+  // Fetch the saved-pattern list when the phone More menu opens (the desktop
+  // Load dropdown does this on click; the phone menu has no dropdown).
+  useEffect(() => {
+    if (!moreOpen) return;
+    api.listPatterns().then(setSavedPatterns).catch(() => setSavedPatterns([]));
+  }, [moreOpen]);
+
+  /** Arm a tool — shared by the desktop toolbar and the phone Tools tab. */
+  const handleSelectTool = (id: string) => {
+    setActiveTool(id as EditTool);
+    if (id !== 'clone') setCloneSource(null);
+    if (id !== 'mirror') setMirrorEnabled(false);
+    if (id !== 'paint') setSelectedShape(null);
+  };
 
 
   // Utility: stitches to inches based on fabric count
@@ -2373,7 +2429,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   };
 
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden'}`}>
+    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : isDesktop ? 'bg-gradient-to-b from-white via-blush-50/30 to-white min-h-screen py-16 px-6 lg:px-8 relative overflow-hidden' : 'bg-white h-[100dvh] max-h-[100dvh] overflow-hidden relative'}`}>
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.02]">
         <svg className="w-full h-full"><defs><pattern id="des-floral" x="0" y="0" width="160" height="160" patternUnits="userSpaceOnUse">
           <circle cx="30" cy="30" r="12" fill="#f472b6" /><circle cx="30" cy="30" r="6" fill="#f9a8d4" />
@@ -2381,6 +2437,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           <circle cx="130" cy="30" r="12" fill="#f472b6" /><circle cx="130" cy="130" r="10" fill="#f472b6" />
         </pattern></defs><rect width="100%" height="100%" fill="url(#des-floral)" /></svg>
       </div>
+      {isDesktop ? (
       <div className="max-w-7xl mx-auto relative z-10">
         <div className="mb-6 flex justify-between items-center">
           <Link to="/dashboard" className="text-sm font-semibold text-slate-500 hover:text-blush-600 flex items-center gap-1.5 transition-colors">
@@ -2444,49 +2501,19 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Palette className="h-5 w-5 text-blush-500" /> Designer Thread Box
               </h2>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Active Thread Color</label>
-                <div className="flex flex-wrap gap-2">
-                  {COLORS.map((c) => (
-                    <button key={c.name} onClick={() => setSelectedColor(c.hex)} title={c.name}
-                      className="h-8 w-8 rounded-full border transition-all relative flex items-center justify-center"
-                      style={{ backgroundColor: c.hex, borderColor: selectedColor === c.hex ? '#000' : 'rgba(0,0,0,0.1)' }}>
-                      {selectedColor === c.hex && <span className="block h-2.5 w-2.5 rounded-full bg-white shadow-sm" />}
-                    </button>
-                  ))}
-                  {customColors.map((hex) => (
-                    <button key={hex} onClick={() => setSelectedColor(hex)} title={`My color ${hex}`}
-                      className="h-8 w-8 rounded-full border border-dashed transition-all relative flex items-center justify-center"
-                      style={{ backgroundColor: hex, borderColor: selectedColor === hex ? '#000' : 'rgba(0,0,0,0.25)' }}>
-                      {selectedColor === hex && <span className="block h-2.5 w-2.5 rounded-full bg-white shadow-sm" />}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)}
-                    className="h-8 w-8 rounded-full border border-slate-300 cursor-pointer bg-white p-0.5" title="Pick any color"
-                    aria-label="Custom color picker" />
-                  <input type="text" value={selectedColor} onChange={(e) => handleHexInput(e.target.value)}
-                    className="w-24 rounded-lg border border-blush-100 bg-white px-2 py-1 text-xs font-mono text-slate-700"
-                    placeholder="#RRGGBB" aria-label="Hex color code" spellCheck={false} />
-                  <button onClick={addCustomColor} title="Add this color to my swatches"
-                    className="h-8 w-8 rounded-lg border border-blush-200 bg-blush-50 hover:bg-blush-100 text-blush-600 text-lg font-bold leading-none flex items-center justify-center transition-colors"
-                    aria-label="Add current color to swatches">+</button>
-                  <span className="text-[10px] text-slate-400 leading-tight">Pick any color,<br />tap + to pin it</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Stitch Style</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {STITCH_STYLES.map((s) => (
-                    <button key={s.id} onClick={() => setSelectedStitch(s.id)}
-                      className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-all ${selectedStitch === s.id ? 'border-blush-600 bg-blush-50 text-blush-800 ring-1 ring-blush-500' : 'border-blush-100 bg-white hover:bg-blush-50 text-slate-700'}`}>
-                      <div className="font-bold">{s.name}</div>
-                      <div className="text-[10px] text-slate-500 font-normal leading-tight mt-0.5">{s.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <ThreadBoxPanel
+                colors={COLORS}
+                customColors={customColors}
+                selectedColor={selectedColor}
+                onSelectColor={setSelectedColor}
+                onHexInput={handleHexInput}
+                onAddCustomColor={addCustomColor}
+              />
+              <StitchStylePicker
+                styles={STITCH_STYLES}
+                selectedStitch={selectedStitch}
+                onSelectStitch={setSelectedStitch}
+              />
             </div>
 
             {/* === CANVAS SIZE CONTROLS === */}
@@ -3096,28 +3123,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
 
               {/* Toolbar */}
               <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
-                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
-                  {TOOLS.map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => {
-                        setActiveTool(tool.id);
-                        if (tool.id !== 'clone') setCloneSource(null);
-                        if (tool.id !== 'mirror') setMirrorEnabled(false);
-                        if (tool.id !== 'paint') setSelectedShape(null);
-                      }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-                        activeTool === tool.id
-                          ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                      title={tool.label}
-                    >
-                      {tool.icon}
-                      <span className="hidden sm:inline">{tool.label}</span>
-                    </button>
-                  ))}
-                </div>
+                <ToolButtons tools={TOOLS} activeTool={activeTool} onSelectTool={handleSelectTool} />
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleUndo}
@@ -3267,6 +3273,306 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           </div>
         </div>
       </div>
+      ) : (
+      /* ==================== PHONE SHELL (< lg) ====================
+         52 px top bar → 44 px canvas toolbar → canvas stage (fills the rest) →
+         60 px bottom bar → one sheet (closed by default). The page is exactly
+         viewport height and only the sheet body scrolls, so the grid is on
+         screen from the first paint instead of 2,700 px down. */
+      <div className="relative z-10 h-full flex flex-col" data-testid="designer-phone-shell">
+        <PhoneTopBar
+          patternName={patternName}
+          onPatternNameChange={setPatternName}
+          onSave={handleSavePattern}
+          isSaving={isSavingPattern}
+          onMore={() => setMoreOpen((o) => !o)}
+          moreOpen={moreOpen}
+        />
+
+        {/* More menu: Export PDF · Full screen · Clear grid · Load saved.
+            (Desktop's separate "Reset" and "Clear Grid" are one action here.) */}
+        {moreOpen && (
+          <div
+            className="absolute right-2 top-[54px] z-30 w-64 max-h-[60dvh] overflow-y-auto rounded-xl border border-blush-100 bg-white shadow-xl"
+            data-testid="phone-more-menu"
+          >
+            <button
+              type="button"
+              onClick={() => { setMoreOpen(false); handleExportPdf(); }}
+              className="w-full min-h-[44px] flex items-center gap-2 px-3 text-sm font-semibold text-slate-700 border-b border-blush-50"
+            >
+              <Download className="h-4 w-4 text-blush-500" /> Export PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMoreOpen(false); setIsFullscreen(!isFullscreen); }}
+              className="w-full min-h-[44px] flex items-center gap-2 px-3 text-sm font-semibold text-slate-700 border-b border-blush-50"
+            >
+              <Maximize className="h-4 w-4 text-blush-500" /> {isFullscreen ? 'Exit full screen' : 'Full screen'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMoreOpen(false); handleClearGrid(); }}
+              className="w-full min-h-[44px] flex items-center gap-2 px-3 text-sm font-semibold text-red-600"
+            >
+              <Trash2 className="h-4 w-4" /> Clear grid
+            </button>
+            <div className="border-t border-blush-50">
+              <p className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Load saved pattern</p>
+              {savedPatterns.length === 0 ? (
+                <p className="px-3 pb-2 text-xs text-slate-400">No saved patterns yet</p>
+              ) : (
+                savedPatterns.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setMoreOpen(false); handleLoadPattern(p.id); }}
+                    className="w-full min-h-[44px] flex items-center justify-between gap-2 px-3 text-sm text-slate-700 border-t border-blush-50"
+                  >
+                    <span className="truncate">{p.name}</span>
+                    <span className="text-[11px] text-slate-400 shrink-0">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Restored-draft banner (same decision as desktop: Keep or Clear) */}
+        {restoredDraft && (
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5" data-testid="restored-draft-banner">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-amber-900">Restored draft</p>
+                <p className="text-[11px] text-amber-800">
+                  {Object.keys(restoredDraft.grid).filter((k) => restoredDraft.grid[k]).length} stitches
+                  {` · ${restoredDraft.gridWidth}×${restoredDraft.gridHeight}`}
+                </p>
+              </div>
+              <button type="button" onClick={handleKeepDraft} className="h-11 min-w-[64px] rounded-lg bg-blush-600 text-white text-xs font-bold">
+                Keep
+              </button>
+              <button type="button" onClick={handleClearDraft} className="h-11 min-w-[64px] rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-bold">
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {patternSaveMsg && (
+          <p
+            className={`shrink-0 px-3 py-1.5 text-[11px] ${
+              patternSaveMsg.startsWith('Save failed') || patternSaveMsg.startsWith('Load failed')
+                ? 'bg-red-50 text-red-600'
+                : 'bg-green-50 text-green-700'
+            }`}
+            data-testid="phone-save-message"
+          >
+            {patternSaveMsg}
+          </p>
+        )}
+
+        {pendingSaveConfirm && (
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 space-y-1.5">
+            <p className="text-[11px] font-bold text-amber-800">
+              No AI source image — this saves your canvas as-is. Save anyway?
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={confirmSaveWithoutSource} className="flex-1 h-11 rounded-lg bg-amber-500 text-white text-xs font-bold">
+                Save anyway
+              </button>
+              <button type="button" onClick={() => setPendingSaveConfirm(false)} className="flex-1 h-11 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <CanvasToolbar
+          zoom={zoom}
+          onZoomOut={() => setZoom((z) => Math.max(z - 0.2, 0.2))}
+          onZoomIn={() => setZoom((z) => Math.min(z + 0.2, 3))}
+          onFit={fitCanvasToStage}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+        />
+
+        {/* Canvas stage — fills everything between the toolbar and the bar */}
+        <div
+          ref={canvasRef}
+          className="flex-1 min-h-0 overflow-hidden p-1 bg-amber-50/20"
+          data-testid="phone-canvas-stage"
+          onMouseDownCapture={() => { undoPendingRef.current = true; }}
+          onMouseDown={() => setIsMouseDown(true)}
+          onMouseUp={() => { setIsMouseDown(false); }}
+          onMouseLeave={() => {
+            setIsMouseDown(false);
+            if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
+              setDrawStart(null);
+              setShapeEnd(null);
+            }
+          }}
+        >
+          <StitchGrid
+            data={stitchData}
+            zoom={zoom}
+            onCellClick={handleCellAction}
+            onCellPress={(row, col) => {
+              if (activeTool === 'paint' || activeTool === 'erase') {
+                handleCellAction(row, col);
+              }
+              if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
+                setDrawStart({ row, col });
+                setShapeEnd(null);
+              }
+            }}
+            activeTool={activeTool}
+            selectedColor={selectedColor}
+            selectedStitch={selectedStitch}
+            isMouseDown={isMouseDown}
+            onCellHover={handleCellHover}
+            onZoomChange={setZoom}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+            cellFractions={cellFractions}
+            shapeStart={drawStart}
+            shapeEnd={shapeEnd}
+            referenceImage={referenceImage}
+            showReference={showReference}
+            referenceOpacity={referenceOpacity}
+            guide={effectiveGuide}
+            compact
+            showToolbar={false}
+          />
+        </div>
+
+        <BottomBar
+          selectedColor={selectedColor}
+          activeTool={activeTool}
+          activeToolLabel={TOOLS.find((t) => t.id === activeTool)?.label ?? 'Tools'}
+          openTab={phoneSheet === 'colour' || phoneSheet === 'tools' ? phoneSheet : null}
+          onOpenColour={() => setPhoneSheet((s) => (s === 'colour' ? 'closed' : 'colour'))}
+          onPaint={() => { setActiveTool('paint'); setPhoneSheet('closed'); }}
+          onErase={() => { setActiveTool('erase'); setPhoneSheet('closed'); }}
+          onOpenTools={() => setPhoneSheet((s) => (s === 'tools' ? 'closed' : 'tools'))}
+        />
+
+        <BottomSheet
+          open={phoneSheet === 'colour' || phoneSheet === 'tools'}
+          tab={phoneSheet === 'tools' ? 'tools' : 'colour'}
+          tabs={[{ id: 'colour', label: 'Colour' }, { id: 'tools', label: 'Tools' }]}
+          onTabChange={(id) => setPhoneSheet(id === 'tools' ? 'tools' : 'colour')}
+          onClose={() => setPhoneSheet('closed')}
+        >
+          {phoneSheet === 'colour' && (
+            <ThreadBoxPanel
+              colors={COLORS}
+              customColors={customColors}
+              selectedColor={selectedColor}
+              onSelectColor={setSelectedColor}
+              onHexInput={handleHexInput}
+              onAddCustomColor={addCustomColor}
+            />
+          )}
+          {phoneSheet === 'tools' && (
+            <div className="space-y-4">
+              <StitchStylePicker
+                styles={STITCH_STYLES}
+                selectedStitch={selectedStitch}
+                onSelectStitch={setSelectedStitch}
+              />
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Tool</label>
+                <ToolButtons tools={TOOLS} activeTool={activeTool} onSelectTool={handleSelectTool} />
+              </div>
+              {activeTool === 'mirror' && (
+                <button
+                  type="button"
+                  onClick={() => setMirrorEnabled(!mirrorEnabled)}
+                  className={`w-full h-11 rounded-lg text-sm font-bold ${
+                    mirrorEnabled ? 'bg-blush-500 text-white' : 'bg-blush-50 text-slate-600 border border-blush-100'
+                  }`}
+                >
+                  <FlipHorizontal className="h-4 w-4 inline mr-1.5" />
+                  {mirrorEnabled ? 'Mirror ON' : 'Mirror OFF'}
+                </button>
+              )}
+              {activeTool === 'clone' && cloneSource && (
+                <p className="text-xs font-bold text-blush-600 bg-blush-50 px-3 py-2 rounded-lg">
+                  Source: ({cloneSource.row},{cloneSource.col}) — tap a cell to paste
+                </p>
+              )}
+              {activeTool === 'eyedropper' && (
+                <p className="text-xs text-slate-500 italic">Tap a cell to pick its colour</p>
+              )}
+              {activeTool === 'paint' && (
+                <p className="text-xs text-slate-500 italic">Tap &amp; drag to paint</p>
+              )}
+              {activeTool === 'erase' && (
+                <p className="text-xs text-slate-500 italic">Tap or drag to erase</p>
+              )}
+              {activeTool === 'half' && (
+                <p className="text-xs text-slate-500 italic">Tap to cycle: empty → ½ → full</p>
+              )}
+              {activeTool === 'alphabet' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={alphabetText}
+                    onChange={(e) => setAlphabetText(e.target.value.toUpperCase())}
+                    placeholder="TYPE TEXT"
+                    maxLength={12}
+                    aria-label="Text to place"
+                    className="w-full h-11 rounded-lg border border-blush-100 px-2 text-base font-mono font-bold text-slate-800 uppercase focus:border-blush-500 focus:ring-blush-500"
+                  />
+                  <select
+                    value={selectedFontId}
+                    onChange={(e) => setSelectedFontId(e.target.value)}
+                    aria-label="Font"
+                    className="w-full h-11 rounded-lg border border-blush-100 px-2 text-base font-bold text-slate-600 bg-white"
+                  >
+                    {FONTS.map((f) => (<option key={f.id} value={f.id}>{f.name}</option>))}
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">R:</span>
+                    <input
+                      type="number"
+                      value={placeRow}
+                      onChange={(e) => setPlaceRow(Math.max(0, Math.min(gridHeight - 1, Number(e.target.value))))}
+                      aria-label="Row"
+                      className="flex-1 h-11 rounded-lg border border-blush-100 px-2 text-base text-slate-700 text-center"
+                      min={0}
+                      max={gridHeight - 1}
+                    />
+                    <span className="text-xs text-slate-400">C:</span>
+                    <input
+                      type="number"
+                      value={placeCol}
+                      onChange={(e) => setPlaceCol(Math.max(0, Math.min(gridWidth - 1, Number(e.target.value))))}
+                      aria-label="Column"
+                      className="flex-1 h-11 rounded-lg border border-blush-100 px-2 text-base text-slate-700 text-center"
+                      min={0}
+                      max={gridWidth - 1}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePlaceText}
+                    disabled={!alphabetText.trim()}
+                    className="w-full h-11 rounded-lg bg-blush-500 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    <Type className="h-4 w-4 inline mr-1" /> Place text
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </BottomSheet>
+      </div>
+      )}
     </div>
   );
 };

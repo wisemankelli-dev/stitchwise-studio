@@ -61,6 +61,14 @@ export interface StitchGridProps {
    * the canvas. colW/rowH are in STITCH units. null/undefined draws nothing.
    */
   guide?: ProductGuide | null;
+  /**
+   * Phone shell mode: the grid fills its parent (no min-height), the built-in
+   * zoom row and stats bar are dropped (the phone has its own 44 px canvas
+   * toolbar and info), and only the canvas area scrolls.
+   */
+  compact?: boolean;
+  /** Set false to hide the built-in zoom/grid/fullscreen row (phone shell). */
+  showToolbar?: boolean;
 }
 
 /** DMC Color Legend — unchanged from previous version */
@@ -526,6 +534,8 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   showReference = false,
   referenceOpacity = 0.20,
   guide = null,
+  compact = false,
+  showToolbar = true,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1019,8 +1029,15 @@ const StitchGrid: React.FC<StitchGridProps> = ({
   const cellSize = BASE_CELL_SIZE * zoom;
 
   return (
-    <div className="overflow-auto rounded-xl border border-blush-100 shadow-inner bg-white p-3">
+    <div
+      className={
+        compact
+          ? 'overflow-auto rounded-xl border border-blush-100 shadow-inner bg-white p-2 h-full flex flex-col'
+          : 'overflow-auto rounded-xl border border-blush-100 shadow-inner bg-white p-3'
+      }
+    >
       {/* Zoom & display controls */}
+      {showToolbar && (
       <div className="flex items-center justify-between mb-3 pb-2 border-b border-blush-100 gap-2">
         <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-lg border border-blush-100">
           <button
@@ -1083,9 +1100,13 @@ const StitchGrid: React.FC<StitchGridProps> = ({
           </button>
         )}
       </div>
+      )}
 
       {/* Canvas container */}
-      <div ref={containerRef} className="flex items-center justify-center min-h-[200px]">
+      <div
+        ref={containerRef}
+        className={compact ? 'flex items-center justify-center flex-1 min-h-0' : 'flex items-center justify-center min-h-[200px]'}
+      >
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
@@ -1099,12 +1120,14 @@ const StitchGrid: React.FC<StitchGridProps> = ({
       </div>
 
       {/* Stats bar */}
+      {!compact && (
       <div className="mt-3 pt-2 border-t border-blush-100 flex items-center justify-between text-[10px] text-slate-400">
         <span>
           {data.width}×{data.height} grid · {cellSize.toFixed(1)}px/cell
         </span>
         <span>{data.totalStitches.toLocaleString()} stitches</span>
       </div>
+      )}
     </div>
   );
 };
