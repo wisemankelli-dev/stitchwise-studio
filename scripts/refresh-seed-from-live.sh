@@ -38,7 +38,7 @@ COUNTED_TABLES=(User EmbroideryPattern Project PatternPurchase CollageProject)
 SITE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 URL=""
-OUT=""
+OUTS=()
 KEEP=0
 VERIFY_ONLY=""
 VERIFY_MODE=0
@@ -50,7 +50,7 @@ usage() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2:-}"; shift 2 ;;
-    --out) OUT="${2:-}"; shift 2 ;;
+    --out) OUTS+=("${2:-}"); shift 2 ;;
     --keep) KEEP=1; shift ;;
     --verify-only) VERIFY_MODE=1; VERIFY_ONLY="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -129,8 +129,8 @@ command -v curl >/dev/null 2>&1 || { echo "refused: curl is required" >&2; exit 
 command -v gzip >/dev/null 2>&1 || { echo "refused: gzip is required" >&2; exit 1; }
 
 # ── which seed files to replace ─────────────────────────────────────────────
-if [ -n "$OUT" ]; then
-  TARGETS=("$OUT")
+if [ "${#OUTS[@]}" -gt 0 ]; then
+  TARGETS=("${OUTS[@]}")
 else
   TARGETS=()
   for t in "$SITE_ROOT/seed-snapshot.db.gz" \
@@ -150,8 +150,11 @@ done
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/refresh-seed-XXXXXX")"
 DL="$WORK/live.db"
-GZ_TMP=""
-cleanup() { rm -f -- "${GZ_TMP:-}"; rm -rf -- "$WORK"; }
+STAGED=()
+cleanup() {
+  for s in ${STAGED[@]+"${STAGED[@]}"}; do if [ -n "$s" ]; then rm -f -- "$s"; fi; done
+  rm -rf -- "$WORK"
+}
 trap cleanup EXIT
 
 # ── 1. download ─────────────────────────────────────────────────────────────
@@ -213,11 +216,12 @@ if [ "${ALLOW_SEED_SHRINK:-0}" != "1" ]; then
 fi
 
 # ── 4. gzip + verify the round trip, then replace each seed atomically ──────
-FIRST_DIR="$(dirname "${TARGETS[0]}")"
-GZ_TMP="$(mktemp "$FIRST_DIR/.seed-refresh-XXXXXX.gz")"
-gzip -9 -c "$DL" > "$GZ_TMP"
+# Every seed location is staged and verified FIRST, then swapped: a failure on
+# one location can never leave the others half-updated.
+GZ_SRC="$WORK/seed-snapshot.db.gz"
+gzip -9 -c "$DL" > "$GZ_SRC"
 RT_DB="$WORK/roundtrip.db"
-gzip -dc "$GZ_TMP" > "$RT_DB"
+gzip -dc "$GZ_SRC" > "$RT_DB"
 RT_SHA="$(sha256sum "$RT_DB" | awk '{print $1}')"
 if [ "$RT_SHA" != "$NEW_SHA" ]; then
   echo "refused: gzip round-trip sha256 mismatch ($RT_SHA != $NEW_SHA); no seed file was touched" >&2
@@ -227,19 +231,23 @@ verify_db "$RT_DB" "recompressed seed" || exit 1
 
 for t in "${TARGETS[@]}"; do
   d="$(dirname "$t")"
-  if [ "$d" = "$FIRST_DIR" ]; then
-    src="$GZ_TMP"
-  else
-    src="$(mktemp "$d/.seed-refresh-XXXXXX.gz")"
-    cp -f "$GZ_TMP" "$src"
-    if [ "$(gzip -dc "$src" | sha256sum | awk '{print $1}')" != "$NEW_SHA" ]; then
-      echo "refused: staged copy for $t does not match the verified download" >&2
-      rm -f -- "$src"
-      exit 1
-    fi
+  src="$(mktemp "$d/.seed-refresh-XXXXXX.gz")"
+  STAGED+=("$src")
+  cp -f "$GZ_SRC" "$src"
+  if [ "$(gzip -dc "$src" | sha256sum | awk '{print $1}')" != "$NEW_SHA" ]; then
+    echo "refused: staged copy for $t does not match the verified download; no seed file was touched" >&2
+    exit 1
   fi
   chmod 644 "$src"
+done
+
+i=0
+for t in "${TARGETS[@]}"; do
+  d="$(dirname "$t")"
+  src="${STAGED[$i]}"
+  i=$((i + 1))
   mv -f -- "$src" "$t"                    # atomic within the same directory
+  STAGED[$((i - 1))]=""
   side="$(mktemp "$d/.seed-sha-XXXXXX")"
   printf '%s  %s\n' "$NEW_SHA" "$(basename "$t")" > "$side"
   chmod 644 "$side"

@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,6 +164,30 @@ describe('refresh-seed-from-live.sh full run', () => {
     expect(readFileSync(`${seedPath}.sha256`, 'utf8')).toContain(sha(bytes));
     // no temp files left behind next to the seed
     expect(readdirSync(work).filter((f) => f.startsWith('.seed-refresh-'))).toEqual([]);
+  });
+
+  it('replaces every seed location, not just the first', async () => {
+    // Regression: the second location used to be copied from a temp file that
+    // the first replacement had already moved away.
+    const bytes = makeDb(join(work, 'live.db'), { users: 2, purchases: 2 });
+    const dirA = join(work, 'a');
+    const dirB = join(work, 'b', 'nested');
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    const seedA = join(dirA, 'seed-snapshot.db.gz');
+    const seedB = join(dirB, 'seed-snapshot.db.gz');
+    writeFileSync(seedA, gzipSync(makeDb(join(work, 'old-a.db'), { purchases: 1 })));
+    writeFileSync(seedB, gzipSync(makeDb(join(work, 'old-b.db'), { purchases: 1 })));
+    const url = await serve(200, bytes);
+
+    const r = await run(['--url', url, '--out', seedA, '--out', seedB]);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(sha(gunzipSync(readFileSync(seedA)))).toBe(sha(bytes));
+    expect(sha(gunzipSync(readFileSync(seedB)))).toBe(sha(bytes));
+    expect(readFileSync(`${seedB}.sha256`, 'utf8')).toContain(sha(bytes));
+    expect(readdirSync(dirA).filter((f) => f.startsWith('.seed-'))).toEqual([]);
+    expect(readdirSync(dirB).filter((f) => f.startsWith('.seed-'))).toEqual([]);
   });
 
   it('refuses an HTML body served with HTTP 200 and leaves the seed untouched', async () => {
