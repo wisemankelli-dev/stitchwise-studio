@@ -4,7 +4,7 @@ export { inquiryRouter } from "./inquiry";
 export { createWorkshopRouter } from "./workshop";
 export { createStitchRouter } from "./stitchEngine";
 export { createAuthRouter } from "./auth";
-export { createPaymentRouter } from "./payments";
+export { createPaymentRouter, createStripeWebhookRouter, resolveWebhookPath } from "./payments";
 export { createMarketplaceRouter } from "./marketplace";
 export { createCollageRouter } from "./collage";
 export { createShowcaseRouter } from "./showcase";

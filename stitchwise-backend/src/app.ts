@@ -3,7 +3,7 @@ import path from "node:path";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
-import { createHealthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter, createAdminDbSeedRouter } from "./infrastructure/routes";
+import { createHealthRouter, createInquiryRouter, createWorkshopRouter, createStitchRouter, createAuthRouter, createPaymentRouter, createStripeWebhookRouter, resolveWebhookPath, createMarketplaceRouter, createCollageRouter, createShowcaseRouter, createFabricEstimatorRouter, createQuiltBlockRouter, createAIEmbroideryRouter, createAICollageRouter, createAIUsageRouter, createEstimatorRouter, createPatternEditorRouter, createPatternExportRouter, createLineArtRouter, createTextToImageRouter, createAIJobsRouter, createPatternPersistenceRouter, createPatternsRouter, createPatternGrantRouter, createAdminDbBackupRouter, createAdminDbSeedRouter } from "./infrastructure/routes";
 import { ensureDatabaseReady, ensureDatabaseUsable } from "./infrastructure/db/dbSelfHeal";
 import { loadGrantData } from "./infrastructure/data/patternGrantData";
 import { PrismaProjectInquiryRepo, PrismaWorkshopRepo, PrismaMarketplaceRepo, PrismaCollageRepo, PrismaShowcaseRepo, PrismaQuiltBlockRepo } from "./infrastructure/db";
@@ -61,8 +61,13 @@ export async function createApp(): Promise<express.Application> {
     : "*";
   app.use(cors({ origin: corsOrigins }));
 
-  // Stripe webhook needs raw body — register before JSON parser
-  app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
+  // Stripe webhook needs raw body — register before JSON parser. The path is
+  // configurable (STRIPE_WEBHOOK_PATH) so the endpoint Stripe is pointed at can
+  // be changed without touching code; the raw parser and the handler must sit on
+  // exactly the same path.
+  const webhookPath = resolveWebhookPath();
+  app.use(webhookPath, express.raw({ type: "application/json" }));
+  app.use(webhookPath, createStripeWebhookRouter(prisma));
 
   // JSON body parser for all other routes
   app.use(express.json({ limit: "10mb" }));
