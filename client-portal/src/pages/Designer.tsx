@@ -3274,6 +3274,14 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 onMouseDownCapture={() => { undoPendingRef.current = true; }}
                 onMouseDown={() => setIsMouseDown(true)}
                 onMouseUp={() => { setIsMouseDown(false); }}
+                // Touch drags (D0): the canvas reports a finger as pointer events, so
+                // the gesture has to mark itself "down" here too - otherwise the hover
+                // handler that commits a stroke bails out and a finger drag paints
+                // nothing. Mouse pointers are ignored: that path is unchanged.
+                onPointerDownCapture={(e) => { if (e.pointerType !== 'mouse') undoPendingRef.current = true; }}
+                onPointerDown={(e) => { if (e.pointerType !== 'mouse') setIsMouseDown(true); }}
+                onPointerUp={(e) => { if (e.pointerType !== 'mouse') setIsMouseDown(false); }}
+                onPointerCancel={(e) => { if (e.pointerType !== 'mouse') setIsMouseDown(false); }}
                 onMouseLeave={() => {
                   setIsMouseDown(false);
                   if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line') {
