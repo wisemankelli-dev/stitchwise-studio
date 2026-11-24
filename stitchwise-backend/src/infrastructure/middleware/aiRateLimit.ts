@@ -9,7 +9,13 @@ export const AI_LIMITS: Record<string, { daily: number; monthly: number }> = {
   STUDIO: { daily: 30, monthly: 200 },
 };
 const USAGE_FILE = resolve(process.cwd(), "logs/ai-daily-usage.json");
-type UsageEntry = { daily: number; monthly: number };
+/**
+ * One user's usage for one day. `refunded` is the per-date list of job ids
+ * whose unit has already been given back — the idempotency record lives IN THE
+ * USAGE FILE (not in memory), so a refund can never decrement twice, even
+ * across a server restart.
+ */
+type UsageEntry = { daily: number; monthly: number; refunded?: string[] };
 type Usage = Record<string, Record<string, UsageEntry>>;
 function today(): string { return new Date().toISOString().slice(0, 10); }
 function monthPrefix(date: string): string { return date.slice(0, 7); }
@@ -37,7 +43,14 @@ export function getAIUsage(userId: string, rawTier?: string): { used: number; da
   const usage = currentUsage(readUsage(), today(), userId);
   return { used: usage.daily, daily: usage.daily, monthly: usage.monthly, limits, tier };
 }
-export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
+
+/**
+ * READ-ONLY gate: refuse with 429 when the caller is at a daily/monthly cap.
+ * It charges NOTHING — the unit is only spent by chargeAIUnit() once the
+ * request has passed validation and is really going to generate, so a 400 or a
+ * refused regenerate can no longer burn an allowance unit.
+ */
+export function checkAILimit(req: Request, res: Response, next: NextFunction): void {
   const user = (req as any).user as { userId?: string; tier?: string } | undefined;
   if (!user?.userId) { res.status(401).json({ success: false, error: "Authentication required" }); return; }
   const date = today(); const usage = readUsage();
@@ -45,7 +58,73 @@ export function aiRateLimit(req: Request, res: Response, next: NextFunction): vo
   if (current.daily >= limits.daily || current.monthly >= limits.monthly) {
     res.status(429).json({ success: false, error: "AI generation limit reached", usage: { ...current, limits } }); return;
   }
+  next();
+}
+
+/**
+ * The receipt for one spent allowance unit. `jobId` is filled in by
+ * createAIJob() when the unit belongs to an async job (so the job store can
+ * give it back by id); synchronous paths keep the provisional id chargeAIUnit
+ * generated, which is just as good an idempotency key.
+ */
+export interface AIChargeReceipt {
+  userId: string;
+  /** The date the unit was charged on — refunds must hit THIS day's entry. */
+  date: string;
+  jobId: string;
+}
+
+/** Spend one allowance unit and return the receipt a refund needs. */
+export function chargeAIUnit(userId: string): AIChargeReceipt {
+  const date = today();
+  const usage = readUsage();
+  const current = currentUsage(usage, date, userId);
   if (!usage[date]) usage[date] = {};
-  usage[date][user.userId] = { daily: current.daily + 1, monthly: current.monthly + 1 };
-  writeUsage(usage); next();
+  const prior = usage[date][userId];
+  usage[date][userId] = {
+    daily: current.daily + 1,
+    monthly: current.monthly + 1,
+    // Never drop the day's refund records on a later charge: they are what
+    // stops one job id from decrementing the same day twice.
+    ...(prior?.refunded && prior.refunded.length > 0 ? { refunded: prior.refunded } : {}),
+  };
+  writeUsage(usage);
+  return {
+    userId,
+    date,
+    jobId: `charge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
+  };
+}
+
+/** In-process fast path only — the durable record is the usage file's `refunded` list. */
+const refundedThisProcess = new Set<string>();
+
+/**
+ * Give one charged unit back.
+ *
+ * Decrements `daily` and `monthly` (floored at 0) on the CHARGE DATE's entry —
+ * not today's — because `monthly` is derived as the max across the month's day
+ * entries. The job id is recorded in that entry's `refunded` list, so calling
+ * this twice for the same job changes nothing (the record survives a restart
+ * because it lives in the usage file).
+ *
+ * Returns true only when a unit was actually given back.
+ */
+export function refundAIUnit(userId: string, date: string, jobId: string): boolean {
+  if (!userId || !date || !jobId) return false;
+  const key = `${date}|${userId}|${jobId}`;
+  if (refundedThisProcess.has(key)) return false;
+  const usage = readUsage();
+  const entry = usage[date]?.[userId];
+  if (!entry) return false; // no charge on record for that day — nothing to give back
+  if (Array.isArray(entry.refunded) && entry.refunded.includes(jobId)) {
+    refundedThisProcess.add(key); // durable record already says refunded
+    return false;
+  }
+  entry.daily = Math.max(0, (entry.daily ?? 0) - 1);
+  entry.monthly = Math.max(0, (entry.monthly ?? 0) - 1);
+  entry.refunded = [...(entry.refunded ?? []), jobId];
+  writeUsage(usage);
+  refundedThisProcess.add(key);
+  return true;
 }

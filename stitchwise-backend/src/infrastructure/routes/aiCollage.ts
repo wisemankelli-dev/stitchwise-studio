@@ -11,7 +11,7 @@ import { TextToCollageSchema, ImageToCollageSchema } from "../../domain/ai/colla
 import { generateCollageImage, imageUrlToCollageLayers, imageBufferToCollageLayers, generateCollageLayoutFromPrompt, attachMockPiecesToCollage } from "../services/openaiCollageService";
 import { generateCollagePatternPdf } from "../services/collagePdfExporter";
 import { authenticate } from "../middleware/auth";
-import { aiRateLimit, isPremiumTier } from "../middleware/aiRateLimit";
+import { checkAILimit, chargeAIUnit, refundAIUnit, isPremiumTier, type AIChargeReceipt } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
 const upload = multer({
@@ -51,8 +51,11 @@ export function createAICollageRouter(): Router {
   router.post(
     "/ai/collage/text-to-collage",
     authenticate,
-    aiRateLimit,
+    checkAILimit,
     async (req: Request, res: Response) => {
+      // The unit for this request (set just before the job starts); refunded in
+      // the catch below if the request dies before the job owns it.
+      let charge: AIChargeReceipt | undefined;
       try {
         const parsed = TextToCollageSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -71,6 +74,10 @@ export function createAICollageRouter(): Router {
         // organic quilt conversion, deterministic fallback included) in the
         // background. Respond 202 + jobId so the request never exceeds the
         // platform gateway's ~30s upstream timeout.
+        // The allowance unit is spent HERE, after validation and immediately
+        // before the job — a 400 body costs nothing, and a job that fails gives
+        // the unit back (aiJobStore's catch).
+        charge = chargeAIUnit((req as any).user?.userId);
         const jobId = createAIJob(async () => {
           const t0 = Date.now();
           console.info(JSON.stringify({ event: "collage_job_start", prompt, t: new Date().toISOString() }));
@@ -112,10 +119,12 @@ export function createAICollageRouter(): Router {
             };
           }
           throw new Error("AI image generation returned no image");
-        });
+        }, charge);
+        charge = undefined; // the running job owns the unit from here on
         res.status(202).json({ jobId });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (charge) refundAIUnit(charge.userId, charge.date, charge.jobId);
         console.error({ event: "text_to_collage_error", error: message });
         res.status(500).json({ success: false, error: message });
       }
@@ -133,9 +142,12 @@ export function createAICollageRouter(): Router {
   router.post(
     "/ai/collage/image-to-collage",
     authenticate,
-    aiRateLimit,
+    checkAILimit,
     upload.single("file"),
     async (req: Request, res: Response) => {
+      // Charged after validation, refunded if the conversion throws — an
+      // empty/invalid upload no longer costs a unit.
+      let charge: AIChargeReceipt | undefined;
       try {
         // Coerce string gridSize to number (form data sends strings)
         const body = {
@@ -159,6 +171,7 @@ export function createAICollageRouter(): Router {
           return;
         }
         const { gridSize } = parsed.data;
+        charge = chargeAIUnit((req as any).user?.userId);
         // Convert the uploaded image buffer to collage layers
         const collage = await imageBufferToCollageLayers(req.file.buffer, gridSize);
         res.json({
@@ -167,6 +180,7 @@ export function createAICollageRouter(): Router {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (charge) refundAIUnit(charge.userId, charge.date, charge.jobId);
         console.error({ event: "image_to_collage_error", error: message });
         res.status(500).json({ success: false, error: message });
       }

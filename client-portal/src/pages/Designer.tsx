@@ -22,7 +22,7 @@ import FilePanel from '../components/designer/panels/FilePanel';
 import ConfirmPanel from '../components/designer/ConfirmPanel';
 import { pushSnapshot, popSnapshot, type HistorySnapshot } from '../utils/history';
 import type { StitchGridData, StitchCell } from '../components/StitchGrid';
-import { describeAiGenerationError } from '../utils/aiGenerationErrors';
+import { describeAiGenerationError, allowanceWasRefunded, refundedUnitNotice } from '../utils/aiGenerationErrors';
 import { generationCostNotice, type AIUsageSnapshot } from '../utils/aiGenerationAllowance';
 import { FONTS, renderTextToGrid } from '../components/FontGlyphs';
 import { exportPatternToPdf } from '../utils/pdfExport';
@@ -1371,6 +1371,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const refreshAIUsage = useCallback(async () => {
     const snapshot = await api.getAIUsage();
     setAiUsage(snapshot);
+    return snapshot;
   }, []);
   useEffect(() => {
     void refreshAIUsage();
@@ -2443,7 +2444,15 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       setAiArtworkUrl(data.previewUrl || null);
       setPollingStatus('');
     } catch (err: unknown) {
-      setAiError(describeAiGenerationError(err, 'Failed to generate pattern. Please try again.'));
+      const base = describeAiGenerationError(err, 'Failed to generate pattern. Please try again.');
+      if (allowanceWasRefunded(err)) {
+        // The server gave the unit back (a generation that produced nothing
+        // must not keep it) - re-read the allowance and say so on screen.
+        const snapshot = await refreshAIUsage();
+        setAiError(`${base}${refundedUnitNotice(snapshot)}`);
+      } else {
+        setAiError(base);
+      }
       setPollingStatus('');
     } finally {
       generatingRef.current = false;

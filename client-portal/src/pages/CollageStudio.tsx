@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api, FabricLayer, AICollageResponse, CollageProject, CollagePiece, PlacedCollagePiece } from '../services/api';
-import { describeAiGenerationError } from '../utils/aiGenerationErrors';
+import { describeAiGenerationError, allowanceWasRefunded, refundedUnitNotice } from '../utils/aiGenerationErrors';
 import { isCollageBackgroundPiece } from '../utils/collageBackground';
 import html2canvas from 'html2canvas';
 import {
@@ -857,7 +857,14 @@ export const CollageStudio: React.FC = () => {
       adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
-      setAiError(describeAiGenerationError(err, 'AI collage generation failed. Please try again.'));
+      const base = describeAiGenerationError(err, 'AI collage generation failed. Please try again.');
+      if (allowanceWasRefunded(err)) {
+        // This studio never read the allowance, so a refunded unit used to be
+        // invisible until a reload: re-read it and say the unit came back.
+        setAiError(`${base}${refundedUnitNotice(await api.getAIUsage())}`);
+      } else {
+        setAiError(base);
+      }
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
     }
@@ -896,7 +903,12 @@ export const CollageStudio: React.FC = () => {
       adoptPiecesFromResult(result);
     } catch (err: any) {
       clearInterval(interval);
-      setAiError(describeAiGenerationError(err, 'Image collage generation failed. Please try again.'));
+      const base = describeAiGenerationError(err, 'Image collage generation failed. Please try again.');
+      if (allowanceWasRefunded(err)) {
+        setAiError(`${base}${refundedUnitNotice(await api.getAIUsage())}`);
+      } else {
+        setAiError(base);
+      }
     } finally {
       setTimeout(() => setIsGenerating(false), 500);
     }

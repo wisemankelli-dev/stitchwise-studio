@@ -13,7 +13,7 @@ export function createAIJobsRouter(): Router {
 
   /**
    * GET /api/ai/jobs/:id
-   * Response: { jobId, status: "pending"|"processing"|"done"|"error", result?, error? }
+   * Response: { jobId, status: "pending"|"processing"|"done"|"error", result?, error?, allowanceRefunded }
    */
   router.get("/ai/jobs/:id", (req: Request, res: Response) => {
     const job = getAIJob(req.params.id);
@@ -26,6 +26,8 @@ export function createAIJobsRouter(): Router {
       status: job.status,
       result: job.result,
       error: job.error,
+      // True when the unit charged for this job was given back after it failed.
+      allowanceRefunded: job.allowanceRefunded === true,
     });
   });
 
@@ -45,6 +47,7 @@ export function createAIJobsRouter(): Router {
       status: job.status === "error" ? "failed" : job.status === "pending" ? "queued" : job.status,
       result: job.result,
       error: job.error,
+      allowanceRefunded: job.allowanceRefunded === true,
     });
   });
 

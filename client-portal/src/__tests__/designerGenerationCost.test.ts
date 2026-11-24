@@ -225,9 +225,12 @@ describe('Designer wiring — the cost is visible before the click', () => {
   it('keeps the existing post-rejection message path intact', () => {
     // This change ADDS pre-click visibility; it must not replace the honest
     // 429/401/5xx messaging the user sees after a server rejection.
+    // The message is built into `base` first so the "your unit was returned"
+    // sentence can be appended when the server refunded the failed generation.
     expect(bodyOf('handleGenerate')).toContain(
-      "setAiError(describeAiGenerationError(err, 'Failed to generate pattern. Please try again.'));",
+      "const base = describeAiGenerationError(err, 'Failed to generate pattern. Please try again.');",
     );
+    expect(bodyOf('handleGenerate')).toContain('setAiError(base);');
   });
 
   it('never sends an allowance read to a hand-rolled fetch in the component', () => {
