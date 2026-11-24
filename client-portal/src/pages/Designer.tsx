@@ -1039,6 +1039,18 @@ export interface DesignerDraft {
   /** True when the draft came from a completed AI generation (has source artwork). */
   hasAiArtwork?: boolean;
   aiPrompt?: string;
+  /**
+   * Partial-cell fills, edge cells only (< 10 KB). Without them a restored
+   * draft renders every half/quarter cell as a solid square, so circle, line
+   * and half-tool edges come back blocky.
+   */
+  cellFractions?: Record<string, number>;
+  /**
+   * The AI source artwork (base64 data URL). Kept so a restored draft still
+   * saves with its provenance (`sourceImage`) instead of losing it for good.
+   * Capped by DRAFT_ARTWORK_MAX_CHARS so one big image cannot blow the store.
+   */
+  aiArtworkUrl?: string;
 }
 
 const DESIGNER_DRAFT_KEY = 'stitchwise_designer_save';
@@ -1080,6 +1092,49 @@ export function saveDesignerDraft(
   }
 }
 
+/**
+ * The most artwork a stored draft may carry (~1 MB of base64). The grid itself
+ * can already be ~660 KB and the browser quota is ~5 MB, so the thumbnail is
+ * the first thing to go — the pattern is what must survive.
+ */
+export const DRAFT_ARTWORK_MAX_CHARS = 1_000_000;
+
+/** The grid was saved, the AI image was not — say so instead of losing it quietly. */
+export const DRAFT_ARTWORK_DROPPED_MESSAGE =
+  "Your draft was saved without its AI image: this browser's storage is nearly full. The pattern itself will come back after a refresh — save it to your account to keep the image too.";
+
+/** Drop artwork too big for a draft. The grid is never touched. */
+export function capDraftArtwork(draft: DesignerDraft): DesignerDraft {
+  const url = draft.aiArtworkUrl;
+  if (!url || url.length <= DRAFT_ARTWORK_MAX_CHARS) return draft;
+  const capped: DesignerDraft = { ...draft };
+  delete capped.aiArtworkUrl;
+  return capped;
+}
+
+/**
+ * The ONE write both the debounced persist and the post-generation write use.
+ * Same never-silent guard as saveDesignerDraft, plus a fallback: when the
+ * artwork is what filled the store, retry without it so the GRID still comes
+ * back after a refresh instead of the whole draft being lost.
+ */
+export function persistDesignerDraft(
+  draft: DesignerDraft,
+  storage: { setItem: (key: string, value: string) => void } = window.localStorage,
+): string | null {
+  const capped = capDraftArtwork(draft);
+  const failure = saveDesignerDraft(capped, storage);
+  if (failure === null) return null;
+  if (capped.aiArtworkUrl) {
+    const withoutArtwork: DesignerDraft = { ...capped };
+    delete withoutArtwork.aiArtworkUrl;
+    if (saveDesignerDraft(withoutArtwork, storage) === null) {
+      return DRAFT_ARTWORK_DROPPED_MESSAGE;
+    }
+  }
+  return failure;
+}
+
 /** Where an image import stopped: reading the file, decoding it, or tracing it. */
 export type ImageImportStage = 'read' | 'decode' | 'trace';
 
@@ -1109,6 +1164,18 @@ function inferDimsFromGrid(grid: Record<string, string>): { w: number; h: number
   return { w: Math.max(6, maxC + 1), h: Math.max(6, maxR + 1) };
 }
 
+/** Partial-cell fills only: a real number in (0, 1] per cell key. */
+function parseDraftFractions(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   if (!raw) return null;
   try {
@@ -1123,6 +1190,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       savedAt: p.savedAt,
       hasAiArtwork: !!p.hasAiArtwork,
       aiPrompt: typeof p.aiPrompt === 'string' ? p.aiPrompt : '',
+      cellFractions: parseDraftFractions(p.cellFractions),
+      aiArtworkUrl: typeof p.aiArtworkUrl === 'string' && p.aiArtworkUrl ? p.aiArtworkUrl : undefined,
     };
   } catch {
     return null;
@@ -2418,10 +2487,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         savedAt: new Date().toISOString(),
         aiPrompt: aiPrompt.trim(),
         hasAiArtwork: !!data.previewUrl,
+        cellFractions: {}, // a fresh generation starts with no partial cells
+        aiArtworkUrl: data.previewUrl || undefined,
       };
       // Best-effort: a full store must not fail the generation — but it is
       // never silent, the same reason the debounced write shows is set here.
-      setDraftError(saveDesignerDraft(freshDraft));
+      setDraftError(persistDesignerDraft(freshDraft));
       // (b136) The "when a product template is active the canvas becomes the
       // preset size" re-apply that used to live here is now folded into
       // resolvePostGenerationCanvas above, where it can never override a
@@ -2637,6 +2708,12 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // instead of storing {}. A fresh AI result (handleGenerate) writes the draft
   // immediately; this effect keeps it current during later edits.
   useEffect(() => {
+    // A draft waiting to be restored is NEVER overwritten or deleted. On mount
+    // the canvas is still blank, so the empty-canvas branch below used to
+    // removeItem() the saved draft ~2 s after the Designer opened — the safety
+    // net only worked if Keep was clicked first. Nothing is persisted until
+    // the customer has acted on the banner (Keep or Clear + start blank).
+    if (restoredDraft) return;
     const timeout = setTimeout(() => {
       if (!grid || Object.keys(grid).length === 0) {
         try {
@@ -2655,15 +2732,17 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         savedAt: new Date().toISOString(),
         hasAiArtwork: !!aiArtworkUrl,
         aiPrompt: aiPrompt.trim(),
+        cellFractions,
+        aiArtworkUrl: aiArtworkUrl ?? undefined,
       };
       // A QuotaExceededError used to vanish here, losing the draft silently.
       // saveDesignerDraft never throws: it returns null when the draft landed
       // and the reason to show when it did not.
-      setDraftError(saveDesignerDraft(draft));
+      setDraftError(persistDesignerDraft(draft));
       lastSaved.current = grid;
     }, 2000);
     return () => clearTimeout(timeout);
-  }, [grid, gridStitchTypes, gridWidth, gridHeight, aiPrompt, aiArtworkUrl]);
+  }, [grid, gridStitchTypes, gridWidth, gridHeight, aiPrompt, aiArtworkUrl, cellFractions, restoredDraft]);
 
   // Mount: NEVER silently setGrid() from localStorage (owner 09-14). The draft
   // is surfaced behind a banner; the user decides Keep or Clear + start blank.
@@ -2682,6 +2761,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     if (d.gridWidth !== undefined && d.gridWidth >= 6) setGridWidth(d.gridWidth);
     if (d.gridHeight !== undefined && d.gridHeight >= 6) setGridHeight(d.gridHeight);
     if (d.aiPrompt) setAiPrompt(d.aiPrompt);
+    // Provenance: partial cells and the AI source artwork come back with the
+    // grid, so a restored draft saves as the design it actually was.
+    setCellFractions(d.cellFractions ?? {});
+    setAiArtworkUrl(d.aiArtworkUrl ?? null);
     clearHistory(); // a restored draft starts a fresh undo baseline
   };
 
