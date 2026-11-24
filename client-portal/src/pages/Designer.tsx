@@ -1026,9 +1026,11 @@ export function buildManualGridData(
   return { grid: cells, width, height, dmcPalette, totalStitches };
 }
 
-export const Designer: React.FC = () => {
-
-interface DesignerDraft {
+// ── Silent-failure guards (owner 11-17) ─────────────────────────────────────
+// Two failures used to vanish without a word: a draft write that hit a full
+// browser store, and an image that could not be read. Each one now returns a
+// persistent, dismissable reason instead of nothing.
+export interface DesignerDraft {
   grid: Record<string, string>;
   stitchTypes: Record<string, string>;
   gridWidth?: number;
@@ -1040,6 +1042,59 @@ interface DesignerDraft {
 }
 
 const DESIGNER_DRAFT_KEY = 'stitchwise_designer_save';
+
+/** A full (or blocked) browser store — the draft is NOT saved. */
+export const DRAFT_STORAGE_FULL_MESSAGE =
+  "Your draft couldn't be saved: this browser's storage is full or blocked. The design is still on the canvas, but it will not come back after a refresh — save the pattern to your account to keep it.";
+/** Any other reason the draft write failed — the draft is still not kept. */
+export const DRAFT_SAVE_FAILED_MESSAGE =
+  "Your draft couldn't be saved, so it will not come back after a refresh. Save the pattern to your account to keep it.";
+
+/** Names browsers give a QuotaExceededError (Chrome/Safari/Firefox/legacy). */
+export function describeDraftSaveFailure(err: unknown): string {
+  const name = (err as { name?: string } | null | undefined)?.name ?? '';
+  if (
+    name === 'QuotaExceededError' ||
+    name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    name === 'QUOTA_EXCEEDED_ERR'
+  ) {
+    return DRAFT_STORAGE_FULL_MESSAGE;
+  }
+  return DRAFT_SAVE_FAILED_MESSAGE;
+}
+
+/**
+ * The ONE way the Designer writes its working draft. Returns null when the
+ * write landed, or the reason to show when it did not — a thrown
+ * QuotaExceededError must never be swallowed.
+ */
+export function saveDesignerDraft(
+  draft: DesignerDraft,
+  storage: { setItem: (key: string, value: string) => void } = window.localStorage,
+): string | null {
+  try {
+    storage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(draft));
+    return null;
+  } catch (err) {
+    return describeDraftSaveFailure(err);
+  }
+}
+
+/** Where an image import stopped: reading the file, decoding it, or tracing it. */
+export type ImageImportStage = 'read' | 'decode' | 'trace';
+
+/** The reason shown when an image import fails — never a stuck "Processing…". */
+export function describeImageImportFailure(stage: ImageImportStage): string {
+  if (stage === 'read') {
+    return "That file couldn't be read — it may be damaged, or the browser blocked access to it. Nothing on the canvas was changed. Try another copy of the image.";
+  }
+  if (stage === 'decode') {
+    return "That image couldn't be opened — it may be damaged or in a format this browser can't show. Nothing on the canvas was changed. Try a PNG or a JPG.";
+  }
+  return "That image couldn't be turned into a pattern. Nothing on the canvas was changed. Try a simpler image or a lower colour count.";
+}
+
+export const Designer: React.FC = () => {
 
 // Old-format drafts stored only a grid map; infer the canvas size from the
 // largest occupied row/col (min 6) so restored drafts keep their proportions.
@@ -1121,6 +1176,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   // Batch A (designer-hardening.md): a failed save/load/delete must say why and
   // stay until dismissed — never a 2.5 s flash, never a silent no-op.
   const [patternError, setPatternError] = useState<string | null>(null);
+  // A draft write that failed (browser storage full/blocked) is NOT silent: it
+  // says so here and stays until dismissed or until a write succeeds again.
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [patternsLoadError, setPatternsLoadError] = useState<string | null>(null);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
   const [loadingPatternId, setLoadingPatternId] = useState<string | null>(null);
@@ -1146,6 +1204,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   const [moreOpen, setMoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  // An image that could not be read/traced used to leave the button stuck on
+  // "Processing…" forever. It now ends with this persistent reason.
+  const [imageError, setImageError] = useState<string | null>(null);
   const [numColors, setNumColors] = useState(15); // color count for quantization
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [showReference, setShowReference] = useState(true);
@@ -1158,37 +1219,69 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
     // b137: an imported image is a NEW design — the loaded pattern's saved
     // source is no longer what this canvas came from.
     clearLoadedRegenSource();
+    setImageError(null); // a new pick clears the previous reason
     setIsProcessingImage(true);
-    
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new window.Image();
-      img.onload = () => {
-        // Save the original image for reference overlay
-        setReferenceImage(ev.target?.result as string);
-        setShowReference(true);
-        // Maintain aspect ratio: fit image into grid dimensions
-        const scale = Math.min(gridWidth / img.width, gridHeight / img.height);
-        const drawW = Math.round(img.width * scale);
-        const drawH = Math.round(img.height * scale);
-        
-        // Convert to grid at the aspect-preserving dimensions
-        const result = imageToGrid(img, drawW, drawH, numColors);
-        
-        // Auto-frame: fit + center with a margin, and drop the detected
-        // background (owner bug report — subjects were running flush into the
-        // pattern border). Handles the old offsetX/offsetY centering too.
-        const framed = framePatternInGrid(result.grid, {}, {}, gridWidth, gridHeight);
-        
-        clearHistory(); // image import is a fresh baseline — undo must not cross it
-        setGrid(framed.grid);
-        setGridStitchTypes(framed.stitchTypes);
-        setCellFractions(framed.cellFractions);
-        setIsProcessingImage(false);
-      };
-      img.src = ev.target?.result as string;
+
+    // ONE exit for every failure: the spinner stops AND the reason stays on
+    // screen. Nothing here may leave the button on "Processing…".
+    const fail = (stage: ImageImportStage) => {
+      setIsProcessingImage(false);
+      setImageError(describeImageImportFailure(stage));
     };
-    reader.readAsDataURL(file);
+
+    const reader = new FileReader();
+    reader.onerror = () => fail('read');
+    reader.onabort = () => fail('read');
+    reader.onload = (ev) => {
+      const dataUrl = typeof ev.target?.result === 'string' ? ev.target.result : null;
+      if (!dataUrl) {
+        fail('read');
+        return;
+      }
+      const img = new window.Image();
+      // A damaged/unsupported file fires onerror instead of onload — without
+      // this handler that image was lost and Upload never came back.
+      img.onerror = () => fail('decode');
+      img.onload = () => {
+        // A 0×0 decode (truncated file) would divide by zero and trace nothing.
+        if (!img.width || !img.height) {
+          fail('decode');
+          return;
+        }
+        try {
+          // Maintain aspect ratio: fit image into grid dimensions
+          const scale = Math.min(gridWidth / img.width, gridHeight / img.height);
+          const drawW = Math.round(img.width * scale);
+          const drawH = Math.round(img.height * scale);
+
+          // Convert to grid at the aspect-preserving dimensions
+          const result = imageToGrid(img, drawW, drawH, numColors);
+
+          // Auto-frame: fit + center with a margin, and drop the detected
+          // background (owner bug report — subjects were running flush into the
+          // pattern border). Handles the old offsetX/offsetY centering too.
+          const framed = framePatternInGrid(result.grid, {}, {}, gridWidth, gridHeight);
+
+          clearHistory(); // image import is a fresh baseline — undo must not cross it
+          setGrid(framed.grid);
+          setGridStitchTypes(framed.stitchTypes);
+          setCellFractions(framed.cellFractions);
+          // Save the original image for the reference overlay — only once the
+          // trace actually landed, so a failed import changes nothing.
+          setReferenceImage(dataUrl);
+          setShowReference(true);
+          setIsProcessingImage(false);
+        } catch {
+          fail('trace');
+        }
+      };
+      img.src = dataUrl;
+    };
+    try {
+      reader.readAsDataURL(file);
+    } catch {
+      fail('read');
+    }
   }, [gridWidth, gridHeight, numColors, clearLoadedRegenSource]);
 
   /** Upload entry point: tracing an image replaces the grid, so ask first. */
@@ -2316,20 +2409,18 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
       // 09-14 "stick figure in every mask"). The debounced persist effect
       // keeps the draft current from here on.
       setRestoredDraft(null);
-      try {
-        const freshDraft: DesignerDraft = {
-          grid: finalGrid,
-          stitchTypes: finalStitchTypes,
-          gridWidth: finalW,
-          gridHeight: finalH,
-          savedAt: new Date().toISOString(),
-          aiPrompt: aiPrompt.trim(),
-          hasAiArtwork: !!data.previewUrl,
-        };
-        localStorage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(freshDraft));
-      } catch {
-        // Best-effort: localStorage quota etc. must not fail the generation.
-      }
+      const freshDraft: DesignerDraft = {
+        grid: finalGrid,
+        stitchTypes: finalStitchTypes,
+        gridWidth: finalW,
+        gridHeight: finalH,
+        savedAt: new Date().toISOString(),
+        aiPrompt: aiPrompt.trim(),
+        hasAiArtwork: !!data.previewUrl,
+      };
+      // Best-effort: a full store must not fail the generation — but it is
+      // never silent, the same reason the debounced write shows is set here.
+      setDraftError(saveDesignerDraft(freshDraft));
       // (b136) The "when a product template is active the canvas becomes the
       // preset size" re-apply that used to live here is now folded into
       // resolvePostGenerationCanvas above, where it can never override a
@@ -2539,7 +2630,11 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (!grid || Object.keys(grid).length === 0) {
-        localStorage.removeItem(DESIGNER_DRAFT_KEY);
+        try {
+          localStorage.removeItem(DESIGNER_DRAFT_KEY);
+        } catch {
+          // Nothing was stored, so there is nothing to lose and nothing to say.
+        }
         lastSaved.current = grid;
         return;
       }
@@ -2552,7 +2647,10 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         hasAiArtwork: !!aiArtworkUrl,
         aiPrompt: aiPrompt.trim(),
       };
-      localStorage.setItem(DESIGNER_DRAFT_KEY, JSON.stringify(draft));
+      // A QuotaExceededError used to vanish here, losing the draft silently.
+      // saveDesignerDraft never throws: it returns null when the draft landed
+      // and the reason to show when it did not.
+      setDraftError(saveDesignerDraft(draft));
       lastSaved.current = grid;
     }, 2000);
     return () => clearTimeout(timeout);
@@ -3163,6 +3261,40 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   </button>
                 </div>
               )}
+              {draftError && (
+                <div
+                  role="alert"
+                  data-testid="draft-save-error"
+                  className="w-full mb-4 text-[11px] px-2 py-1.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-start gap-2"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="flex-1">{draftError}</span>
+                  <button
+                    onClick={() => setDraftError(null)}
+                    className="text-[10px] font-bold text-amber-700 hover:text-amber-900 shrink-0"
+                    title="Dismiss this message"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {imageError && (
+                <div
+                  role="alert"
+                  data-testid="image-import-error"
+                  className="w-full mb-4 text-[11px] px-2 py-1.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-start gap-2"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="flex-1">{imageError}</span>
+                  <button
+                    onClick={() => setImageError(null)}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-700 shrink-0"
+                    title="Dismiss this message"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {patternSaveMsg && (
                 <p className="w-full mb-4 text-[11px] px-2 py-1 rounded bg-green-50 text-green-700">
                   {patternSaveMsg}
@@ -3671,6 +3803,24 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
           </p>
         )}
 
+        {draftError && (
+          <div
+            role="alert"
+            data-testid="phone-draft-save-error"
+            className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 flex items-start gap-2"
+          >
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="flex-1 text-[11px] text-amber-800">{draftError}</p>
+            <button
+              type="button"
+              onClick={() => setDraftError(null)}
+              className="h-11 min-w-[64px] shrink-0 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {pendingClear && (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5" data-testid="phone-confirm-clear">
             <ConfirmPanel
@@ -4025,6 +4175,8 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
               onConfirmUpload={confirmImageUpload}
               onCancelUpload={cancelImageUpload}
               isProcessingImage={isProcessingImage}
+              imageError={imageError}
+              onDismissImageError={() => setImageError(null)}
               numColors={numColors}
               onNumColorsChange={setNumColors}
               hasReferenceImage={Boolean(referenceImage)}

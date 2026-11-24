@@ -36,6 +36,9 @@ export interface FilePanelProps {
   onConfirmUpload: () => void;
   onCancelUpload: () => void;
   isProcessingImage: boolean;
+  /** Why an upload could not be read/traced — shown instead of a stuck "Processing…". */
+  imageError?: string | null;
+  onDismissImageError?: () => void;
   numColors: number;
   onNumColorsChange: (value: number) => void;
 
@@ -75,6 +78,8 @@ export const FilePanel: React.FC<FilePanelProps> = ({
   onConfirmUpload,
   onCancelUpload,
   isProcessingImage,
+  imageError,
+  onDismissImageError,
   numColors,
   onNumColorsChange,
   hasReferenceImage,
@@ -223,6 +228,25 @@ export const FilePanel: React.FC<FilePanelProps> = ({
           <option value={30}>30 colors</option>
         </select>
       </div>
+      {imageError && (
+        <div
+          role="alert"
+          data-testid="phone-image-import-error"
+          className="mt-2 text-[11px] px-2 py-1.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-start gap-2"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span className="flex-1">{imageError}</span>
+          {onDismissImageError && (
+            <button
+              type="button"
+              onClick={onDismissImageError}
+              className="min-h-[32px] px-1 text-[11px] font-bold text-red-500"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
       <p className="text-[11px] text-slate-400 mt-1.5">The image is traced to your colour count and laid under the grid as a reference.</p>
     </div>
 
