@@ -111,11 +111,10 @@ export async function traceColoringPageIntoPieces(
   }
 
   // Stable ordering makes generated labels deterministic across runs.
-  regions.sort((a, b) => {
-    const firstA = Math.min(...a);
-    const firstB = Math.min(...b);
-    return firstA - firstB;
-  });
+  // The smallest cell index is found with a loop: `Math.min(...cells)` pushes
+  // one argument per cell onto the stack and throws RangeError on a busy page,
+  // where a single region can hold tens of thousands of pixels.
+  regions.sort((a, b) => smallestCellIndex(a) - smallestCellIndex(b));
 
   // Merge impractical specks first, then enforce the overall human-cuttable
   // cap. Both passes merge into the largest neighboring region; no cells are
@@ -210,9 +209,22 @@ function mergeRegionIntoLargestNeighbor(
     targetIndex = findLargestOtherRegion(regions, sourceIndex);
   }
   if (targetIndex < 0) return false;
-  regions[targetIndex].push(...regions[sourceIndex]);
+  // Append cell by cell. `push(...cells)` spreads the whole region onto the
+  // stack and throws RangeError once a merged region gets large; the loop
+  // appends in the same order, so the merged region is identical.
+  const target = regions[targetIndex];
+  for (const cell of regions[sourceIndex]) target.push(cell);
   regions.splice(sourceIndex, 1);
   return true;
+}
+
+/** Lowest cell index in a region, scanned iteratively (never spread). */
+function smallestCellIndex(cells: number[]): number {
+  let smallest = Infinity;
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] < smallest) smallest = cells[i];
+  }
+  return smallest;
 }
 
 function buildRegionMap(regions: number[][]): Int32Array {
