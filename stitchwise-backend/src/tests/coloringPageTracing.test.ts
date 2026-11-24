@@ -35,6 +35,31 @@ async function makeSpeckFixture(): Promise<Buffer> {
   return sharp(svg).png().toBuffer();
 }
 
+/**
+ * One enormous open enclosed region: a ~464×464 white body inside a 512×512
+ * page, with impractical specks inside it. A per-pixel recursive flood fill
+ * runs about 200,000 frames deep on this shape and throws a stack overflow.
+ */
+async function makeHugeBodyFixture(): Promise<Buffer> {
+  const specks: string[] = [];
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const cx = 70 + col * 50;
+      const cy = 70 + row * 50;
+      specks.push(`<circle cx="${cx}" cy="${cy}" r="3" fill="white" stroke="black" stroke-width="3" />`);
+    }
+  }
+  const svg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+      <rect width="512" height="512" fill="white" />
+      <rect x="24" y="24" width="464" height="464" fill="white" stroke="black" stroke-width="8" />
+      ${specks.join("\n      ")}
+      <circle cx="430" cy="430" r="16" fill="white" stroke="black" stroke-width="4" />
+    </svg>
+  `);
+  return sharp(svg).png().toBuffer();
+}
+
 /** 120 meaningful regions exercise the final cap without tiny-region merging. */
 async function makePieceCapFixture(): Promise<Buffer> {
   const regions: string[] = [];
@@ -112,6 +137,21 @@ describe("coloring-page line tracing", () => {
     const eye = result.pieces.find((piece) => piece.bounds.width < 0.1);
     expect(eye).toBeDefined();
     expect(eye!.bounds.width * eye!.bounds.height).toBeGreaterThan(0.001);
+  });
+
+  it("traces one huge open enclosed region instead of blowing the stack", async () => {
+    const result = await traceColoringPageIntoPieces(await makeHugeBodyFixture());
+
+    // Regression guard: a recursive flood fill over this ~464×464 body threw
+    // "Maximum call stack size exceeded" before the walk became iterative.
+    expect(result.pieces.length).toBeGreaterThan(0);
+    const body = result.pieces.reduce((largest, piece) =>
+      piece.bounds.width * piece.bounds.height > largest.bounds.width * largest.bounds.height
+        ? piece
+        : largest,
+    );
+    expect(body.bounds.width).toBeGreaterThan(0.8);
+    expect(body.bounds.height).toBeGreaterThan(0.8);
   });
 
   it("caps patterns at 100 pieces by merging the smallest neighboring regions", async () => {
