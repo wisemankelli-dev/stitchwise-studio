@@ -80,7 +80,7 @@ function AppContent() {
           <div className="flex items-center justify-between gap-3 h-16">
 
             {/* Logo / Brand with image */}
-            <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0 group">
+            <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0 min-h-[44px] group">
               <div className="relative shrink-0">
                 <div className="absolute inset-0 bg-blush-200/40 rounded-full blur-sm group-hover:bg-blush-300/50 transition-colors duration-300" />
                 <img

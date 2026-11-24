@@ -93,7 +93,7 @@ export const FilePanel: React.FC<FilePanelProps> = ({
       <div role="alert" className="text-[11px] px-2 py-1.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-start gap-2">
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         <span className="flex-1">{patternError}</span>
-        <button type="button" onClick={onDismissError} className="min-h-[32px] px-1 text-[11px] font-bold text-red-500">
+        <button type="button" onClick={onDismissError} className="min-h-[44px] -my-[6px] px-1 text-[11px] font-bold text-red-500">
           Dismiss
         </button>
       </div>
@@ -132,7 +132,7 @@ export const FilePanel: React.FC<FilePanelProps> = ({
         <button
           type="button"
           onClick={onRefreshPatterns}
-          className="min-h-[32px] px-2 text-[11px] font-bold text-blush-600 flex items-center gap-1"
+          className="min-h-[44px] -my-[6px] px-2 text-[11px] font-bold text-blush-600 flex items-center gap-1"
         >
           <RefreshCw className="h-3 w-3" /> Refresh
         </button>
@@ -240,7 +240,7 @@ export const FilePanel: React.FC<FilePanelProps> = ({
             <button
               type="button"
               onClick={onDismissImageError}
-              className="min-h-[32px] px-1 text-[11px] font-bold text-red-500"
+              className="min-h-[44px] -my-[6px] px-1 text-[11px] font-bold text-red-500"
             >
               Dismiss
             </button>
