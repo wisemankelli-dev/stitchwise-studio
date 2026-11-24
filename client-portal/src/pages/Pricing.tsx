@@ -18,6 +18,11 @@ export interface PricingPlan {
   ctaText: string;
   highlighted: boolean;
   className?: string;
+  /**
+   * Stripe hosted payment link for this plan (recurring monthly price).
+   * Only paid tiers have one; the free Hobbyist tier has none.
+   */
+  paymentUrl?: string;
 }
 
 /** Render a cents amount as the dollars the card is actually charged. */
@@ -61,6 +66,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     ],
     ctaText: 'Upgrade to Pro',
     highlighted: true,
+    paymentUrl: 'https://buy.stripe.com/eVq5kEaHJfg027QebGew803',
   },
   {
     id: 'Design Studio',
@@ -76,6 +82,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     className: 'ring-2 ring-blush-200',
     ctaText: 'Upgrade to Studio',
     highlighted: false,
+    paymentUrl: 'https://buy.stripe.com/7sYeVecPRfg05k26Jeew804',
   },
 ];
 
@@ -114,20 +121,19 @@ export const Pricing: React.FC = () => {
           </p>
 
           {/*
-            HONEST STOREFRONT (launch blocker #3): the paid tiers cannot be billed
-            yet — Stripe is an express account and express accounts cannot sell
-            subscriptions, so both "Upgrade" buttons failed silently. Until billing
-            works, the page says so and offers no button that can error.
+            Card billing is live: each paid tier's button opens that tier's own
+            Stripe hosted payment link (a recurring monthly price). Stripe takes
+            the payment; the account is upgraded from the checkout email.
           */}
           <div className="mt-8 mx-auto max-w-2xl rounded-2xl border border-blush-200 bg-white px-5 py-4 text-left shadow-sm">
             <p className="flex items-start gap-2 text-xs font-bold text-blush-800">
               <ShieldCheck className="h-4 w-4 text-blush-500 shrink-0 mt-0.5" />
-              <span>Paid plans are not available yet — nothing on this page can charge you.</span>
+              <span>Paid plans are open — card billing is on, and Stripe takes the payment.</span>
             </p>
             <p className="mt-2 pl-6 text-xs leading-relaxed text-slate-600">
-              Every account is on the free Hobbyist plan today: 2 AI pattern generations a day (10/month),
-              plus the Pattern Designer, Collage Studio and Quilt Block tools. Pro Crafter and Design Studio
-              are shown below for reference and will open once card billing is switched on.
+              The free Hobbyist plan stays free: 2 AI pattern generations a day (10/month), plus the Pattern Designer,
+              Collage Studio and Quilt Block tools. Pro Crafter and Design Studio are billed monthly by card through
+              Stripe — use the same email at checkout that you log in with, and full refunds are available for 7 days.
             </p>
           </div>
 
@@ -192,19 +198,25 @@ export const Pricing: React.FC = () => {
                     <div className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-blush-50 text-blush-400 border border-blush-200 flex items-center justify-center gap-1.5">
                       {isCurrentPlan ? 'Active Plan' : plan.ctaText}
                     </div>
-                  ) : (
-                    /* Not purchasable until the Stripe account can bill subscriptions. */
-                    <div
-                      className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center gap-1.5 cursor-not-allowed select-none"
-                      aria-disabled="true"
-                      title="Paid plans are not available yet — nothing on this page can charge you."
+                  ) : plan.paymentUrl ? (
+                    /* Opens this tier's Stripe hosted payment link (monthly, recurring). */
+                    <a
+                      href={plan.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-blush-500 text-white shadow-sm hover:bg-blush-600 flex items-center justify-center gap-1.5 transition-colors"
                     >
-                      Coming Soon
+                      {plan.ctaText}
+                    </a>
+                  ) : (
+                    /* Safety net only: every paid tier above carries its own payment link. */
+                    <div className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                      Unavailable
                     </div>
                   )}
                   {plan.priceMonthlyCents > 0 && (
                     <p className="mt-2 text-[10px] text-center text-slate-400 font-semibold">
-                      Card billing is not switched on yet
+                      Billed monthly · cancel any time · 7-day full refund
                     </p>
                   )}
                 </div>
@@ -285,9 +297,9 @@ export const Pricing: React.FC = () => {
           <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Can I switch plans or cancel at any time?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              There are no binding contracts, and there is nothing to cancel today: no paid plan can be bought yet,
-              so every account stays on the free Hobbyist plan. When card billing is switched on, you will be able to
-              upgrade, downgrade or cancel from your settings panel, and access stays active until the end of the billing cycle.
+              There are no binding contracts: every paid plan is billed monthly through Stripe and you can cancel
+              whenever you like by replying to your Stripe receipt, and access stays active until the end of the
+              period you have paid for. Every purchase also carries a 7-day full refund.
             </p>
           </div>
 
