@@ -46,7 +46,7 @@ import {
   AVAILABLE_FABRIC_COUNTS,
   getMaxColors,
 } from "../../domain/stitch/fabricCounts";
-import { aiRateLimit, isPremiumTier } from "../middleware/aiRateLimit";
+import { checkAILimit, chargeAIUnit, refundAIUnit, isPremiumTier, type AIChargeReceipt } from "../middleware/aiRateLimit";
 import { createAIJob } from "../services/aiJobStore";
 
 
@@ -988,6 +988,10 @@ interface RegeneratePatternContext {
 
 async function handleRegeneratePattern(ctx: RegeneratePatternContext): Promise<void> {
   const { patternId, prompt, requestShape, fabricCount, canvasWidth, canvasHeight, req, res, prisma } = ctx;
+  // The unit for a regenerate is spent only once every guard below has passed
+  // (a refused regenerate must cost nothing) and is given back if the
+  // conversion itself throws.
+  let charge: AIChargeReceipt | undefined;
   try {
     const user = (req as any).user;
     if (!user?.userId) {
@@ -1043,6 +1047,7 @@ async function handleRegeneratePattern(ctx: RegeneratePatternContext): Promise<v
     // Same grid-size convention the client uses for gen (≥200 cap 240); the
     // converter resolves the canvas from genW/genH.
     const guessedGridSize = ctx.gridSize ?? Math.min(240, Math.max(genW, genH, 200));
+    charge = chargeAIUnit(user.userId);
     const conversion = await convertStitchPatternImage(imageBuf, {
       prompt,
       finalPrompt,
@@ -1071,6 +1076,8 @@ async function handleRegeneratePattern(ctx: RegeneratePatternContext): Promise<v
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // The unit was spent and no pattern came back — give it back.
+    if (charge) refundAIUnit(charge.userId, charge.date, charge.jobId);
     console.error({ event: "regenerate_pattern_error", patternId, error: message });
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: message });
@@ -1096,8 +1103,11 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
   router.post(
     "/ai/embroidery/text-to-pattern",
     optionalAuth,
-    aiRateLimit,
+    checkAILimit,
     async (req: Request, res: Response) => {
+      // The unit for this request (set just before the job starts). Refunded in
+      // the catch below if the request dies before the job ever owned it.
+      let charge: AIChargeReceipt | undefined;
       try {
         const parsed = TextToPatternSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -1173,6 +1183,11 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
         // Slow AI path (Gemini routinely takes 30-60s). Return 202 + jobId
         // immediately and run the pipeline in the background so the platform
         // gateway's ~30s upstream timeout is never hit.
+        // The allowance unit is spent HERE — after validation, immediately
+        // before the job that does the work — never by the gate middleware, so
+        // a 400 body can no longer burn a unit. A job that fails gives it back
+        // (aiJobStore's catch calls refundAIUnit before setting "error").
+        charge = chargeAIUnit((req as any).user?.userId);
         const jobId = createAIJob(async () => {
           const userId = (req as any).user?.userId;
           // b134 DIRECT-DRAW short-circuit: stocking (always) and bear-family
@@ -1436,11 +1451,15 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
               ...(conversion.conversionWarning ? { conversionWarning: conversion.conversionWarning } : {}),
             },
           );
-        });
+        }, charge);
+        charge = undefined; // the running job owns the unit from here on
         res.status(202).json({ jobId });
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // The request died before/while starting the job — no pattern was made,
+        // so the unit goes back (the job's own catch covers failures after).
+        if (charge) refundAIUnit(charge.userId, charge.date, charge.jobId);
         console.error({ event: "text_to_pattern_error", error: message });
         res.status(500).json({ success: false, error: message });
       }
@@ -1461,9 +1480,12 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
   router.post(
     "/ai/embroidery/image-to-pattern",
     optionalAuth,
-    aiRateLimit,
+    checkAILimit,
     upload.single("file"),
     async (req: Request, res: Response) => {
+      // Charged after validation (below), refunded if the conversion throws —
+      // an empty/invalid upload no longer costs a unit.
+      let charge: AIChargeReceipt | undefined;
       try {
         const parsed = ImageToPatternSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -1485,6 +1507,7 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
 
         const { gridSize, maxColors } = parsed.data;
 
+        charge = chargeAIUnit((req as any).user?.userId);
         // Convert the uploaded image buffer to stitch grid
         const pattern = await imageBufferToStitchGrid(req.file.buffer, gridSize, maxColors);
 
@@ -1499,6 +1522,7 @@ export function createAIEmbroideryRouter(prisma?: PrismaClient): Router {
         }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (charge) refundAIUnit(charge.userId, charge.date, charge.jobId);
         console.error({ event: "image_to_pattern_error", error: message });
         res.status(500).json({ success: false, error: message });
       }

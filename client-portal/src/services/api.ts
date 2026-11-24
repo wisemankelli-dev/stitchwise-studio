@@ -169,6 +169,8 @@ export interface AIPatternJobResponse {
   status: 'queued' | 'processing' | 'done' | 'failed';
   result?: AIPatternResponse | null;
   error?: string | null;
+  /** True when the unit charged for this job was given back after it failed. */
+  allowanceRefunded?: boolean;
 }
 
 // Fallback initial projects if nothing is in localStorage yet
@@ -1151,9 +1153,14 @@ class ApiClient {
       }
 
       if (job.status === 'failed') {
-        throw this.generationError(
+        // Keep the status-carrying generationError wrapper (main) AND carry the
+        // backend's refund flag (this branch) so the caller can tell the
+        // customer their allowance unit came back.
+        const err = this.generationError(
           new Error(job.error || 'The generation service could not finish this pattern. Please try again.'),
-        );
+        ) as Error & { allowanceRefunded?: boolean };
+        if (job.allowanceRefunded) err.allowanceRefunded = true;
+        throw err;
       }
 
       // status is 'queued' or 'processing' — continue polling
@@ -1181,7 +1188,7 @@ class ApiClient {
    * body) is ridden out by retrying the GET a few times — never by submitting a
    * new job. A job the backend no longer knows about (404) is reported as lost.
    */
-  private async pollAIJob(jobId: string, timeoutMs = 300_000): Promise<{ status: string; result: unknown; error?: string }> {
+  private async pollAIJob(jobId: string, timeoutMs = 300_000): Promise<{ status: string; result: unknown; error?: string; allowanceRefunded?: boolean }> {
     const POLL_INTERVAL = 2000; // 2 seconds
     const MAX_CONSECUTIVE_POLL_FAILURES = 3;
     let consecutiveFailures = 0;
@@ -1234,7 +1241,12 @@ class ApiClient {
         return { status: 'done', result: job.result };
       }
       if (job.status === 'error' || job.status === 'failed') {
-        return { status: 'error', result: undefined, error: job.error || 'AI generation job failed' };
+        return {
+          status: 'error',
+          result: undefined,
+          error: job.error || 'AI generation job failed',
+          allowanceRefunded: job.allowanceRefunded === true,
+        };
       }
       // status is 'pending' or 'processing' — keep polling
     }
@@ -1251,7 +1263,12 @@ class ApiClient {
   private async pollAIJobResult(jobId: string): Promise<unknown> {
     const job = await this.pollAIJob(jobId);
     if (job.status === 'done') return job.result;
-    throw this.generationError(new Error(job.error || 'AI generation failed. Please try again.'));
+    const err = this.generationError(
+      new Error(job.error || 'AI generation failed. Please try again.'),
+    ) as Error & { allowanceRefunded?: boolean };
+    // The backend gave the allowance unit back for this failed job.
+    if (job.allowanceRefunded) err.allowanceRefunded = true;
+    throw err;
   }
   /**
    * Unwrap a collage generation result into the client-facing shape.

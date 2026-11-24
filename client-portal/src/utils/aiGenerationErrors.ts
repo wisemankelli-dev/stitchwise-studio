@@ -51,3 +51,22 @@ export function describeAiGenerationError(err: unknown, fallback: string): strin
   }
   return fallback;
 }
+
+/** True when the failure carried the backend's "your allowance unit came back" flag. */
+export function allowanceWasRefunded(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { allowanceRefunded?: boolean }).allowanceRefunded === true;
+}
+
+/**
+ * The sentence appended to a failed generation when the server gave the
+ * allowance unit back (owner rule: a generation that produced nothing must not
+ * keep the unit). When the freshly re-read allowance is known it says how many
+ * are left, so the refund is visible on screen, not just in the file.
+ */
+export function refundedUnitNotice(usage?: { remainingToday?: number } | null): string {
+  const left = usage?.remainingToday;
+  if (typeof left === 'number' && Number.isFinite(left)) {
+    return ` Your generation unit was returned — ${left} left today.`;
+  }
+  return ' Your generation unit was returned to your allowance.';
+}
