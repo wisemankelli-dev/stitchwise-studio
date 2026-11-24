@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, FabricLayer, AICollageResponse, CollageProject, CollagePiece, PlacedCollagePiece } from '../services/api';
 import { describeAiGenerationError, allowanceWasRefunded, refundedUnitNotice } from '../utils/aiGenerationErrors';
@@ -52,6 +52,28 @@ export const CollageStudio: React.FC = () => {
   // Real work-surface dimension (px). Default 500; "Large canvas" grows to ~950
   // so there is real room to arrange pieces. All piece geometry scales with this.
   const [canvasSize, setCanvasSize] = useState(CANVAS_WIDTH);
+  // The work surface keeps its real 500 px geometry (all piece coordinates are in
+  // that space) but is scaled DOWN to whatever width the card actually has, so the
+  // studio fits a phone screen instead of forcing the page wider than the viewport.
+  // Pointer maths reads the on-screen rect, so a scaled surface still maps 1:1.
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const [canvasScale, setCanvasScale] = useState(1);
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const avail = el.clientWidth;
+      if (avail > 0) setCanvasScale(Math.min(1, avail / canvasSize));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [canvasSize]);
   // Piece view: 'spread' = non-overlapping grid; 'assembled' = each cutout back
   // at its original artwork position (the default — see below).
   // Default to Assembled: the studio should open on the actual design, not a
@@ -254,7 +276,8 @@ export const CollageStudio: React.FC = () => {
     const saved = {
       width: node.style.width, height: node.style.height, maxWidth: node.style.maxWidth,
       overflow: node.style.overflow, border: node.style.border, borderRadius: node.style.borderRadius,
-      transform: pieceSpace.style.transform, transformOrigin: pieceSpace.style.transformOrigin,
+      transform: node.style.transform, transformOrigin: node.style.transformOrigin,
+      pieceTransform: pieceSpace.style.transform, pieceTransformOrigin: pieceSpace.style.transformOrigin,
       backgroundImage: pieceSpace.style.backgroundImage,
     };
     const savedPieces = wrappers.map((el) => ({
@@ -265,6 +288,7 @@ export const CollageStudio: React.FC = () => {
       node.style.width = `${extW}px`;
       node.style.height = `${extH}px`;
       node.style.maxWidth = 'none';
+      node.style.transform = 'none';                    // export 1:1 (ignore the phone fit scale)
       node.style.overflow = 'visible';
       node.style.border = 'none';
       node.style.borderRadius = '0';
@@ -293,7 +317,8 @@ export const CollageStudio: React.FC = () => {
       node.classList.remove('sw-exporting');
       node.style.width = saved.width; node.style.height = saved.height; node.style.maxWidth = saved.maxWidth;
       node.style.overflow = saved.overflow; node.style.border = saved.border; node.style.borderRadius = saved.borderRadius;
-      pieceSpace.style.transform = saved.transform; pieceSpace.style.transformOrigin = saved.transformOrigin;
+      node.style.transform = saved.transform; node.style.transformOrigin = saved.transformOrigin;
+      pieceSpace.style.transform = saved.pieceTransform; pieceSpace.style.transformOrigin = saved.pieceTransformOrigin;
       pieceSpace.style.backgroundImage = saved.backgroundImage;
       for (const s of savedPieces) {
         s.el.style.left = s.left; s.el.style.top = s.top;
@@ -939,10 +964,10 @@ export const CollageStudio: React.FC = () => {
       `}</style>
       {/* Header */}
       <div className="bg-white border-b border-blush-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link to="/dashboard" className="text-blush-500 hover:text-blush-600 transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 py-2 sm:h-16 sm:py-0">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+              <Link to="/dashboard" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-blush-500 hover:text-blush-600 transition-colors sm:h-auto sm:w-auto">
                 <Flower2 className="h-5 w-5" />
               </Link>
               <div>
@@ -953,47 +978,47 @@ export const CollageStudio: React.FC = () => {
                 <p className="text-[10px] text-blush-400">Coloring-Page Collage Designer</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {aiResult && !isGenerating && (
                 <>
                   {!(aiResult.pieces && aiResult.pieces.length > 0) && (
                     <div className="flex bg-blush-50 p-0.5 rounded-lg border border-blush-100 mr-1">
                       <button
                         onClick={() => setReplaceMode('replace')}
-                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                        className={`px-2 py-1 max-sm:min-h-[44px] rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'replace' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
                       >
                         <RefreshCw className="h-3 w-3 inline mr-0.5" /> Replace
                       </button>
                       <button
                         onClick={() => setReplaceMode('append')}
-                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                        className={`px-2 py-1 max-sm:min-h-[44px] rounded-md text-[10px] font-semibold transition-all ${replaceMode === 'append' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
                       >
                         <Plus className="h-3 w-3 inline mr-0.5" /> Append
                       </button>
                     </div>
                   )}
-                  <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <button onClick={applyAiResult} className="btn-floral-primary text-xs py-1.5 px-3 max-sm:min-h-[44px]">
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                     {aiResult.pieces && aiResult.pieces.length > 0 ? 'Apply Pieces' : 'Apply to Canvas'}
                   </button>
                 </>
               )}
               {/* Save/Load/Export controls */}
-              <div className="flex items-center gap-2 relative">
+              <div className="flex flex-wrap items-center gap-2 relative">
                 {/* Name input */}
                 <input
                   type="text"
                   value={collageName}
                   onChange={(e) => setCollageName(e.target.value)}
                   placeholder="Project name..."
-                  className="w-28 rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                  className="w-28 max-sm:min-h-[44px] rounded-lg border-blush-200 text-xs text-slate-700 px-2 py-1.5 border bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCollage(); }}
                 />
                 {/* Save */}
                 <button
                   onClick={handleSaveCollage}
                   disabled={isSaving}
-                  className="btn-floral-ghost text-xs py-1.5 px-3 disabled:opacity-50"
+                  className="btn-floral-ghost text-xs py-1.5 px-3 max-sm:min-h-[44px] disabled:opacity-50"
                 >
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
                   {isSaving ? 'Saving...' : 'Save'}
@@ -1002,7 +1027,7 @@ export const CollageStudio: React.FC = () => {
                 <div className="relative">
                   <button
                     onClick={handleLoadProjects}
-                    className="btn-floral-ghost text-xs py-1.5 px-3 flex items-center"
+                    className="btn-floral-ghost text-xs py-1.5 px-3 max-sm:min-h-[44px] flex items-center"
                   >
                     <FolderOpen className="h-3.5 w-3.5 mr-1" />
                     Load
@@ -1037,22 +1062,22 @@ export const CollageStudio: React.FC = () => {
                   )}
                 </div>
                 {/* Export */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <select
                     value={blockSize}
                     onChange={(e) => setBlockSize(Number(e.target.value))}
-                    className="rounded-lg border border-blush-200 text-xs text-slate-700 px-2 py-1.5 bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
+                    className="rounded-lg border border-blush-200 text-xs text-slate-700 px-2 py-1.5 max-sm:min-h-[44px] bg-white focus:border-blush-400 focus:ring-1 focus:ring-blush-400"
                     title="Quilt block size (inches) — the full-scale PDF pattern prints at this real size"
                   >
                     {[12, 14, 16, 18, 20, 22, 24].map((n) => (
                       <option key={n} value={n}>{n}&quot; block</option>
                     ))}
                   </select>
-                  <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3">
+                  <button onClick={handleExportPng} className="btn-floral-primary text-xs py-1.5 px-3 max-sm:min-h-[44px]">
                     <Download className="h-3.5 w-3.5 mr-1" />
                     PNG
                   </button>
-                  <button onClick={handleExportPdf} className="btn-floral-ghost text-xs py-1.5 px-3">
+                  <button onClick={handleExportPdf} className="btn-floral-ghost text-xs py-1.5 px-3 max-sm:min-h-[44px]">
                     <FileText className="h-3.5 w-3.5 mr-1" />
                     PDF
                   </button>
@@ -1069,11 +1094,11 @@ export const CollageStudio: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
           {/* Left: Persistent Artwork panel (top on mobile, beside the pattern on lg) */}
-          <div className="lg:col-span-4">
-            <div className="floral-card p-5 flex flex-col h-full">
+          <div className="order-2 min-w-0 lg:order-1 lg:col-span-4">
+            <div className="floral-card p-4 sm:p-5 flex flex-col h-full">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-bold text-slate-700 text-sm flex items-center gap-2">
                   <Image className="h-4 w-4 text-blush-500" />
@@ -1083,7 +1108,7 @@ export const CollageStudio: React.FC = () => {
               </div>
               {referenceArt ? (
                 <div className="flex-1 rounded-2xl bg-white border border-blush-100 overflow-hidden relative flex items-center justify-center p-3"
-                  style={{ minHeight: '340px' }}>
+                  style={{ minHeight: 'clamp(200px, 38vh, 340px)' }}>
                   <img
                     src={referenceArt}
                     alt="Generated reference artwork"
@@ -1096,7 +1121,7 @@ export const CollageStudio: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex-1 rounded-2xl bg-blush-50/60 border-2 border-dashed border-blush-200 flex flex-col items-center justify-center text-center p-8"
-                  style={{ minHeight: '340px' }}>
+                  style={{ minHeight: 'clamp(200px, 38vh, 340px)' }}>
                   <Sparkles className="h-8 w-8 text-blush-300 mb-3" />
                   <p className="text-xs font-semibold text-blush-600">Your artwork will appear here</p>
                   <p className="text-[10px] text-slate-400 mt-1 max-w-[220px]">
@@ -1107,24 +1132,24 @@ export const CollageStudio: React.FC = () => {
             </div>
           </div>
           {/* Right: Pattern canvas (8 cols) */}
-          <div className="lg:col-span-8">
-            <div className="floral-card p-4">
+          <div className="order-1 min-w-0 lg:order-2 lg:col-span-8">
+            <div className="floral-card p-3 sm:p-4">
               {/* Canvas Toolbar */}
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-blush-100">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-sm font-bold text-slate-700 mr-1 flex items-center gap-1.5">
                     <Grid3X3 className="h-4 w-4 text-blush-500" />
                     Pattern
                   </span>
                   <span className="mx-0.5 text-blush-200">|</span>
-                  <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5"><ZoomIn className="h-4 w-4" /></button>
+                  <button onClick={() => setZoom(z => Math.min(z + 0.1, 3))} className="btn-floral-ghost p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center"><ZoomIn className="h-4 w-4" /></button>
                   <span className="text-xs font-bold text-slate-600 w-10 text-center">{Math.round(zoom * 100)}%</span>
-                  <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5"><ZoomOut className="h-4 w-4" /></button>
-                  <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5"><RotateCcw className="h-4 w-4" /></button>
+                  <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="btn-floral-ghost p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center"><ZoomOut className="h-4 w-4" /></button>
+                  <button onClick={() => setZoom(1)} className="btn-floral-ghost p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center"><RotateCcw className="h-4 w-4" /></button>
                   <span className="mx-1 text-blush-200">|</span>
                   <button
                     onClick={handleReset}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-1"
+                    className="px-3 py-1.5 max-sm:min-h-[44px] rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-1"
                     title="Clear all layers and start fresh"
                   >
                     <Trash2 className="h-3 w-3" /> Reset
@@ -1136,7 +1161,7 @@ export const CollageStudio: React.FC = () => {
                       <button
                         key={id}
                         onClick={() => setPatternStyle(id)}
-                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                        className={`px-2 py-1 max-sm:min-h-[44px] rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
                           patternStyle === id
                             ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
                             : 'text-slate-500 hover:text-slate-700'
@@ -1160,7 +1185,7 @@ export const CollageStudio: React.FC = () => {
                       <button
                         key={id}
                         onClick={() => applyViewLayout(id)}
-                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
+                        className={`px-2 py-1 max-sm:min-h-[44px] rounded-md text-[10px] font-semibold transition-all whitespace-nowrap ${
                           layoutView === id
                             ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
                             : 'text-slate-500 hover:text-slate-700'
@@ -1192,7 +1217,7 @@ export const CollageStudio: React.FC = () => {
                       );
                       setZoom(1);
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+                    className={`px-2.5 py-1 max-sm:min-h-[44px] rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
                       canvasSize > CANVAS_WIDTH
                         ? 'bg-blush-500 text-white shadow-sm ring-1 ring-blush-600'
                         : 'bg-blush-50 text-slate-500 border border-blush-100 hover:text-slate-700'
@@ -1203,15 +1228,15 @@ export const CollageStudio: React.FC = () => {
                     {canvasSize > CANVAS_WIDTH ? 'Large' : 'Standard'}
                   </button>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-blush-500">
+                <div className="flex items-center gap-1.5 text-xs text-blush-500 shrink-0">
                   <Grid3X3 className="h-3.5 w-3.5" />
                   <span>{placedPieces.length > 0 ? `${placedPieces.length} pieces · ` : ''}{layers.length} layers</span>
                 </div>
               </div>
 
               {/* Editing Tools Toolbar */}
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-blush-100">
-                <div className="flex items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-blush-100">
+                <div className="flex flex-wrap items-center gap-1 bg-blush-50 p-1 rounded-xl border border-blush-100">
                   {TOOLS.map((tool) => (
                     <button
                       key={tool.id}
@@ -1219,7 +1244,7 @@ export const CollageStudio: React.FC = () => {
                         setActiveTool(tool.id);
                         if (tool.id !== 'mirror') setMirrorEnabled(false);
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                      className={`flex items-center gap-1 px-2.5 py-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:justify-center rounded-lg text-[10px] font-semibold transition-all ${
                         activeTool === tool.id
                           ? 'bg-white text-slate-800 shadow-sm ring-1 ring-blush-500'
                           : 'text-slate-500 hover:text-slate-700'
@@ -1231,7 +1256,7 @@ export const CollageStudio: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {activeTool === 'mirror' && (
                     <button
                       onClick={() => setMirrorEnabled(!mirrorEnabled)}
@@ -1258,11 +1283,23 @@ export const CollageStudio: React.FC = () => {
                 </div>
               </div>
 
-              {/* Canvas Area */}
+              {/* Canvas Area — the 500 px work surface is scaled down to the card
+                  width on a phone so the studio never widens the page. */}
+              <div
+                ref={canvasWrapRef}
+                data-testid="collage-canvas-wrap"
+                className="mx-auto w-full"
+                style={{ maxWidth: `${canvasSize}px`, height: `${Math.round(canvasSize * canvasScale)}px` }}
+              >
               <div
                 ref={canvasRef}
-                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden mx-auto"
-                style={{ height: `${canvasSize}px`, width: `${canvasSize}px`, maxWidth: '100%' }}
+                className="relative bg-white rounded-2xl border-2 border-dashed border-blush-200 overflow-hidden"
+                style={{
+                  height: `${canvasSize}px`,
+                  width: `${canvasSize}px`,
+                  transform: `scale(${canvasScale})`,
+                  transformOrigin: 'top left',
+                }}
                 onPointerMove={handleCanvasPointerMove}
                 onPointerUp={handleCanvasPointerUp}
                 onPointerLeave={handleCanvasPointerUp}
@@ -1412,13 +1449,14 @@ export const CollageStudio: React.FC = () => {
                   })}
                 </div>
               </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Tools row: AI generator · piece tray · layers */}
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-4 space-y-6">
+        <div className="mt-6 sm:mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
+          <div className="min-w-0 lg:col-span-4 space-y-6">
             {/* AI Generation Panel */}
             <div className="floral-card p-5">
               <div className="flex items-center justify-between mb-4">
@@ -1430,13 +1468,13 @@ export const CollageStudio: React.FC = () => {
 
               <div className="flex border-b border-blush-100 mb-4">
                 <button onClick={() => setActiveTab('prompt')} disabled={isGenerating}
-                  className={`flex-1 pb-2 text-[10px] font-bold text-center border-b-2 transition-all ${
+                  className={`flex-1 pb-2 max-sm:min-h-[44px] text-[10px] font-bold text-center border-b-2 transition-all ${
                     activeTab === 'prompt' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'
                   }`}>
                   <Sparkles className="h-3.5 w-3.5 inline mr-1" /> Text-to-Collage
                 </button>
                 <button onClick={() => setActiveTab('image')} disabled={isGenerating}
-                  className={`flex-1 pb-2 text-[10px] font-bold text-center border-b-2 transition-all ${
+                  className={`flex-1 pb-2 max-sm:min-h-[44px] text-[10px] font-bold text-center border-b-2 transition-all ${
                     activeTab === 'image' ? 'border-blush-600 text-blush-700' : 'border-transparent text-slate-400'
                   }`}>
                   <Image className="h-3.5 w-3.5 inline mr-1" /> Image-to-Collage
@@ -1484,14 +1522,14 @@ export const CollageStudio: React.FC = () => {
                       </div>
                     ) : (
                       <button type="submit" disabled={!promptInput.trim()}
-                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
+                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 max-sm:min-h-[44px] text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
                         <Play className="h-3.5 w-3.5" /> Generate Collage
                       </button>
                     )}
                   </form>
                   {aiResult && !isGenerating && activeTab === 'prompt' && (
                     <button onClick={triggerTextGeneration as any}
-                      className="w-full mt-2 rounded-xl border border-blush-200 px-4 py-2 text-[10px] font-semibold text-blush-600 hover:bg-blush-50 flex items-center justify-center gap-2 transition-all">
+                      className="w-full mt-2 rounded-xl border border-blush-200 px-4 py-2 max-sm:min-h-[44px] text-[10px] font-semibold text-blush-600 hover:bg-blush-50 flex items-center justify-center gap-2 transition-all">
                       <RefreshCw className="h-3 w-3" /> Regenerate
                     </button>
                   )}
@@ -1541,7 +1579,7 @@ export const CollageStudio: React.FC = () => {
                       </div>
                     ) : (
                       <button type="submit" disabled={!uploadedFile}
-                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
+                        className="w-full rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-4 py-2.5 max-sm:min-h-[44px] text-xs font-semibold text-white shadow-sm hover:from-blush-600 hover:to-blush-500 disabled:bg-slate-100 disabled:text-slate-400 flex items-center justify-center gap-2 transition-all">
                         <Play className="h-3.5 w-3.5" /> Convert to Collage
                       </button>
                     )}
@@ -1610,7 +1648,7 @@ export const CollageStudio: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="lg:col-span-4 space-y-6">
+          <div className="min-w-0 lg:col-span-4 space-y-6">
 
             {/* Scrapbook Piece Tray */}
             {availablePieces.length > 0 && (
@@ -1674,13 +1712,13 @@ export const CollageStudio: React.FC = () => {
                       {sel.piece.label || 'Piece'}
                     </h3>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => duplicatePlacedPiece(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Duplicate">
+                      <button onClick={() => duplicatePlacedPiece(sel.instanceId)} className="p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Duplicate">
                         <Copy className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => bringPieceToFront(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Bring to front">
+                      <button onClick={() => bringPieceToFront(sel.instanceId)} className="p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center rounded-lg text-slate-400 hover:text-blush-600 hover:bg-blush-50" title="Bring to front">
                         <GripVertical className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => removePlacedPiece(sel.instanceId)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete piece">
+                      <button onClick={() => removePlacedPiece(sel.instanceId)} className="p-1.5 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete piece">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -1691,14 +1729,14 @@ export const CollageStudio: React.FC = () => {
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Scale</label>
                       <input type="range" min="20" max="300" value={Math.round(sel.scale * 100)}
                         onChange={(e) => updatePlacedPiece(sel.instanceId, { scale: Number(e.target.value) / 100 })}
-                        className="w-full accent-blush-500" />
+                        className="w-full accent-blush-500 max-sm:h-11" />
                       <span className="text-[9px] text-slate-400">{Math.round(sel.scale * 100)}%</span>
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Rotate</label>
                       <input type="range" min="-180" max="180" value={Math.round(sel.rotation)}
                         onChange={(e) => updatePlacedPiece(sel.instanceId, { rotation: Number(e.target.value) })}
-                        className="w-full accent-blush-500" />
+                        className="w-full accent-blush-500 max-sm:h-11" />
                       <span className="text-[9px] text-slate-400">{Math.round(sel.rotation)}°</span>
                     </div>
                   </div>
@@ -1710,7 +1748,7 @@ export const CollageStudio: React.FC = () => {
               );
             })()}
           </div>
-          <div className="lg:col-span-4 space-y-6">
+          <div className="min-w-0 lg:col-span-4 space-y-6">
 
             {/* Layers Panel */}
             <div className="floral-card p-5">
@@ -1719,7 +1757,7 @@ export const CollageStudio: React.FC = () => {
                   <Layers className="h-4 w-4 text-blush-500" />
                   Layers
                 </h3>
-                <button onClick={addLayer} className="btn-floral-ghost p-1">
+                <button onClick={addLayer} className="btn-floral-ghost p-1 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center">
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
@@ -1742,7 +1780,7 @@ export const CollageStudio: React.FC = () => {
                     <span className="font-medium text-slate-700 flex-1">{layer.name}</span>
                     <span className="text-[10px] text-slate-400">z:{layer.zIndex}</span>
                     {layer.id !== 'bg' && (
-                      <button onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }} className="text-slate-300 hover:text-rose-500">
+                      <button onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }} className="text-slate-300 hover:text-rose-500 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:flex max-sm:items-center max-sm:justify-center">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
@@ -1767,7 +1805,7 @@ export const CollageStudio: React.FC = () => {
                       <button
                         key={c}
                         onClick={() => updateLayer(selectedLayer.id, { color: c })}
-                        className={`h-6 w-6 rounded-full border-2 transition-all ${
+                        className={`h-6 w-6 max-sm:h-11 max-sm:w-11 rounded-full border-2 transition-all ${
                           selectedLayer.color === c ? 'border-blush-500 scale-110' : 'border-transparent hover:scale-110'
                         }`}
                         style={{ backgroundColor: c }}
@@ -1803,25 +1841,25 @@ export const CollageStudio: React.FC = () => {
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Width</label>
                     <input type="range" min="30" max="300" value={selectedLayer.width}
                       onChange={(e) => updateLayer(selectedLayer.id, { width: Number(e.target.value) })}
-                      className="w-full accent-blush-500" />
+                      className="w-full accent-blush-500 max-sm:h-11" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Height</label>
                     <input type="range" min="30" max="300" value={selectedLayer.height}
                       onChange={(e) => updateLayer(selectedLayer.id, { height: Number(e.target.value) })}
-                      className="w-full accent-blush-500" />
+                      className="w-full accent-blush-500 max-sm:h-11" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Rotate</label>
                     <input type="range" min="-180" max="180" value={selectedLayer.rotation}
                       onChange={(e) => updateLayer(selectedLayer.id, { rotation: Number(e.target.value) })}
-                      className="w-full accent-blush-500" />
+                      className="w-full accent-blush-500 max-sm:h-11" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Opacity</label>
                     <input type="range" min="0" max="100" value={selectedLayer.opacity * 100}
                       onChange={(e) => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
-                      className="w-full accent-blush-500" />
+                      className="w-full accent-blush-500 max-sm:h-11" />
                   </div>
                 </div>
               </div>
