@@ -8,6 +8,10 @@
  * usage file so a restart cannot double-refund.
  *
  * Spec: /home/team/shared/designer-hardening-refund.md
+ *
+ * Run on a small box with `--config jest.config.isolated.js` — the default
+ * ts-jest config type-checks this file's whole import graph and gets the worker
+ * OOM-killed before a single test runs, which reads like a failure.
  */
 import express from "express";
 import request from "supertest";
@@ -36,6 +40,15 @@ function readUsageLog(cwd: string): UsageLog {
     return JSON.parse(readFileSync(usagePath(cwd), "utf8")) as UsageLog;
   } catch {
     return {};
+  }
+}
+
+/** Raw bytes of a usage log, or null when no file exists there. */
+function usageBytesAt(cwd: string): string | null {
+  try {
+    return readFileSync(usagePath(cwd), "utf8");
+  } catch {
+    return null;
   }
 }
 
@@ -77,6 +90,19 @@ describe("AI allowance refund", () => {
     // "prompt" fails the schema's min(1): no job is ever created, so the
     // request must cost nothing. (The old middleware charged before the
     // handler ran, so this 400 still burned a unit.)
+    //
+    // VERIFIED on main @ f2efc00 (b157 code): the charge moved OUT of the gate
+    // middleware (checkAILimit is read-only) and INTO the handler, after
+    // TextToPatternSchema.safeParse — so a rejected body reaches the 400 return
+    // before chargeAIUnit() is ever called. This is the shipped behaviour and
+    // this test passes; a report that it "fails" comes from a run against the
+    // pre-b157 code or from the harness, not from a real charged 400.
+    //
+    // Non-vacuity: aiRateLimit resolves USAGE_FILE from process.cwd() at import
+    // time. If that resolved to this repo's own logs/ instead of the temp dir
+    // (an import-order or cwd regression), the assertion below would pass while
+    // a unit was really charged into the repo's file — so prove both.
+    const repoLogBefore = usageBytesAt(originalCwd);
     const res = await request(app)
       .post("/api/ai/embroidery/text-to-pattern")
       .set("Authorization", `Bearer ${tokenFor("Hobbyist")}`)
@@ -84,6 +110,7 @@ describe("AI allowance refund", () => {
 
     expect(res.status).toBe(400);
     expect(readUsageLog(workDir)[today()]?.[USER_ID]).toBeUndefined();
+    expect(usageBytesAt(originalCwd)).toBe(repoLogBefore);
   });
 
   it("a job that errors spends one unit and then returns it", async () => {
