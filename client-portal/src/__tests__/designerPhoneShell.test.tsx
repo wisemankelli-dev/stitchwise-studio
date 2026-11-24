@@ -5,9 +5,43 @@
  * closed by default. Desktop must keep the two-column DOM it has today.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { Designer } from '../pages/Designer';
+import { FilePanel } from '../components/designer/panels/FilePanel';
+
+/** Minimal props for rendering the File sheet's panel on its own. */
+const filePanelProps = {
+  patternName: 'A pattern',
+  onPatternNameChange: () => {},
+  onSave: () => {},
+  isSaving: false,
+  patternError: null,
+  onDismissError: () => {},
+  savedPatterns: [],
+  isLoadingPatterns: false,
+  patternsLoadError: null,
+  loadingPatternId: null,
+  onLoadPattern: () => {},
+  onDeletePattern: () => {},
+  onRefreshPatterns: () => {},
+  onExportPdf: () => {},
+  fileInputId: 'phone-file-input',
+  onUploadImage: () => {},
+  pendingUpload: false,
+  onConfirmUpload: () => {},
+  onCancelUpload: () => {},
+  isProcessingImage: false,
+  imageError: null,
+  onDismissImageError: () => {},
+  numColors: 12,
+  onNumColorsChange: () => {},
+  hasReferenceImage: false,
+  showReference: false,
+  onToggleReference: () => {},
+  referenceOpacity: 50,
+  onReferenceOpacityChange: () => {},
+};
 
 function stubViewport(isDesktop: boolean) {
   Object.defineProperty(window, 'innerWidth', {
@@ -167,6 +201,40 @@ describe('Designer — phone shell', () => {
     expect(screen.getByLabelText('Number of colors')).toBeInTheDocument();
     // The top bar also carries a "Pattern name" field, so scope to the panel.
     expect(within(filePanel).getByLabelText('Pattern name')).toBeInTheDocument();
+  });
+
+  it('gives every File-sheet control a finger-sized tap target (>=44 px tall)', () => {
+    stubViewport(false);
+    renderDesigner();
+
+    fireEvent.click(screen.getByTestId('phone-bar-tools'));
+    fireEvent.click(screen.getByRole('tab', { name: 'File' }));
+
+    // "Refresh" measured 71x32 on the live site before this: the height class
+    // is the tap target, the negative margin keeps the row exactly as it was.
+    const refresh = screen.getByRole('button', { name: 'Refresh' });
+    expect(refresh.className).toContain('min-h-[44px]');
+    expect(refresh.className).toContain('-my-[6px]');
+  });
+
+  it('gives the alert Dismiss buttons a finger-sized tap target (>=44 px tall)', () => {
+    render(
+      <FilePanel
+        {...filePanelProps}
+        patternError="Your draft couldn't be saved — check your connection."
+      />,
+    );
+    const dismiss = within(screen.getByRole('alert')).getByRole('button', { name: 'Dismiss' });
+    expect(dismiss.className).toContain('min-h-[44px]');
+    expect(dismiss.className).toContain('-my-[6px]');
+
+    cleanup();
+
+    render(<FilePanel {...filePanelProps} imageError="Input buffer contains unsupported image format" />);
+    const imageDismiss = within(screen.getByTestId('phone-image-import-error')).getByRole('button', {
+      name: 'Dismiss',
+    });
+    expect(imageDismiss.className).toContain('min-h-[44px]');
   });
 
   it('keeps the desktop two-column DOM on desktop', () => {
