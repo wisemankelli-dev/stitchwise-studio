@@ -17,19 +17,27 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
   // ─── User Profile ────────────────────────────────────────────────────────
 
   /**
-   * GET /api/me - Get the current user's profile (including tier).
-   * Uses a simulated user context. In production, this would come from auth.
-   * For now, reads the first user or creates a demo user.
+   * GET /api/me - Get the caller's own profile (including tier).
+   *
+   * The caller is resolved from the bearer token: by user id first, then by
+   * email (a token can outlive a re-created row). No token, an invalid token
+   * or a token that matches no user is a 401 — never a demo fallback, which
+   * made every signed-in customer look like a free Hobbyist.
    */
-  router.get("/me", async (_req: Request, res: Response) => {
+  router.get("/me", authenticate, async (req: Request, res: Response) => {
     try {
-      let user = await repo.getUserByEmail("demo@stitchwise.dev");
-      if (!user) {
-        user = await repo.createUser({
-          email: "demo@stitchwise.dev",
-          name: "Demo User",
-        });
+      const claims = (req as any).user as { userId?: string; email?: string } | undefined;
+
+      let user = claims?.userId ? await repo.getUser(claims.userId) : null;
+      if (!user && claims?.email) {
+        user = await repo.getUserByEmail(claims.email);
       }
+
+      if (!user) {
+        res.status(401).json({ error: "Unknown user for this token" });
+        return;
+      }
+
       res.json({
         id: user.id,
         email: user.email,
