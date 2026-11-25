@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
+import { recordPendingSubscription } from "../../domain/pendingSubscription";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -128,14 +129,25 @@ async function handleCheckoutCompleted(
   const user = await prisma.user.findUnique({ where: { email: data.email } });
 
   if (!user) {
-    console.error({
-      event: "webhook_user_not_found",
+    // The buyer has no account under the email they paid with — they may pay
+    // with one address and log in with another, or sign up minutes later.
+    // Hold the purchase and answer 200 so Stripe stops retrying; the tier is
+    // applied on the first signup or login with that email.
+    await recordPendingSubscription(prisma, {
       email: data.email,
+      tier: data.tier,
+      customerId: data.customerId,
       subscriptionId: data.subscriptionId,
+      checkoutSessionId: typeof session?.id === "string" ? session.id : null,
     });
-    // 500 so Stripe retries: the buyer may still be creating the account with
-    // the email they paid with. This is the one failure worth retrying.
-    return { status: 500, body: { error: "No account for the paid email yet" } };
+    console.error({
+      event: "webhook_purchase_held",
+      email: data.email,
+      tier: data.tier,
+      subscriptionId: data.subscriptionId,
+      sessionId: session?.id,
+    });
+    return { status: 200, body: { received: true, pending: true } };
   }
 
   if (user.tier === data.tier && user.stripeSubscriptionId === data.subscriptionId) {
