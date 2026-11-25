@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, Sparkles, Scissors, HelpCircle, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface PricingPlan {
   id: string;
@@ -28,6 +29,23 @@ export interface PricingPlan {
 /** Render a cents amount as the dollars the card is actually charged. */
 export const formatMonthlyPrice = (cents: number): string =>
   cents === 0 ? '$0' : `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * Add Stripe's `prefilled_email` parameter to a hosted payment link, so the
+ * checkout email field arrives filled in with the address the buyer is signed in
+ * with. The account is upgraded from the checkout email, so a buyer who types a
+ * different address is charged and upgraded nowhere.
+ *
+ * Signed out (no email) the link is returned exactly as it is — no parameter,
+ * no empty value. The email is URL-encoded, because `+`, `&` and `@` would
+ * otherwise split the query string.
+ */
+export const withPrefilledEmail = (paymentUrl: string, email?: string | null): string => {
+  const trimmed = (email ?? '').trim();
+  if (!trimmed) return paymentUrl;
+  const separator = paymentUrl.includes('?') ? '&' : '?';
+  return `${paymentUrl}${separator}prefilled_email=${encodeURIComponent(trimmed)}`;
+};
 
 /**
  * Every feature line here must be something the app does TODAY. Removed in b145
@@ -88,6 +106,10 @@ export const PRICING_PLANS: PricingPlan[] = [
 
 export const Pricing: React.FC = () => {
   const [currentTier, setCurrentTier] = useState<string>('Hobbyist');
+  // The signed-in buyer's email rides on each payment link (prefilled_email) so
+  // the purchase can be matched back to their account.
+  const { currentUser } = useAuth();
+  const buyerEmail = currentUser?.email;
 
   useEffect(() => {
     // The visitor's active tier. Nothing on this page can start a checkout: the
@@ -199,9 +221,10 @@ export const Pricing: React.FC = () => {
                       {isCurrentPlan ? 'Active Plan' : plan.ctaText}
                     </div>
                   ) : plan.paymentUrl ? (
-                    /* Opens this tier's Stripe hosted payment link (monthly, recurring). */
+                    /* Opens this tier's Stripe hosted payment link (monthly, recurring).
+                       Signed in, the buyer's email is prefilled at checkout. */
                     <a
-                      href={plan.paymentUrl}
+                      href={withPrefilledEmail(plan.paymentUrl, buyerEmail)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-blush-500 text-white shadow-sm hover:bg-blush-600 flex items-center justify-center gap-1.5 transition-colors"
