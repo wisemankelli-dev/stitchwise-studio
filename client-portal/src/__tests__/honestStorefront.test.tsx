@@ -220,8 +220,8 @@ describe('storefront — no capability the app cannot deliver', () => {
 
   it('still advertises the generation caps, which match aiRateLimit.ts', () => {
     // AI_LIMITS: HOBBYIST 2/10, PRO 15/100, STUDIO 30/200 — accurate, so they stay.
-    expect(pricingSrc).toContain('2 AI pattern generations per day (10/month)');
-    expect(pricingSrc).toContain('15 AI pattern generations per day (100/month)');
-    expect(pricingSrc).toContain('30 AI pattern generations per day (200/month)');
+    expect(pricingSrc).toContain('2 pattern generations per day (10/month)');
+    expect(pricingSrc).toContain('15 pattern generations per day (100/month)');
+    expect(pricingSrc).toContain('30 pattern generations per day (200/month)');
   });
 });
