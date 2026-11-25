@@ -165,12 +165,25 @@ export function normalizeTier(raw: unknown): PaidTier | null {
   return null;
 }
 
+/** Reads a paid tier out of a metadata bag, accepting `tier` or `plan`. */
+function tierFromMetadata(metadata: unknown): PaidTier | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const bag = metadata as Record<string, unknown>;
+  return normalizeTier(bag.tier) ?? normalizeTier(bag.plan);
+}
+
 /**
  * Extracts subscription details from a Stripe Checkout Session event.
  *
- * Tier comes from the session metadata (set when the checkout session is
- * created); `subscription_details.metadata` is accepted as a fallback because
- * Stripe copies metadata to the subscription, not the other way round.
+ * The tier is looked for, in order:
+ *   1. `session.metadata` — set by our own `createCheckoutSession` (`tier`).
+ *   2. `session.subscription_details.metadata` — where a Stripe **Payment
+ *      Link** puts it: the link sets `subscription_data.metadata.plan`, and
+ *      the session carries no metadata of its own (`metadata: {}`).
+ *   3. An expanded `session.subscription.metadata` — the subscription object
+ *      itself carries whatever was set on `subscription_data`.
+ * Both `tier` and `plan` are accepted at every step.
+ *
  * Email falls back to `customer_details.email` — `customer_email` is null when
  * Stripe reuses an existing customer, and an empty email used to make the
  * upgrade silently fail.
@@ -191,10 +204,16 @@ export function extractCheckoutData(session: Stripe.Checkout.Session): {
   const customer = session.customer as string | { id?: string } | null | undefined;
   const customerId = typeof customer === "string" ? customer : customer?.id;
 
-  const tier = normalizeTier(
-    (session.metadata as Record<string, string> | null | undefined)?.tier ??
-      (typeof subscription === "object" ? subscription?.metadata?.tier : undefined),
-  );
+  const subscriptionDetails = (
+    session as unknown as {
+      subscription_details?: { metadata?: Record<string, string> | null } | null;
+    }
+  ).subscription_details;
+
+  const tier =
+    tierFromMetadata(session.metadata) ??
+    tierFromMetadata(subscriptionDetails?.metadata) ??
+    tierFromMetadata(typeof subscription === "object" ? subscription?.metadata : undefined);
 
   const email = (
     session.customer_email ??

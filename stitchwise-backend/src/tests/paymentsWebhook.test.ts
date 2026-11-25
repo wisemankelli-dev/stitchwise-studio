@@ -73,6 +73,29 @@ function checkoutSession(email: string, tier: string, ids: {
   };
 }
 
+/**
+ * A session as Stripe shapes it for a hosted **Payment Link** (plink_…): the
+ * link sets `subscription_data.metadata.plan`, so the session's own `metadata`
+ * is empty and the tier only reaches us on `subscription_details.metadata`.
+ */
+function paymentLinkSession(email: string, plan: string, ids: {
+  customer?: string;
+  subscription?: string;
+  sessionId?: string;
+} = {}): Record<string, unknown> {
+  return {
+    id: ids.sessionId ?? "cs_test_plink",
+    object: "checkout.session",
+    mode: "subscription",
+    customer_email: null,
+    customer_details: { email },
+    customer: ids.customer ?? cus("default"),
+    subscription: ids.subscription ?? sub("default"),
+    metadata: {},
+    subscription_details: { metadata: { plan } },
+  };
+}
+
 describe("Stripe webhook — subscription provisioning", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
   let prisma: PrismaClient;
@@ -276,5 +299,65 @@ describe("Stripe webhook — subscription provisioning", () => {
     expect(onOldPath.status).toBe(404);
 
     delete process.env.STRIPE_WEBHOOK_PATH;
+  });
+
+  it("upgrades the buyer from a Payment Link session (tier only on subscription_details.metadata.plan)", async () => {
+    // A real plink_… session: `metadata: {}`, plan on subscription_details.
+    const plinkEmail = `plink-${Date.now()}@stitchwise.dev`;
+    const signup = await request(app)
+      .post("/api/auth/signup")
+      .send({ email: plinkEmail, password: "password123", name: "Payment Link" });
+    expect(signup.status).toBe(201);
+    expect(signup.body.user.tier).toBe("HOBBYIST");
+
+    const payload = eventBody(
+      "checkout.session.completed",
+      paymentLinkSession(plinkEmail, "PRO", {
+        customer: cus("plink"),
+        subscription: sub("plink"),
+      }),
+      eid("checkout_plink_pro"),
+    );
+
+    const res = await deliver(payload, stripeSignature(payload));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ received: true });
+
+    const buyer = await prisma.user.findUnique({ where: { email: plinkEmail } });
+    expect(buyer?.tier).toBe("PRO");
+    expect(buyer?.stripeCustomerId).toBe(cus("plink"));
+    expect(buyer?.stripeSubscriptionId).toBe(sub("plink"));
+  });
+
+  it("falls back to an expanded subscription's metadata when the session carries none", async () => {
+    const subEmail = `plink-sub-${Date.now()}@stitchwise.dev`;
+    const signup = await request(app)
+      .post("/api/auth/signup")
+      .send({ email: subEmail, password: "password123", name: "Expanded" });
+    expect(signup.status).toBe(201);
+
+    const session = {
+      id: "cs_test_expanded",
+      object: "checkout.session",
+      mode: "subscription",
+      customer_email: subEmail,
+      customer: cus("expanded"),
+      // Expanded subscription object, no session/subscription_details metadata.
+      subscription: { id: sub("expanded"), metadata: { plan: "STUDIO" } },
+      metadata: {},
+    };
+    const payload = eventBody(
+      "checkout.session.completed",
+      session,
+      eid("checkout_expanded_studio"),
+    );
+
+    const res = await deliver(payload, stripeSignature(payload));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ received: true });
+
+    const buyer = await prisma.user.findUnique({ where: { email: subEmail } });
+    expect(buyer?.tier).toBe("STUDIO");
+    expect(buyer?.stripeSubscriptionId).toBe(sub("expanded"));
   });
 });
