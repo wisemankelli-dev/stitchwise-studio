@@ -37,6 +37,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Pricing, PRICING_PLANS, formatMonthlyPrice } from '../pages/Pricing';
+import { AuthProvider } from '../contexts/AuthContext';
 import { SubmitProject } from '../pages/SubmitProject';
 
 const readSrc = (relative: string): string => readFileSync(resolve(process.cwd(), relative), 'utf8');
@@ -129,7 +130,9 @@ describe('pricing page — quotes the amount Stripe actually charges', () => {
 
     const { container } = render(
       <MemoryRouter>
-        <Pricing />
+        <AuthProvider>
+          <Pricing />
+        </AuthProvider>
       </MemoryRouter>,
     );
 
