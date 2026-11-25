@@ -269,7 +269,7 @@ export function createStripeWebhookRouter(prisma: PrismaClient): Router {
 
     let event: { id?: string; type: string; data: { object: unknown } };
     try {
-      event = constructWebhookEvent(rawBody, signature);
+      event = await constructWebhookEvent(rawBody, signature);
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === CODE_SECRET_MISSING) {
