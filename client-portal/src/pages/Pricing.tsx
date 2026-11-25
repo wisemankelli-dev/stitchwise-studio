@@ -86,6 +86,26 @@ export const PRICING_PLANS: PricingPlan[] = [
   },
 ];
 
+/**
+ * Plan order, cheapest first. A visitor is never offered a plan at or below the
+ * one they already pay for: a Design Studio customer who bought Pro would be
+ * moved DOWN a tier for $19.99. Anything unrecognised ranks as free, so an
+ * unexpected tier value can never hide a plan someone could legitimately buy.
+ */
+const TIER_RANK: Record<string, number> = {
+  hobbyist: 0,
+  pro: 1,
+  procrafter: 1,
+  studio: 2,
+  designstudio: 2,
+};
+
+/** Rank of a tier name, ignoring case, spaces and punctuation ('Pro' = 'Pro Crafter'). */
+export const tierRank = (tier: string): number => {
+  const key = (tier ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  return TIER_RANK[key] ?? 0;
+};
+
 export const Pricing: React.FC = () => {
   const [currentTier, setCurrentTier] = useState<string>('Hobbyist');
 
@@ -95,10 +115,16 @@ export const Pricing: React.FC = () => {
     // subscriptions at all — every "Upgrade" click used to fail silently.
     api.getSubscriptionTier().then((res) => {
       setCurrentTier(res.tier);
+    }).catch(() => {
+      // Signed out: the tier call needs a login. Stay on the free tier, so the
+      // page reads exactly as it always has for a visitor with no account.
+      setCurrentTier('Hobbyist');
     });
   }, []);
 
   const plans = PRICING_PLANS;
+  // Rank 0 means a free visitor: signed out, or on Hobbyist. Nothing is hidden.
+  const currentRank = tierRank(currentTier);
 
   return (
     <div className="bg-floral-soft min-h-screen py-16 px-6 lg:px-8">
@@ -149,7 +175,9 @@ export const Pricing: React.FC = () => {
         {/* Pricing Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch mb-24">
           {plans.map((plan) => {
-            const isCurrentPlan = currentTier.toLowerCase() === plan.name.toLowerCase();
+            const isCurrentPlan = currentRank > 0 && tierRank(plan.id) === currentRank;
+            // A plan below the visitor's own: already covered by what they pay for.
+            const isIncludedInPlan = currentRank > 0 && tierRank(plan.id) < currentRank;
 
             return (
               <div
@@ -194,9 +222,27 @@ export const Pricing: React.FC = () => {
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-50">
-                  {plan.priceMonthlyCents === 0 || isCurrentPlan ? (
+                  {isCurrentPlan ? (
+                    <div
+                      data-plan-state="current"
+                      className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-blush-50 text-blush-400 border border-blush-200 flex items-center justify-center gap-1.5"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      Active Plan
+                    </div>
+                  ) : isIncludedInPlan ? (
+                    /* Below the visitor's own tier — nothing to buy, and no link to click. */
+                    <div
+                      data-plan-state="included"
+                      aria-disabled="true"
+                      className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-slate-50 text-slate-400 border border-slate-200 flex items-center justify-center gap-1.5 select-none cursor-default"
+                    >
+                      <Check className="h-4 w-4" />
+                      Included in your plan
+                    </div>
+                  ) : plan.priceMonthlyCents === 0 ? (
                     <div className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-blush-50 text-blush-400 border border-blush-200 flex items-center justify-center gap-1.5">
-                      {isCurrentPlan ? 'Active Plan' : plan.ctaText}
+                      {plan.ctaText}
                     </div>
                   ) : plan.paymentUrl ? (
                     /* Opens this tier's Stripe hosted payment link (monthly, recurring). */
@@ -214,7 +260,7 @@ export const Pricing: React.FC = () => {
                       Unavailable
                     </div>
                   )}
-                  {plan.priceMonthlyCents > 0 && (
+                  {plan.priceMonthlyCents > 0 && !isIncludedInPlan && (
                     <p className="mt-2 text-[10px] text-center text-slate-400 font-semibold">
                       Billed monthly · cancel any time · 7-day full refund
                     </p>
