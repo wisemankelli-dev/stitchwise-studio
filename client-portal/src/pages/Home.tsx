@@ -35,8 +35,8 @@ export const Home: React.FC = () => {
   const { patterns, status } = useLibraryPatterns();
   const offerings = [
     {
-      title: 'AI Pattern Digitizer',
-      description: 'Bring any crafting vision to life. Describe your design thoughts in natural language, and our custom AI engine translates them into precision-grade embroidery patterns in seconds.',
+      title: 'Pattern Digitizer',
+      description: 'Bring any crafting vision to life. Describe your design thoughts in natural language, and our pattern engine translates them into precision-grade embroidery patterns in seconds.',
       icon: Sparkles,
     },
     {

@@ -109,13 +109,13 @@ export const AiPanel: React.FC<AiPanelProps> = ({
           <div>
             <p className="text-xs font-bold text-slate-700">Create-Your-Own</p>
             <p className="text-[11px] text-slate-600">
-              No AI and no mask — this canvas is yours. Pick a colour and a tool and draw it
+              No prompt and no mask — this canvas is yours. Pick a colour and a tool and draw it
               stitch by stitch, at the size you want.
             </p>
           </div>
         </div>
         <button type="button" onClick={onUseAiAgain} className="w-full h-11 rounded-lg bg-white border border-purple-200 text-xs font-bold text-slate-600">
-          Use AI again
+          Generate again
         </button>
       </div>
     ) : (
@@ -151,7 +151,7 @@ export const AiPanel: React.FC<AiPanelProps> = ({
             onChange={(e) => onPromptChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && canGenerate) onGenerate(); }}
             placeholder="e.g. a teddy bear with a brown sweater"
-            aria-label="AI prompt"
+            aria-label="Design prompt"
             disabled={isGenerating}
             className="w-full h-12 rounded-lg border border-purple-200 text-base text-slate-700 px-3 bg-white focus:border-blush-500 focus:ring-blush-500"
           />
@@ -263,7 +263,7 @@ export const AiPanel: React.FC<AiPanelProps> = ({
               <Sparkles className="h-3 w-3 text-blush-500" /> 1 · Your artwork
               <span className="font-normal text-slate-400">— the stitch grid on your canvas (step 2) is converted from it</span>
             </p>
-            <img src={aiArtworkUrl} alt="AI-generated artwork" className="w-full rounded-lg border border-slate-100" />
+            <img src={aiArtworkUrl} alt="Generated artwork" className="w-full rounded-lg border border-slate-100" />
           </div>
         )}
       </>

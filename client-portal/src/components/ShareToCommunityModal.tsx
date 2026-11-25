@@ -236,7 +236,7 @@ export const ShareToCommunityModal: React.FC<ShareToCommunityModalProps> = ({
                   onChange={(e) => setPatternSource(e.target.value)}
                   className="floral-input py-2.5 text-sm"
                 >
-                  <option>AI Generated</option>
+                  <option>Generated</option>
                   <option>Uploaded</option>
                   <option>Manual</option>
                   <option>Marketplace</option>

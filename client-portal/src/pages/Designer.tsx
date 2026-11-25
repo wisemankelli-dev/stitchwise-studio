@@ -1101,7 +1101,7 @@ export const DRAFT_ARTWORK_MAX_CHARS = 1_000_000;
 
 /** The grid was saved, the AI image was not — say so instead of losing it quietly. */
 export const DRAFT_ARTWORK_DROPPED_MESSAGE =
-  "Your draft was saved without its AI image: this browser's storage is nearly full. The pattern itself will come back after a refresh — save it to your account to keep the image too.";
+  "Your draft was saved without its generated image: this browser's storage is nearly full. The pattern itself will come back after a refresh — save it to your account to keep the image too.";
 
 /** Drop artwork too big for a draft. The grid is never touched. */
 export function capDraftArtwork(draft: DesignerDraft): DesignerDraft {
@@ -1423,7 +1423,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
 
   // CREATE-YOUR-OWN MODE (owner doctrine 10-26/10-29). Entered from the
   // below-floor steering: the AI mask flow is put away, no mask is applied and
-  // the canvas is the user's to draw on. A preset click or "Use AI again"
+  // the canvas is the user's to draw on. A preset click or "Generate again"
   // leaves it. Defaults to false, so every existing flow is untouched.
   const [createOwnMode, setCreateOwnMode] = useState(false);
   // pendingSaveConfirm - one-click confirm before saving a canvas that has no
@@ -2844,7 +2844,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                 <p className="text-xs text-amber-800 mt-0.5">
                   {Object.keys(restoredDraft.grid).filter(k => restoredDraft.grid[k]).length} stitches
                   {` · ${restoredDraft.gridWidth}×${restoredDraft.gridHeight} canvas`}
-                  {restoredDraft.hasAiArtwork ? ' · from a previous AI generation' : ' · a saved draft, not a fresh AI result'}
+                  {restoredDraft.hasAiArtwork ? ' · from a previous generation' : ' · a saved draft, not a fresh result'}
                   . This draft is never re-shaped to fit a product mask.
                 </p>
               </div>
@@ -3397,7 +3397,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-[11px] font-bold text-amber-800">
-                      This pattern has no AI source image — it's your current canvas as-is. Save anyway?
+                      This pattern has no source image — it's your current canvas as-is. Save anyway?
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -3427,7 +3427,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                     <div>
                       <p className="text-[11px] font-bold text-slate-700">Create-Your-Own</p>
                       <p className="text-[10px] text-slate-600">
-                        No AI and no mask — this canvas is yours. Pick a colour and a tool and draw it
+                        No prompt and no mask — this canvas is yours. Pick a colour and a tool and draw it
                         stitch by stitch, at the size you want.
                       </p>
                     </div>
@@ -3436,7 +3436,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                       onClick={() => setCreateOwnMode(false)}
                       className="ml-auto shrink-0 rounded-lg bg-white border border-purple-200 text-[10px] font-bold text-slate-600 px-2 py-1 hover:bg-purple-50 transition-all"
                     >
-                      Use AI again
+                      Generate again
                     </button>
                   </div>
                 ) : (
@@ -3612,9 +3612,9 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
                   <div className="mt-3 rounded-xl border border-purple-200 bg-white p-3">
                     <p className="text-[10px] font-bold text-slate-700 mb-2 flex items-center gap-1">
                       <Sparkles className="h-3 w-3 text-blush-500" /> 1 · Your artwork
-                      <span className="font-normal text-slate-400">— this is what the AI drew; the stitch grid on your canvas (step 2) is converted from it</span>
+                      <span className="font-normal text-slate-400">— this is what was generated; the stitch grid on your canvas (step 2) is converted from it</span>
                     </p>
-                    <img src={aiArtworkUrl} alt="AI-generated artwork" className="w-full rounded-lg border border-slate-100" />
+                    <img src={aiArtworkUrl} alt="Generated artwork" className="w-full rounded-lg border border-slate-100" />
                   </div>
                 )}
                 </>
@@ -3931,7 +3931,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
         {pendingSaveConfirm && (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 space-y-1.5">
             <p className="text-[11px] font-bold text-amber-800">
-              No AI source image — this saves your canvas as-is. Save anyway?
+              No source image — this saves your canvas as-is. Save anyway?
             </p>
             <div className="flex gap-2">
               <button type="button" onClick={confirmSaveWithoutSource} className="flex-1 h-11 rounded-lg bg-amber-500 text-white text-xs font-bold">
@@ -4025,7 +4025,7 @@ function parseDesignerDraft(raw: string | null): DesignerDraft | null {
             { id: 'colour', label: 'Colour' },
             { id: 'tools', label: 'Tools' },
             { id: 'canvas', label: 'Canvas' },
-            { id: 'ai', label: 'AI' },
+            { id: 'ai', label: 'Generate' },
             { id: 'file', label: 'File' },
           ]}
           onTabChange={(id) => setPhoneSheet(id as PhoneSheetTab)}

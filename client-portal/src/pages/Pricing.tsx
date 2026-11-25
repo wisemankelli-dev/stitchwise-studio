@@ -44,7 +44,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     priceMonthlyCents: 0,
     description: 'Perfect for hand embroidery lovers and casual crafters.',
     features: [
-      '2 AI pattern generations per day (10/month)',
+      '2 pattern generations per day (10/month)',
       'Pattern Designer, Collage Studio & Quilt Block',
       'PDF pattern sheets & PNG export',
       'DMC Thread Box with thread usage estimator',
@@ -57,9 +57,9 @@ export const PRICING_PLANS: PricingPlan[] = [
     name: 'Pro Crafter',
     priceMonthlyCents: 1999,
     badge: 'Most Popular',
-    description: 'For passionate crafters who need more AI design time each month.',
+    description: 'For passionate crafters who need more design time each month.',
     features: [
-      '15 AI pattern generations per day (100/month)',
+      '15 pattern generations per day (100/month)',
       'Everything in Hobbyist',
       'Unlimited active projects',
       'Satin stitch & back-stitch design tools',
@@ -74,9 +74,9 @@ export const PRICING_PLANS: PricingPlan[] = [
     priceMonthlyCents: 5999,
     description: 'For professional digitizers, craft shops, and commercial studios.',
     features: [
-      '30 AI pattern generations per day (200/month)',
+      '30 pattern generations per day (200/month)',
       'Everything in Pro Crafter',
-      'Premium AI art model option (higher per-image cost)',
+      'Premium art model option (higher per-image cost)',
       'Full commercial use license',
     ],
     className: 'ring-2 ring-blush-200',
@@ -114,7 +114,7 @@ export const Pricing: React.FC = () => {
             Simple, Transparent Pricing
           </h1>
           <p className="mt-4 text-base text-blush-600/80 leading-relaxed">
-            Every crafter&apos;s dream is to bring their thoughts to life. Select the tier that matches your passion, from a free starter plan to more AI pattern generations every month.
+            Every crafter&apos;s dream is to bring their thoughts to life. Select the tier that matches your passion, from a free starter plan to more pattern generations every month.
           </p>
           <p className="mt-3 text-xs font-semibold text-slate-500">
             All plans are billed monthly at the price shown. Annual billing is not available yet.
@@ -131,7 +131,7 @@ export const Pricing: React.FC = () => {
               <span>Paid plans are open — card billing is on, and Stripe takes the payment.</span>
             </p>
             <p className="mt-2 pl-6 text-xs leading-relaxed text-slate-600">
-              The free Hobbyist plan stays free: 2 AI pattern generations a day (10/month), plus the Pattern Designer,
+              The free Hobbyist plan stays free: 2 pattern generations a day (10/month), plus the Pattern Designer,
               Collage Studio and Quilt Block tools. Pro Crafter and Design Studio are billed monthly by card through
               Stripe — use the same email at checkout that you log in with, and full refunds are available for 7 days.
             </p>
@@ -247,7 +247,7 @@ export const Pricing: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-blush-50 text-slate-700">
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">AI Imagine-to-Pattern Digitizer</td>
+                  <td className="p-4 pl-6 font-medium text-slate-900">Imagine-to-Pattern Digitizer</td>
                   <td className="p-4 text-center text-slate-500">2/day · 10/mo</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">15/day · 100/mo</td>
                   <td className="p-4 text-center text-slate-900 font-semibold">30/day · 200/mo</td>
@@ -271,7 +271,7 @@ export const Pricing: React.FC = () => {
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 pl-6 font-medium text-slate-900">Premium AI Art Model (higher per-image cost)</td>
+                  <td className="p-4 pl-6 font-medium text-slate-900">Premium Art Model (higher per-image cost)</td>
                   <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><X className="h-4 w-4 text-blush-300 mx-auto" /></td>
                   <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
@@ -318,9 +318,9 @@ export const Pricing: React.FC = () => {
           </div>
 
           <div className="bg-white rounded-2xl p-6 border border-blush-100 shadow-sm space-y-2">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">How does the AI Imagine-to-Pattern tool operate?</h4>
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">How does the Imagine-to-Pattern tool work?</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              The AI Pattern Digitizer analyzes the visual channels of your uploaded sketches or written text prompt, mapping standard color lines directly to real-world **DMC thread palettes**. It plans satin fill stitch directions and bating outlines so you get a perfect craft pattern with minimal edits needed.
+              The Pattern Digitizer analyzes the visual channels of your uploaded sketches or written text prompt, mapping standard color lines directly to real-world **DMC thread palettes**. It plans satin fill stitch directions and bating outlines so you get a perfect craft pattern with minimal edits needed.
             </p>
           </div>
         </div>
