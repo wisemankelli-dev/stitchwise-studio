@@ -884,7 +884,10 @@ class ApiClient {
           headers: this.getHeaders()
         });
         if (!response.ok) throw new Error('Failed to fetch active tier');
-        return await response.json();
+        const payload = await response.json();
+        // The backend returns the raw tier ("HOBBYIST" | "PRO" | "STUDIO");
+        // map it to the display names the rest of the app compares against.
+        return { tier: mapBackendTier(payload?.tier) };
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
       }
