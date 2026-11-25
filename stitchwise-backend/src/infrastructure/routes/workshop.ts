@@ -52,15 +52,27 @@ export function createWorkshopRouter(repo: WorkshopRepo): Router {
   });
 
   /**
-   * GET /api/me/tier - Get just the current user's tier.
+   * GET /api/me/tier - Get just the caller's own tier.
+   *
+   * Same resolution as GET /api/me: the caller comes from the bearer token, by
+   * user id first then by email. No token, an invalid token or a token that
+   * matches no user is a 401 — the demo fallback reported Hobbyist to paying
+   * customers, and getSubscriptionTier() on the client reads this route.
    */
-  router.get("/me/tier", async (_req: Request, res: Response) => {
+  router.get("/me/tier", authenticate, async (req: Request, res: Response) => {
     try {
-      const user = await repo.getUserByEmail("demo@stitchwise.dev");
+      const claims = (req as any).user as { userId?: string; email?: string } | undefined;
+
+      let user = claims?.userId ? await repo.getUser(claims.userId) : null;
+      if (!user && claims?.email) {
+        user = await repo.getUserByEmail(claims.email);
+      }
+
       if (!user) {
-        res.status(404).json({ error: "User not found" });
+        res.status(401).json({ error: "Unknown user for this token" });
         return;
       }
+
       res.json({ tier: user.tier });
     } catch (err) {
       console.error({ event: "get_tier_error", error: String(err) });
