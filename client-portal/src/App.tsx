@@ -77,10 +77,12 @@ function AppContent() {
         <div className="h-0.5 bg-gradient-to-r from-blush-300 via-blush-500 to-blush-300" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="flex items-center justify-between gap-3 h-16">
+          {/* Brand row: the logo keeps its own space and never shrinks, so the
+              desktop nav (its own row below) can never sit on top of it. */}
+          <div className="flex items-center justify-between gap-3 h-16 xl:h-14">
 
             {/* Logo / Brand with image */}
-            <Link to="/" className="flex items-center gap-2 sm:gap-3 min-w-0 min-h-[44px] group">
+            <Link to="/" className="flex shrink-0 items-center gap-2 sm:gap-3 min-w-0 min-h-[44px] group">
               <div className="relative shrink-0">
                 <div className="absolute inset-0 bg-blush-200/40 rounded-full blur-sm group-hover:bg-blush-300/50 transition-colors duration-300" />
                 <img
@@ -97,44 +99,9 @@ function AppContent() {
               </div>
             </Link>
 
-            {/* === DESKTOP NAV (xl and up — the row needs ~1250px) === */}
-            <nav className="hidden xl:flex items-center gap-x-4 2xl:gap-x-6">
-              {/* === CORE DESIGN TOOLS (primary) === */}
-              <Link to="/designer" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
-                <Sparkles className="h-4 w-4 text-blush-500" />
-                Pattern Designer
-              </Link>
-              <Link to="/collage" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
-                <Scissors className="h-4 w-4 text-blush-500" />
-                Collage Studio
-              </Link>
-              <Link to="/quilt-block" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
-                <Grid3X3 className="h-4 w-4 text-blush-500" />
-                Quilt Blocks
-              </Link>
-
-              {/* === SECONDARY LINKS === */}
-              <div className="h-5 w-px bg-slate-200 mx-1"></div>
-              <Link to="/pricing" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <CreditCard className="h-3.5 w-3.5 text-slate-400" />
-                Plans &amp; Pricing
-              </Link>
-              <Link to="/patterns" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <ShoppingBag className="h-3.5 w-3.5 text-slate-400" />
-                Pattern Shop
-              </Link>
-              <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <LayoutDashboard className="h-4 w-4 text-blush-400" />
-                Dashboard
-              </Link>
-              <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <Camera className="h-3.5 w-3.5 text-slate-400" />
-                Showcase
-              </Link>
-
+            {/* === DESKTOP: account + call to action sit on the brand row === */}
+            <div className="hidden xl:flex items-center gap-x-4">
               {/* === AUTH LINKS === */}
-              <div className="h-5 w-px bg-slate-200 mx-1"></div>
-
               {isAuthenticated ? (
                 <>
                   {/* User indicator */}
@@ -175,7 +142,7 @@ function AppContent() {
               >
                 Custom Request
               </Link>
-            </nav>
+            </div>
 
             {/* === PHONE / TABLET: hamburger === */}
             <button
@@ -188,8 +155,45 @@ function AppContent() {
             >
               {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-
           </div>
+
+          {/* === DESKTOP NAV (xl and up) — its own row under the brand, so it
+              has the full header width and cannot overlap the logo. === */}
+          <nav className="hidden xl:flex flex-wrap items-center justify-end gap-x-4 gap-y-1 2xl:gap-x-6 pb-2">
+            {/* === CORE DESIGN TOOLS (primary) === */}
+            <Link to="/designer" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+              <Sparkles className="h-4 w-4 text-blush-500" />
+              Pattern Designer
+            </Link>
+            <Link to="/collage" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+              <Scissors className="h-4 w-4 text-blush-500" />
+              Collage Studio
+            </Link>
+            <Link to="/quilt-block" className="flex items-center gap-1.5 rounded-lg bg-blush-50/70 px-3 py-1.5 text-sm font-semibold text-blush-700 hover:bg-blush-100 hover:text-blush-800 transition-all duration-200 border border-blush-200/40">
+              <Grid3X3 className="h-4 w-4 text-blush-500" />
+              Quilt Blocks
+            </Link>
+
+            {/* === SECONDARY LINKS === */}
+            <div className="h-5 w-px bg-slate-200 mx-1"></div>
+            <Link to="/pricing" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+              <CreditCard className="h-3.5 w-3.5 text-slate-400" />
+              Plans &amp; Pricing
+            </Link>
+            <Link to="/patterns" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+              <ShoppingBag className="h-3.5 w-3.5 text-slate-400" />
+              Pattern Shop
+            </Link>
+            <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blush-600 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+              <LayoutDashboard className="h-4 w-4 text-blush-400" />
+              Dashboard
+            </Link>
+            <Link to="/showcase" className="text-sm font-medium text-slate-400 hover:text-blush-500 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+              <Camera className="h-3.5 w-3.5 text-slate-400" />
+              Showcase
+            </Link>
+
+          </nav>
         </div>
 
         {/* === PHONE / TABLET: collapsible panel === */}
