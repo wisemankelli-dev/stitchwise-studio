@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { api, type User } from '../services/api';
+import { api, mapBackendTier, type User } from '../services/api';
 
 // ─── Context Shape ──────────────────────────────────────────────────────────
 
@@ -20,36 +20,139 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// ─── Storage keys ───────────────────────────────────────────────────────────
+
+const TOKEN_KEY = 'stitchwise_token';
+const USER_ID_KEY = 'stitchwise_active_user_id';
+const TIER_KEY = 'stitchwise_tier';
+const USERS_KEY = 'stitchwise_users';
+/** The signed-in member's own profile, written on login/signup. */
+export const PROFILE_KEY = 'stitchwise_profile';
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Decode the payload of a JWT *without* verifying its signature.
+ * Used only for display data the browser already holds (id, email, tier) so a
+ * reload can never leave the app showing a placeholder name with no email.
+ * Returns null for a missing/malformed token.
+ */
+export function decodeJwtPayload(token: string | null | undefined): Record<string, any> | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length < 2 || !parts[1]) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    const json = typeof TextDecoder !== 'undefined' ? new TextDecoder().decode(bytes) : binary;
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Turn "kelli.w@example.com" into "Kelli W" for a display name we never got. */
+function nameFromEmail(email: string): string {
+  const local = (email.split('@')[0] || '').replace(/[._-]+/g, ' ').trim();
+  if (!local) return 'Crafting User';
+  return local.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Accepts either shape the app can hold and returns a full `User`:
+ *  - the backend's auth response: `{ userId, email, name, tier }`
+ *    (POST /api/auth/login and /api/auth/signup both return this), and
+ *  - the app's own `User`: `{ id, email, name, role, subscriptionTier }`.
+ * Missing fields fall back to the JWT payload, then to `fallbackTier`.
+ */
+export function normalizeAuthUser(
+  raw: any,
+  jwtPayload: Record<string, any> | null = null,
+  fallbackTier: string | null = null,
+): User | null {
+  if (!raw && !jwtPayload) return null;
+
+  const email = String(raw?.email || jwtPayload?.email || '');
+  const id = String(raw?.id || raw?.userId || jwtPayload?.userId || '');
+  const subscriptionTier = mapBackendTier(
+    raw?.subscriptionTier || raw?.tier || jwtPayload?.tier || fallbackTier || 'Hobbyist',
+  );
+  const name = String(raw?.name || '').trim() || nameFromEmail(email);
+
+  return {
+    id,
+    name,
+    email,
+    role: raw?.role || (subscriptionTier === 'Design Studio' ? 'studio_admin' : 'hobbyist'),
+    subscriptionTier,
+    avatarUrl: raw?.avatarUrl || '🧵',
+  };
+}
+
+/**
+ * Store the signed-in member's profile so a reload shows their own name and
+ * email (and so checkout links can carry that email) instead of a placeholder.
+ */
+export function persistProfile(user: User | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (!user) {
+    localStorage.removeItem(PROFILE_KEY);
+    return;
+  }
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(user));
+  } catch { /* quota/private mode — the JWT fallback still has email */ }
+  if (user.id) localStorage.setItem(USER_ID_KEY, user.id);
+  localStorage.setItem(TIER_KEY, user.subscriptionTier);
+}
 
 /**
  * Reconstruct a User object from localStorage values.
  * Returns null if the token is missing (not authenticated).
+ *
+ * Sources, in order: the stored profile, the legacy mock users array, then the
+ * JWT payload — so `email` is present on every signed-in load.
  */
-function loadUserFromStorage(): User | null {
-  const token = localStorage.getItem('stitchwise_token');
+export function loadUserFromStorage(): User | null {
+  const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return null;
 
-  const userId = localStorage.getItem('stitchwise_active_user_id');
-  const tier = localStorage.getItem('stitchwise_tier') || 'Hobbyist';
+  const jwt = decodeJwtPayload(token);
+  const storedTier = localStorage.getItem(TIER_KEY);
 
-  // Try to find the user in the stored users array to get name/email/avatar
-  const usersStr = localStorage.getItem('stitchwise_users');
+  // 1. The profile written at login/signup.
+  const profileStr = localStorage.getItem(PROFILE_KEY);
+  if (profileStr) {
+    try {
+      const stored = JSON.parse(profileStr);
+      if (stored && typeof stored === 'object') {
+        const user = normalizeAuthUser(stored, jwt, storedTier);
+        if (user) return user;
+      }
+    } catch { /* fall through */ }
+  }
+
+  // 2. The legacy localStorage users array (mock/local mode signup).
+  const userId = localStorage.getItem(USER_ID_KEY);
+  const usersStr = localStorage.getItem(USERS_KEY);
   if (usersStr && userId) {
     try {
       const users: any[] = JSON.parse(usersStr);
       const found = users.find((u) => u.id === userId);
       if (found) {
-        return {
-          id: found.id,
-          name: found.name,
-          email: found.email,
-          role: found.role || 'hobbyist',
-          subscriptionTier: (found.subscriptionTier || tier) as User['subscriptionTier'],
-          avatarUrl: found.avatarUrl || '🧵',
-        };
+        const user = normalizeAuthUser(found, jwt, storedTier);
+        if (user) return user;
       }
     } catch { /* fall through */ }
+  }
+
+  // 3. The JWT payload — userId, email and tier.
+  if (jwt) {
+    const user = normalizeAuthUser(null, jwt, storedTier);
+    if (user) return user;
   }
 
   // Minimal fallback: at least we have a token
@@ -58,7 +161,7 @@ function loadUserFromStorage(): User | null {
     name: 'Crafting User',
     email: '',
     role: 'hobbyist',
-    subscriptionTier: tier as User['subscriptionTier'],
+    subscriptionTier: mapBackendTier(storedTier),
     avatarUrl: '🧵',
   };
 }
@@ -79,8 +182,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
     if (res.success && res.user) {
-      setCurrentUser(res.user);
-      return { success: true, user: res.user };
+      const user = normalizeAuthUser(res.user, decodeJwtPayload(res.token));
+      if (!user) return { success: false, error: 'Login failed' };
+      persistProfile(user);
+      setCurrentUser(user);
+      return { success: true, user };
     }
     return { success: false, error: res.error || 'Invalid credentials' };
   }, []);
@@ -88,14 +194,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signup = useCallback(async (name: string, email: string, password: string) => {
     const res = await api.signup(name, email, password);
     if (res.success && res.user) {
-      setCurrentUser(res.user);
-      return { success: true, user: res.user };
+      const user = normalizeAuthUser(res.user, decodeJwtPayload(res.token));
+      if (!user) return { success: false, error: 'Registration failed' };
+      persistProfile(user);
+      setCurrentUser(user);
+      return { success: true, user };
     }
     return { success: false, error: res.error || 'Registration failed' };
   }, []);
 
   const logout = useCallback(() => {
     api.logout();
+    persistProfile(null);
     setCurrentUser(null);
   }, []);
 
