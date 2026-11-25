@@ -142,7 +142,7 @@ export function maskGridVerdict({
     target,
     title: `A ${rule.label} needs at least ${floor}×${floor} stitches`,
     message:
-      `Your canvas is ${w}×${h}. Below ${floor}×${floor} the AI can't hold the ` +
+      `Your canvas is ${w}×${h}. Below ${floor}×${floor} the pattern can't hold the ` +
       `${rule.label}'s detail, so Generate is paused — resize the canvas, or ` +
       `create this pattern yourself, stitch by stitch.`,
     createOwnLabel: 'Create it yourself',

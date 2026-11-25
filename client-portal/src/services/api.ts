@@ -979,7 +979,7 @@ class ApiClient {
       const { jobId } = await response.json();
       return this.pollAIJobResult(jobId).then(result => {
         const r = (result ?? {}) as { imageDataUrl?: string; pipeline?: string };
-        if (!r.imageDataUrl) throw new Error('AI art generation returned no image');
+        if (!r.imageDataUrl) throw new Error('Pattern generation returned no image');
         return { imageDataUrl: r.imageDataUrl, pipeline: r.pipeline || 'dall-e' };
       });
     }
@@ -1244,13 +1244,13 @@ class ApiClient {
         return {
           status: 'error',
           result: undefined,
-          error: job.error || 'AI generation job failed',
+          error: job.error || 'Generation failed',
           allowanceRefunded: job.allowanceRefunded === true,
         };
       }
       // status is 'pending' or 'processing' — keep polling
     }
-    throw new Error('AI generation timed out. Please try again.');
+    throw new Error('Generation timed out. Please try again.');
   }
   /**
    * Poll the job that the single POST already created and return its result.
@@ -1264,7 +1264,7 @@ class ApiClient {
     const job = await this.pollAIJob(jobId);
     if (job.status === 'done') return job.result;
     const err = this.generationError(
-      new Error(job.error || 'AI generation failed. Please try again.'),
+      new Error(job.error || 'Generation failed. Please try again.'),
     ) as Error & { allowanceRefunded?: boolean };
     // The backend gave the allowance unit back for this failed job.
     if (job.allowanceRefunded) err.allowanceRefunded = true;
@@ -1319,7 +1319,7 @@ class ApiClient {
           headers: this.getHeaders({}, true),
           body: formData,
         });
-        if (!response.ok) this.throwApiError('AI image-to-pattern generation failed', response);
+        if (!response.ok) this.throwApiError('Image-to-pattern generation failed', response);
         return await response.json();
       } catch (err) {
         throw err instanceof Error ? err : new Error('Request failed');
@@ -1459,7 +1459,7 @@ class ApiClient {
             this.normalizeCollageResult(result, prompt),
           );
         }
-        if (!response.ok) this.throwApiError('AI collage generation failed', response);
+        if (!response.ok) this.throwApiError('Collage generation failed', response);
         const json = await response.json();
         return this.normalizeCollageResult(json, prompt);
       } catch (err) {
@@ -1669,7 +1669,7 @@ class ApiClient {
           body: formData,
           signal: controller.signal,
         });
-        if (!response.ok) this.throwApiError('AI image-to-collage generation failed', response);
+        if (!response.ok) this.throwApiError('Image-to-collage generation failed', response);
         return await response.json();
       } catch (err) {
         clearTimeout(timeout);

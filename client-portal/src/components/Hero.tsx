@@ -107,7 +107,7 @@ export const Hero: React.FC = () => {
               to="/designer"
               className="group rounded-xl bg-gradient-to-r from-blush-500 to-blush-400 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-blush-200/50 hover:shadow-xl hover:shadow-blush-300/50 hover:from-blush-600 hover:to-blush-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blush-500 flex items-center gap-2 transition-all duration-300 hover:-translate-y-0.5"
             >
-              Explore AI Designer
+              Explore the Designer
               <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
             </Link>
             <Link
@@ -169,7 +169,7 @@ export const Hero: React.FC = () => {
                 The Serial Crafter
               </dt>
               <dd className="mt-2 flex flex-auto flex-col text-base leading-7 text-slate-600">
-                <p className="flex-auto">Perfect for the serial crafter looking for a pattern they can never find. Custom digitize designs on-demand with our AI tools.</p>
+                <p className="flex-auto">Perfect for the serial crafter looking for a pattern they can never find. Custom digitize designs on-demand with our design tools.</p>
               </dd>
               <div className="mt-3 text-blush-300 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <DecorativeFlower size={18} />

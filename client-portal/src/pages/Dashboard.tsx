@@ -92,7 +92,7 @@ export const Dashboard: React.FC = () => {
               className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-blush-500 hover:bg-blush-600 transition-colors focus:outline-none hover:shadow-blush"
             >
               <Sparkles className="h-4 w-4 mr-2" />
-              New AI Pattern
+              New Pattern
             </button>
           </div>
         </div>
@@ -339,15 +339,15 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    You are currently using the free Hobbyist tier: the Pattern Designer, Collage Studio and Quilt Block studios, with 2 AI pattern generations per day.
+                    You are currently using the free Hobbyist tier: the Pattern Designer, Collage Studio and Quilt Block studios, with 2 pattern generations per day.
                   </p>
                   <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100/50">
                     <h4 className="text-xs font-bold text-rose-800 flex items-center gap-1">
                       <Sparkles className="h-3.5 w-3.5 text-rose-500 animate-pulse" />
-                      Unlock AI Pattern Digitizer
+                      Unlock the Pattern Digitizer
                     </h4>
                     <p className="text-[10px] text-rose-700 leading-relaxed mt-1">
-                      Upgrade to **Pro Crafter** for 15 AI pattern generations per day (100/month) and unlimited active projects!
+                      Upgrade to **Pro Crafter** for 15 pattern generations per day (100/month) and unlimited active projects!
                     </p>
                   </div>
                   <button
@@ -368,7 +368,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Premium Features Active**: You have 15 AI pattern generations per day (100/month), thread usage estimators, and solo designer workspaces!
+                    ✓ **Premium Features Active**: You have 15 pattern generations per day (100/month), thread usage estimators, and solo designer workspaces!
                   </p>
                   <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100/50 flex items-center gap-3">
                     <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -394,7 +394,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    ✓ **Design Studio active**: Full commercial use licenses, 30 AI pattern generations per day (200/month), the premium AI art model option, and unlimited personal workspace are unlocked.
+                    ✓ **Design Studio active**: Full commercial use licenses, 30 pattern generations per day (200/month), the premium art model option, and unlimited personal workspace are unlocked.
                   </p>
                   <button
                     onClick={() => navigate('/pricing')}

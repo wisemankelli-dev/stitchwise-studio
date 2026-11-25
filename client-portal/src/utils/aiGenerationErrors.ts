@@ -17,13 +17,13 @@ export function describeAiGenerationError(err: unknown, fallback: string): strin
   if (err && typeof err === 'object') {
     const e = err as { status?: number; message?: string; name?: string };
     if (e.status === 401) {
-      return 'Please sign in to use AI generation.';
+      return 'Please sign in to generate patterns.';
     }
     if (e.status === 429) {
-      return 'You have used up your AI generation allowance for now. Please try again in a little while.';
+      return 'You have used up your generation allowance for now. Please try again in a little while.';
     }
     if (e.status === 402 || e.status === 403) {
-      return 'AI generation is not available on your current plan. Please upgrade to keep creating.';
+      return 'Generation is not available on your current plan. Please upgrade to keep creating.';
     }
     if (e.status === 404) {
       return 'That generation was lost before it finished. Please generate again.';
@@ -42,7 +42,7 @@ export function describeAiGenerationError(err: unknown, fallback: string): strin
     // fails after retries — 429 no-credits, 5xx, timeouts). Translate them
     // into an honest, friendly status instead of the technical string.
     if (e.message && /no image|credits|billing|image service/i.test(e.message)) {
-      return 'The AI image service is temporarily unavailable. Please try again in a little while.';
+      return 'The design service is temporarily unavailable. Please try again in a little while.';
     }
     // Surface a specific backend-provided message if it isn't a generic client stub.
     if (e.message && !/generation failed|request failed/i.test(e.message)) {

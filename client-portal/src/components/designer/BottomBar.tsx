@@ -84,7 +84,7 @@ export const BottomBar: React.FC<BottomBarProps> = ({
         <button
           type="button"
           onClick={onOpenAi}
-          aria-label="AI design"
+          aria-label="Design"
           aria-expanded={openTab === 'ai'}
           data-testid="phone-bar-ai"
           className={`h-12 flex-1 shrink-0 flex items-center justify-center gap-1.5 rounded-xl text-white text-xs font-bold ${
@@ -93,7 +93,7 @@ export const BottomBar: React.FC<BottomBarProps> = ({
               : 'bg-gradient-to-r from-blush-500 to-purple-500'
           }`}
         >
-          <Sparkles className="h-4 w-4" /> AI
+          <Sparkles className="h-4 w-4" /> Generate
         </button>
       )}
     </div>

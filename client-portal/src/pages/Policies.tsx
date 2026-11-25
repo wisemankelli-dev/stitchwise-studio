@@ -85,8 +85,8 @@ export const Terms: React.FC = () => (
       have bought stays in your account.
     </Section>
     <Section lead="Plans and allowances.">
-      The Hobbyist plan is free. Paid plans are billed monthly. Each AI generation uses one unit of your
-      plan&apos;s allowance, including designs the app draws itself rather than generating with AI. Current
+      The Hobbyist plan is free. Paid plans are billed monthly. Each generation uses one unit of your
+      plan&apos;s allowance, including designs you draw yourself rather than generating from a prompt. Current
       plans, prices and allowances are listed on the{' '}
       <a href="#/pricing" className="text-blush-600 hover:text-blush-700 underline">
         Pricing page
@@ -120,7 +120,7 @@ export const Privacy: React.FC = () => (
   <PolicyLayout title="Privacy">
     <Section lead="What we hold.">
       Your email address and a hashed password; the patterns and projects you save; images you upload to
-      convert into a pattern; and the prompts you submit for AI generation.
+      convert into a pattern; and the prompts you submit for generation.
     </Section>
     <Section lead="Payments.">
       Card payments are handled by Stripe. We never see or store your card number. Stripe tells us the email
