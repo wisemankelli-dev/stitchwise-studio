@@ -12,6 +12,8 @@
  * - replays are idempotent (a replayed old checkout cannot re-upgrade a
  *   cancelled subscriber)
  * - bad / missing / misconfigured signatures are rejected, and change nothing
+ * - the signing secret is accepted under any of its known environment names
+ *   (STRIPE_WEBHOOK_SECRET, WEBHOOK_SECRET, WEBHOOK), trimmed
  * - the webhook path is configurable via STRIPE_WEBHOOK_PATH
  */
 import crypto from "node:crypto";
@@ -30,6 +32,14 @@ const eid = (name: string) => `evt_${name}_${RUN}`;
 // per-run too: the suite can run twice against the same database.
 const cus = (name: string) => `cus_${name}_${RUN}`;
 const sub = (name: string) => `sub_${name}_${RUN}`;
+
+// Every environment name the signing-secret lookup accepts. Tests that need
+// "no secret configured" must clear all of them, not just the canonical one.
+const WEBHOOK_SECRET_ENV_NAMES = ["STRIPE_WEBHOOK_SECRET", "WEBHOOK_SECRET", "WEBHOOK"] as const;
+
+function clearWebhookSecretEnv(): void {
+  for (const name of WEBHOOK_SECRET_ENV_NAMES) delete process.env[name];
+}
 
 function stripeSignature(
   payload: string,
@@ -253,7 +263,7 @@ describe("Stripe webhook — subscription provisioning", () => {
       eid("checkout_no_secret"),
     );
 
-    delete process.env.STRIPE_WEBHOOK_SECRET;
+    clearWebhookSecretEnv();
     try {
       const res = await deliver(payload, stripeSignature(payload));
       expect(res.status).toBe(503);
@@ -263,6 +273,66 @@ describe("Stripe webhook — subscription provisioning", () => {
 
     const user = await tierOf();
     expect(user?.tier).toBe("HOBBYIST");
+  });
+
+  // The signing secret is saved by hand in the hosting dashboard, and it has
+  // been saved as WEBHOOK_SECRET and as WEBHOOK — never only as
+  // STRIPE_WEBHOOK_SECRET. Every accepted name must actually verify.
+  it("accepts the signing secret saved under an alias (WEBHOOK_SECRET, WEBHOOK)", async () => {
+    const aliasSecret = "whsec_test_alias_secret";
+
+    for (const alias of ["WEBHOOK_SECRET", "WEBHOOK"] as const) {
+      // Padded on purpose: a value saved with a stray space or newline must
+      // still verify, so the lookup trims it.
+      const payload = eventBody(
+        "checkout.session.completed",
+        checkoutSession(email, "STUDIO", {
+          customer: cus(`alias_${alias}`),
+          subscription: sub(`alias_${alias}`),
+        }),
+        eid(`checkout_alias_${alias}`),
+      );
+
+      clearWebhookSecretEnv();
+      process.env[alias] = `  ${aliasSecret}\n`;
+      try {
+        const res = await deliver(payload, stripeSignature(payload, aliasSecret));
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ received: true });
+      } finally {
+        clearWebhookSecretEnv();
+        process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
+      }
+
+      const user = await tierOf();
+      expect(user?.tier).toBe("STUDIO");
+      expect(user?.stripeSubscriptionId).toBe(sub(`alias_${alias}`));
+    }
+  });
+
+  it("prefers STRIPE_WEBHOOK_SECRET over the aliases", async () => {
+    const payload = eventBody(
+      "checkout.session.completed",
+      checkoutSession(email, "PRO", {
+        customer: cus("precedence"),
+        subscription: sub("precedence"),
+      }),
+      eid("checkout_precedence"),
+    );
+
+    process.env.WEBHOOK_SECRET = "whsec_alias_wrong";
+    process.env.WEBHOOK = "whsec_alias_wrong";
+    try {
+      // Signed with the canonical secret: only wins if it is read first.
+      const res = await deliver(payload, stripeSignature(payload));
+      expect(res.status).toBe(200);
+    } finally {
+      delete process.env.WEBHOOK_SECRET;
+      delete process.env.WEBHOOK;
+    }
+
+    const user = await tierOf();
+    expect(user?.tier).toBe("PRO");
   });
 
   it("serves the webhook on a path set by STRIPE_WEBHOOK_PATH", async () => {

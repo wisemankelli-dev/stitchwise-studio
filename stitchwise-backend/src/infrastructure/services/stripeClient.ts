@@ -126,6 +126,35 @@ function webhookError(code: string, message: string): Error {
 }
 
 /**
+ * Environment names that may hold the webhook signing secret, most specific
+ * first. The secret is saved by hand in the hosting dashboard, so the name that
+ * actually ends up in the environment is whatever was typed there — all three of
+ * these have been used. Reading only the first one left the live endpoint
+ * answering 503 while a perfectly valid `whsec_…` value sat in the environment
+ * under another name.
+ */
+export const WEBHOOK_SECRET_ENV_NAMES = [
+  "STRIPE_WEBHOOK_SECRET",
+  "WEBHOOK_SECRET",
+  "WEBHOOK",
+] as const;
+
+/**
+ * First non-empty (trimmed) value among WEBHOOK_SECRET_ENV_NAMES, or undefined
+ * when none is set. Trimming matters: a secret saved with a trailing newline or
+ * space can never match a signature.
+ */
+export function resolveWebhookSecret(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  for (const name of WEBHOOK_SECRET_ENV_NAMES) {
+    const value = (env[name] ?? "").trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+/**
  * Constructs a Stripe event from a raw webhook payload.
  *
  * The payload MUST be the untouched request body (Buffer/string) — any JSON
@@ -136,11 +165,11 @@ export function constructWebhookEvent(
   payload: string | Buffer,
   signature: string,
 ): Stripe.Event {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = resolveWebhookSecret();
   if (!webhookSecret) {
     throw webhookError(
       WEBHOOK_SECRET_MISSING,
-      "STRIPE_WEBHOOK_SECRET is not configured",
+      `No webhook signing secret is configured (checked ${WEBHOOK_SECRET_ENV_NAMES.join(", ")})`,
     );
   }
   if (!signature) {
