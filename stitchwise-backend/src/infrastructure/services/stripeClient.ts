@@ -161,10 +161,10 @@ export function resolveWebhookSecret(
  * re-serialisation breaks the signature. Fails closed when no signing secret is
  * configured, instead of comparing against a placeholder that can never match.
  */
-export function constructWebhookEvent(
+export async function constructWebhookEvent(
   payload: string | Buffer,
   signature: string,
-): Stripe.Event {
+): Promise<Stripe.Event> {
   const webhookSecret = resolveWebhookSecret();
   if (!webhookSecret) {
     throw webhookError(
@@ -178,7 +178,10 @@ export function constructWebhookEvent(
       "No Stripe signature header provided",
     );
   }
-  return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+  // Must be the async variant: the sync `constructEvent` throws on Bun
+  // ("SubtleCryptoProvider cannot be used in a synchronous context"), which
+  // rejected every real Stripe event.
+  return stripe.webhooks.constructEventAsync(payload, signature, webhookSecret);
 }
 
 /** Plans that a subscription can actually put a user on. */
