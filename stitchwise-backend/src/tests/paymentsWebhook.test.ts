@@ -75,10 +75,11 @@ function checkoutSession(email: string, tier: string, ids: {
 
 /**
  * A session as Stripe shapes it for a hosted **Payment Link** (plink_…): the
- * link sets `subscription_data.metadata.plan`, so the session's own `metadata`
- * is empty and the tier only reaches us on `subscription_details.metadata`.
+ * link's own metadata is copied onto every session it creates, so the tier
+ * arrives as `session.metadata.tier`. `subscription_details` does not exist on
+ * the checkout.session object.
  */
-function paymentLinkSession(email: string, plan: string, ids: {
+function paymentLinkSession(email: string, tier: string, ids: {
   customer?: string;
   subscription?: string;
   sessionId?: string;
@@ -91,8 +92,7 @@ function paymentLinkSession(email: string, plan: string, ids: {
     customer_details: { email },
     customer: ids.customer ?? cus("default"),
     subscription: ids.subscription ?? sub("default"),
-    metadata: {},
-    subscription_details: { metadata: { plan } },
+    metadata: { tier },
   };
 }
 
@@ -301,8 +301,8 @@ describe("Stripe webhook — subscription provisioning", () => {
     delete process.env.STRIPE_WEBHOOK_PATH;
   });
 
-  it("upgrades the buyer from a Payment Link session (tier only on subscription_details.metadata.plan)", async () => {
-    // A real plink_… session: `metadata: {}`, plan on subscription_details.
+  it("upgrades the buyer from a Payment Link session (tier copied onto session.metadata)", async () => {
+    // A real plink_… session: the link's metadata arrives as session.metadata.tier.
     const plinkEmail = `plink-${Date.now()}@stitchwise.dev`;
     const signup = await request(app)
       .post("/api/auth/signup")
@@ -342,7 +342,7 @@ describe("Stripe webhook — subscription provisioning", () => {
       mode: "subscription",
       customer_email: subEmail,
       customer: cus("expanded"),
-      // Expanded subscription object, no session/subscription_details metadata.
+      // Expanded subscription object, no session metadata.
       subscription: { id: sub("expanded"), metadata: { plan: "STUDIO" } },
       metadata: {},
     };

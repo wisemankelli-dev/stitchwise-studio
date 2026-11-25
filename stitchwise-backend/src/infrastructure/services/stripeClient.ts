@@ -176,13 +176,17 @@ function tierFromMetadata(metadata: unknown): PaidTier | null {
  * Extracts subscription details from a Stripe Checkout Session event.
  *
  * The tier is looked for, in order:
- *   1. `session.metadata` — set by our own `createCheckoutSession` (`tier`).
- *   2. `session.subscription_details.metadata` — where a Stripe **Payment
- *      Link** puts it: the link sets `subscription_data.metadata.plan`, and
- *      the session carries no metadata of its own (`metadata: {}`).
- *   3. An expanded `session.subscription.metadata` — the subscription object
+ *   1. `session.metadata` — set by our own `createCheckoutSession` (`tier`),
+ *      and by a Stripe **Payment Link**: metadata on the link is copied onto
+ *      every checkout session the link creates, so it arrives here as
+ *      `session.metadata.tier`.
+ *   2. An expanded `session.subscription.metadata` — the subscription object
  *      itself carries whatever was set on `subscription_data`.
  * Both `tier` and `plan` are accepted at every step.
+ *
+ * There is no `subscription_details` on the checkout.session object in
+ * Stripe's API — it is a create-time request parameter only — so it is never
+ * read here.
  *
  * Email falls back to `customer_details.email` — `customer_email` is null when
  * Stripe reuses an existing customer, and an empty email used to make the
@@ -204,15 +208,8 @@ export function extractCheckoutData(session: Stripe.Checkout.Session): {
   const customer = session.customer as string | { id?: string } | null | undefined;
   const customerId = typeof customer === "string" ? customer : customer?.id;
 
-  const subscriptionDetails = (
-    session as unknown as {
-      subscription_details?: { metadata?: Record<string, string> | null } | null;
-    }
-  ).subscription_details;
-
   const tier =
     tierFromMetadata(session.metadata) ??
-    tierFromMetadata(subscriptionDetails?.metadata) ??
     tierFromMetadata(typeof subscription === "object" ? subscription?.metadata : undefined);
 
   const email = (
