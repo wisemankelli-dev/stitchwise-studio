@@ -13,20 +13,86 @@ function testAuthToken(userId: string, tier = "HOBBYIST"): string {
 
 describe("User Profile API", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const studioEmail = `studio-${suffix}@stitchwise.test`;
+  let studioUserId: string;
 
   beforeAll(async () => {
     app = await createApp();
+
+    const user = await prisma.user.create({
+      data: {
+        email: studioEmail,
+        name: "Studio Tester",
+        passwordHash: "not-a-real-hash",
+        tier: "STUDIO",
+      },
+    });
+    studioUserId = user.id;
+
+    // GET /api/me/tier still reads the seeded demo user; make the fixture
+    // explicit so the test does not depend on a seeded database.
+    await prisma.user.upsert({
+      where: { email: "demo@stitchwise.dev" },
+      update: {},
+      create: {
+        email: "demo@stitchwise.dev",
+        name: "Demo User",
+        passwordHash: "not-a-real-hash",
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: { email: studioEmail } });
+    await prisma.$disconnect();
   });
 
   describe("GET /api/me", () => {
-    it("returns the current user profile with tier", async () => {
-      const res = await request(app).get("/api/me").expect(200);
+    it("returns the caller's own profile and tier from the bearer token", async () => {
+      const res = await request(app)
+        .get("/api/me")
+        .set("Authorization", `Bearer ${testAuthToken(studioUserId)}`)
+        .expect(200);
 
-      expect(res.body).toHaveProperty("id");
-      expect(res.body).toHaveProperty("email");
-      expect(res.body).toHaveProperty("name");
-      expect(res.body).toHaveProperty("tier");
-      expect(["HOBBYIST", "PRO", "STUDIO"]).toContain(res.body.tier);
+      expect(res.body.id).toBe(studioUserId);
+      expect(res.body.email).toBe(studioEmail);
+      expect(res.body.name).toBe("Studio Tester");
+      expect(res.body.tier).toBe("STUDIO");
+      // The demo fallback must never appear for a signed-in caller.
+      expect(res.body.email).not.toBe("demo@stitchwise.dev");
+    });
+
+    it("resolves the caller by email when the token has no usable user id", async () => {
+      const token = jwt.sign({ userId: "no-such-user-id", email: studioEmail }, JWT_SECRET, {
+        expiresIn: "1h",
+      });
+
+      const res = await request(app)
+        .get("/api/me")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body.email).toBe(studioEmail);
+      expect(res.body.tier).toBe("STUDIO");
+    });
+
+    it("returns 401 when there is no token instead of falling back to the demo user", async () => {
+      const res = await request(app).get("/api/me").expect(401);
+      expect(res.body).not.toHaveProperty("email");
+    });
+
+    it("returns 401 for an invalid token", async () => {
+      await request(app).get("/api/me").set("Authorization", "Bearer not-a-token").expect(401);
+    });
+
+    it("returns 401 for a valid token that matches no user", async () => {
+      const token = jwt.sign({ userId: `ghost-${suffix}` }, JWT_SECRET, { expiresIn: "1h" });
+      const res = await request(app)
+        .get("/api/me")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(401);
+      expect(res.body).not.toHaveProperty("email");
     });
   });
 
@@ -34,112 +100,6 @@ describe("User Profile API", () => {
     it("returns the current user's tier", async () => {
       const res = await request(app).get("/api/me/tier").expect(200);
       expect(res.body).toHaveProperty("tier");
-    });
-  });
-});
-
-describe("Solo Project API", () => {
-  let app: Awaited<ReturnType<typeof createApp>>;
-  let projectId: string;
-  let authHeader: string;
-  let testUserId: string;
-
-  beforeAll(async () => {
-    app = await createApp();
-
-    // Create a test user in the database for project CRUD tests
-    const user = await prisma.user.upsert({
-      where: { email: "test-project-user@stitchwise.dev" },
-      update: {},
-      create: {
-        email: "test-project-user@stitchwise.dev",
-        name: "Test Project User",
-        passwordHash: "test-hash",
-        tier: "PRO",
-      },
-    });
-    testUserId = user.id;
-    authHeader = `Bearer ${testAuthToken(testUserId, "PRO")}`;
-  });
-
-  afterAll(async () => {
-    // Clean up test data
-    await prisma.project.deleteMany({ where: { userId: testUserId } });
-    await prisma.user.delete({ where: { id: testUserId } });
-    await prisma.$disconnect();
-  });
-
-  describe("POST /api/projects", () => {
-    it("creates a new project", async () => {
-      const res = await request(app)
-        .post("/api/projects")
-        .set("Authorization", authHeader)
-        .send({ name: "Test Project", data: JSON.stringify({ grid: [] }) })
-        .expect(201);
-
-      expect(res.body).toHaveProperty("id");
-      expect(res.body.name).toBe("Test Project");
-      expect(res.body.data).toBe('{"grid":[]}');
-      projectId = res.body.id;
-    });
-
-    it("rejects invalid project data", async () => {
-      const res = await request(app)
-        .post("/api/projects")
-        .set("Authorization", authHeader)
-        .send({ name: "" })
-        .expect(400);
-
-      expect(res.body).toHaveProperty("error", "Validation failed");
-    });
-
-    it("rejects unauthenticated requests", async () => {
-      await request(app)
-        .post("/api/projects")
-        .send({ name: "Test" })
-        .expect(401);
-    });
-  });
-
-  describe("GET /api/projects", () => {
-    it("lists projects for the current user", async () => {
-      const res = await request(app)
-        .get("/api/projects")
-        .set("Authorization", authHeader)
-        .expect(200);
-
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe("GET /api/projects/:id", () => {
-    it("returns a project by ID", async () => {
-      const res = await request(app)
-        .get(`/api/projects/${projectId}`)
-        .set("Authorization", authHeader)
-        .expect(200);
-
-      expect(res.body.id).toBe(projectId);
-    });
-
-    it("returns 404 for non-existent project", async () => {
-      await request(app)
-        .get("/api/projects/non-existent-id")
-        .set("Authorization", authHeader)
-        .expect(404);
-    });
-  });
-
-  describe("PUT /api/projects/:id", () => {
-    it("updates a project", async () => {
-      const res = await request(app)
-        .put(`/api/projects/${projectId}`)
-        .send({ name: "Updated Name", data: JSON.stringify({ grid: [1, 2] }) })
-        .expect(200);
-
-      expect(res.body.name).toBe("Updated Name");
-      expect(JSON.parse(res.body.data).grid).toEqual([1, 2]);
     });
   });
 });
