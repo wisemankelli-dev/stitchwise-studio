@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import { SignupSchema, LoginSchema } from "../../domain/auth";
 import { materializePendingPurchases } from "../../domain/patternGrants";
+import { applyPendingSubscription } from "../../domain/pendingSubscription";
 import { JWT_SECRET } from "../middleware/auth";
 import { PrismaCollageRepo } from "../db/prismaCollageRepo";
 
@@ -43,8 +44,13 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         data: { email, passwordHash, name, tier: "HOBBYIST" },
       });
 
+      // A subscription paid with this email before the account existed is
+      // applied here, so the first sign-in already lands on the paid tier.
+      const paid = await applyPendingSubscription(prisma, user.email);
+      const tier = paid?.tier ?? user.tier;
+
       // Generate token
-      const token = jwt.sign({ userId: user.id, email: user.email, tier: user.tier }, JWT_SECRET, {
+      const token = jwt.sign({ userId: user.id, email: user.email, tier }, JWT_SECRET, {
         expiresIn: TOKEN_EXPIRY,
       });
 
@@ -52,7 +58,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       await materializePendingPurchases(prisma, user.email, user.id, collageRepo);
       res.status(201).json({
         token,
-        user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },
+        user: { userId: user.id, email: user.email, name: user.name, tier },
       });
     } catch (err) {
       console.error({ event: "signup_error", error: String(err) });
@@ -87,8 +93,13 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return;
       }
 
+      // A subscription paid with this email before the account existed is
+      // applied here, so the first sign-in already lands on the paid tier.
+      const paid = await applyPendingSubscription(prisma, user.email);
+      const tier = paid?.tier ?? user.tier;
+
       // Generate token
-      const token = jwt.sign({ userId: user.id, email: user.email, tier: user.tier }, JWT_SECRET, {
+      const token = jwt.sign({ userId: user.id, email: user.email, tier }, JWT_SECRET, {
         expiresIn: TOKEN_EXPIRY,
       });
 
@@ -96,7 +107,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       await materializePendingPurchases(prisma, user.email, user.id, collageRepo);
       res.json({
         token,
-        user: { userId: user.id, email: user.email, name: user.name, tier: user.tier },
+        user: { userId: user.id, email: user.email, name: user.name, tier },
       });
     } catch (err) {
       console.error({ event: "login_error", error: String(err) });
